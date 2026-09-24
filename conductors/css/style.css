@@ -1,0 +1,41 @@
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Slide in animation */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.slide-in { animation: slideIn 0.3s ease-out; }
+
+/* Modal slide-up */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.slide-up { animation: slideUp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.05); }
+
+/* Smooth scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+
+/* Nav button feedback */
+.nav-btn { transition: all 0.2s ease; }
+.nav-btn:active { transform: scale(0.95); }
+
+/* Prevent text selection on tap-heavy buttons */
+button { -webkit-user-select: none; user-select: none; }
+
+/* Toast visible state */
+#toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}

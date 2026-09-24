@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#115272">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="QC Bus Admin">
+    <title>QC Bus Tracker · Admin</title>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" href="icons/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/style.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Quezon City official palette (matches QC E-Services)
+                        'qc-blue': '#0D3B54',          // darker navy — gradient start
+                        'qc-blue-accent': '#115272',   // QC E-Services accent — gradient end
+                        'qc-red': '#CE1126',           // official QC/PH red
+                        'qc-yellow': '#FCD116',        // official QC/PH yellow
+                        // Semantic accents (kept for status badges)
+                        'qc-green': '#16a34a',
+                        // Legacy aliases — keep existing classes working
+                        'qc-purple': '#115272',
+                        'qc-purple-dark': '#0D3B54',
+                    },
+                    fontFamily: {
+                        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+<div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl">
+
+    <!-- ========== HEADER ========== -->
+    <header class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md">
+        <div class="px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
+                <div class="leading-tight">
+                    <h1 class="font-bold text-sm" id="pageTitle">Admin Dashboard</h1>
+                    <p class="text-[10px] text-white/75 tracking-wide" id="pageSub">Quezon City · Manage everything</p>
+                </div>
+            </div>
+
+            <button onclick="navigateTo('monitor')" class="relative p-2 hover:bg-white/10 rounded-full transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Thin QC accent line -->
+        <div class="h-0.5 bg-gradient-to-r from-qc-yellow via-qc-red to-qc-yellow"></div>
+    </header>
+
+    <!-- ========== CONTENT ========== -->
+    <main id="content" class="p-4 pb-24">
+        <!-- Dynamically loaded -->
+    </main>
+
+    <!-- ========== BOTTOM NAV ========== -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 z-50">
+        <div class="grid grid-cols-5 h-16">
+            <button data-page="dashboard" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-qc-blue-accent transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                <span>Home</span>
+            </button>
+            <button data-page="routes" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                <span>Routes</span>
+            </button>
+            <button data-page="buses" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                </svg>
+                <span>Buses</span>
+            </button>
+            <button data-page="staff" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+                <span>Staff</span>
+            </button>
+            <button data-page="monitor" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <span>Monitor</span>
+            </button>
+        </div>
+    </nav>
+</div>
+
+<!-- ========== GENERIC MODAL ========== -->
+<div id="modal" class="fixed inset-0 z-[100] hidden">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="absolute inset-x-0 bottom-0 max-w-md mx-auto bg-white rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto slide-up">
+        <div class="sticky top-0 bg-white z-10 pt-3 pb-2 px-5 border-b border-gray-100">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3"></div>
+            <div class="flex items-center justify-between">
+                <h3 id="modalTitle" class="font-bold text-base text-gray-800">Title</h3>
+                <button onclick="closeModal()" class="p-1.5 hover:bg-gray-100 rounded-full transition">
+                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div id="modalBody" class="p-5"></div>
+    </div>
+</div>
+
+<!-- ========== CONFIRM MODAL ========== -->
+<div id="confirmModal" class="fixed inset-0 z-[110] hidden">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+    <div class="absolute inset-x-0 bottom-0 max-w-md mx-auto bg-white rounded-t-3xl shadow-2xl p-6 slide-up">
+        <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+        <h3 id="confirmTitle" class="font-bold text-lg text-gray-800 mb-2">Are you sure?</h3>
+        <p id="confirmMessage" class="text-sm text-gray-500 mb-5">This action cannot be undone.</p>
+        <div class="grid grid-cols-2 gap-3">
+            <button onclick="resolveConfirm(false)" class="py-3 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm hover:bg-gray-200 transition">Cancel</button>
+            <button onclick="resolveConfirm(true)" id="confirmOkBtn" class="py-3 rounded-xl bg-qc-red text-white font-semibold text-sm hover:bg-red-700 transition">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== TOAST ========== -->
+<div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white opacity-0 pointer-events-none transition-all duration-300 z-[120]"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/routes.js"></script>
+<script src="js/stops.js"></script>
+<script src="js/buses.js"></script>
+<script src="js/staff.js"></script>
+</body>
+</html>

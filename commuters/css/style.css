@@ -1,0 +1,76 @@
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+.custom-bus-marker,
+.user-marker {
+  background: transparent;
+  border: none;
+}
+
+#mapContainer {
+  z-index: 1;
+}
+
+/* Dark mode */
+body.dark-mode {
+  background-color: #111827;
+}
+body.dark-mode #app {
+  background-color: #111827;
+}
+body.dark-mode .bg-gray-50 {
+  background-color: #111827 !important;
+}
+body.dark-mode .bg-white {
+  background-color: #1f2937 !important;
+}
+body.dark-mode .text-gray-800 {
+  color: #f3f4f6 !important;
+}
+body.dark-mode .text-gray-700 {
+  color: #d1d5db !important;
+}
+body.dark-mode .text-gray-500 {
+  color: #9ca3af !important;
+}
+body.dark-mode .border-gray-100 {
+  border-color: #374151 !important;
+}
+body.dark-mode nav {
+  background-color: #1f2937;
+  border-color: #374151;
+}
+
+/* Animations */
+.nav-btn {
+  transition: all 0.2s ease;
+}
+.nav-btn:active {
+  transform: scale(0.95);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
