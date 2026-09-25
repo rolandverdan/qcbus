@@ -1,8 +1,8 @@
-Pages.dashboard = function () {
-  const routes = Store.getRoutes();
-  const buses = Store.getBuses();
-  const staff = Store.getStaff();
-  const stops = Store.getStops();
+Pages.dashboard = async function () {
+  const routes = await Store.getRoutes();
+  const buses = await Store.getBuses();
+  const staff = await Store.getStaff();
+  const stops = await Store.getStops();
 
   const activeBuses = buses.filter(b => b.status === 'active').length;
   const idleBuses = buses.filter(b => b.status === 'idle').length;
@@ -143,14 +143,22 @@ function statusRow(label, value, colorClass, total) {
     </div>
   `;
 }
-Pages.monitor = function () {
-  const buses = Store.getBuses().filter(b => b.status === 'active');
+Pages.monitor = async function () {
+  const buses = (await Store.getBuses()).filter(
+  b => b.status === 'active'
+);
 
   // Read occupancy broadcast from conductor localStorage
   const liveData = (() => {
-    try { return JSON.parse(localStorage.getItem('qcBusOccupancy') || 'null'); }
-    catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem('qcBusOccupancy') || 'null');
+    } catch {
+      return null;
+    }
   })();
+
+  // Load routes from Firestore
+  const routes = await Store.getRoutes();
 
   return `
     <div class="space-y-4 slide-in">
@@ -159,55 +167,99 @@ Pages.monitor = function () {
       ${liveData ? `
         <div class="bg-gradient-to-br from-qc-purple to-qc-purple-dark rounded-2xl p-4 text-white shadow-lg">
           <p class="text-xs opacity-90">Currently On Duty</p>
-          <p class="text-lg font-bold mt-1">${escapeHtml(liveData.busId)} · ${escapeHtml(liveData.route)}</p>
+          <p class="text-lg font-bold mt-1">
+            ${escapeHtml(liveData.busId)} · ${escapeHtml(liveData.route)}
+          </p>
+
           <div class="mt-3 flex items-end justify-between">
             <div>
               <p class="text-3xl font-bold leading-none">${liveData.onboard}</p>
               <p class="text-xs opacity-80">of ${liveData.capacity} onboard</p>
             </div>
+
             <div class="text-right text-xs">
               <p>↑ ${liveData.totalIn} boarded</p>
               <p>↓ ${liveData.totalOut} alighted</p>
-              <p class="opacity-70 mt-1">${new Date(liveData.lastUpdate).toLocaleTimeString()}</p>
+              <p class="opacity-70 mt-1">
+                ${new Date(liveData.lastUpdate).toLocaleTimeString()}
+              </p>
             </div>
           </div>
+
           <div class="mt-3 w-full h-2 bg-white/20 rounded-full overflow-hidden">
-            <div class="h-full bg-white" style="width:${Math.min(100, (liveData.onboard / liveData.capacity) * 100)}%"></div>
+            <div
+              class="h-full bg-white"
+              style="width:${liveData.capacity ? Math.min(100, (liveData.onboard / liveData.capacity) * 100) : 0}%"
+            ></div>
           </div>
         </div>
       ` : `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
           <p class="text-sm text-gray-500">No bus is currently on duty.</p>
-          <p class="text-xs text-gray-400 mt-1">Live data appears here when a conductor starts a trip.</p>
+          <p class="text-xs text-gray-400 mt-1">
+            Live data appears here when a conductor starts a trip.
+          </p>
         </div>
       `}
 
       <!-- Map -->
-      <div id="monitorMap" class="w-full h-64 rounded-2xl border border-gray-100 shadow-sm overflow-hidden"></div>
+      <div
+        id="monitorMap"
+        class="w-full h-64 rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+      ></div>
 
       <!-- Active buses list -->
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <h3 class="font-semibold text-sm text-gray-800 mb-3">Active Buses (${buses.length})</h3>
+        <h3 class="font-semibold text-sm text-gray-800 mb-3">
+          Active Buses (${buses.length})
+        </h3>
+
         ${buses.length === 0 ? `
-          <p class="text-xs text-gray-400 text-center py-4">No active buses</p>
+          <p class="text-xs text-gray-400 text-center py-4">
+            No active buses
+          </p>
         ` : buses.map(b => {
-          const route = b.routeId ? routeById(b.routeId) : null;
+          const route = routes.find(r => r.id === b.routeId);
           const driver = b.driverId ? staffById(b.driverId) : null;
           const conductor = b.conductorId ? staffById(b.conductorId) : null;
           const isLive = liveData && liveData.busId === b.code;
 
           return `
             <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-              <span class="w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}"></span>
+              <span
+                class="w-2 h-2 rounded-full ${
+                  isLive
+                    ? 'bg-green-500 animate-pulse'
+                    : 'bg-gray-300'
+                }"
+              ></span>
+
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-800">${escapeHtml(b.code)}</p>
+                <p class="text-sm font-medium text-gray-800">
+                  ${escapeHtml(b.code)}
+                </p>
+
                 <p class="text-xs text-gray-500 truncate">
-                  ${route ? escapeHtml(route.code) + ' · ' + escapeHtml(route.name) : 'No route'}
+                  ${
+                    route
+                      ? escapeHtml(route.code) + ' · ' + escapeHtml(route.name)
+                      : 'No route'
+                  }
                 </p>
               </div>
+
               <div class="text-right">
-                ${isLive ? `<p class="text-xs font-semibold text-qc-green">${liveData.onboard}/${liveData.capacity}</p>` : '<p class="text-xs text-gray-400">—</p>'}
-                <p class="text-[10px] text-gray-400">${driver ? escapeHtml(driver.name) : '—'}</p>
+                ${
+                  isLive
+                    ? `<p class="text-xs font-semibold text-qc-green">
+                         ${liveData.onboard}/${liveData.capacity}
+                       </p>`
+                    : '<p class="text-xs text-gray-400">—</p>'
+                }
+
+                <p class="text-[10px] text-gray-400">
+                  ${driver ? escapeHtml(driver.name) : '—'}
+                </p>
               </div>
             </div>
           `;
@@ -220,86 +272,93 @@ Pages.monitor = function () {
   `;
 };
 
-function initMonitorPage() {
-  // Map
+async function initMonitorPage() {
   const container = document.getElementById('monitorMap');
+
   if (!container || AppState.map) return;
 
-  AppState.map = L.map('monitorMap', { center: [14.6760, 121.0437], zoom: 12, zoomControl: false });
+  AppState.map = L.map('monitorMap', {
+    center: [14.6760, 121.0437],
+    zoom: 12,
+    zoomControl: false
+  });
+
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap', maxZoom: 19
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
   }).addTo(AppState.map);
-  L.control.zoom({ position: 'bottomright' }).addTo(AppState.map);
 
-  // Plot stops of every route (grey) and buses (colored)
-  const stops = Store.getStops();
-  const buses = Store.getBuses();
-  const routes = Store.getRoutes();
+  L.control.zoom({
+    position: 'bottomright'
+  }).addTo(AppState.map);
 
-  // Draw all routes as faded lines
-  routes.forEach(route => {
-    const routeStops = Store.getStopsByRoute(route.id);
+  const routes = await Store.getRoutes();
+  const buses = await Store.getBuses();
+
+  // Draw all routes
+  for (const route of routes) {
+    const routeStops = await Store.getStopsByRoute(route.id);
+
     if (routeStops.length >= 2) {
-      L.polyline(routeStops.map(s => [s.lat, s.lng]), {
-        color: route.color, weight: 3, opacity: 0.3,
-      }).addTo(AppState.map);
+      L.polyline(
+        routeStops.map(s => [s.lat, s.lng]),
+        {
+          color: route.color,
+          weight: 3,
+          opacity: 0.3,
+        }
+      ).addTo(AppState.map);
     }
-  });
+  }
 
-  // Bus markers at their route's first stop (no live GPS yet)
-  buses.forEach(bus => {
-    if (!bus.routeId) return;
-    const routeStops = Store.getStopsByRoute(bus.routeId);
-    if (routeStops[0]) {
-      const route = routeById(bus.routeId);
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="background:${route?.color || '#7c3aed'};color:#fff;padding:4px 8px;border-radius:8px;font-size:10px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.3)">${escapeHtml(bus.code)}</div>`,
-        iconSize: null, iconAnchor: [30, 12]
-      });
-      L.marker([routeStops[0].lat, routeStops[0].lng], { icon })
-        .addTo(AppState.map)
-        .bindPopup(`<b>${escapeHtml(bus.code)}</b><br>${escapeHtml(route?.name || '')}`);
-    }
-  });
+  // Bus markers
+  for (const bus of buses) {
+    if (!bus.routeId) continue;
+
+    const routeStops = await Store.getStopsByRoute(bus.routeId);
+
+    if (!routeStops[0]) continue;
+
+    const route = routes.find(r => r.id === bus.routeId);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `
+        <div
+          style="
+            background:${route?.color || '#7c3aed'};
+            color:#fff;
+            padding:4px 8px;
+            border-radius:8px;
+            font-size:10px;
+            font-weight:700;
+            box-shadow:0 2px 6px rgba(0,0,0,.3)
+          "
+        >
+          ${escapeHtml(bus.code)}
+        </div>
+      `,
+      iconSize: null,
+      iconAnchor: [30, 12]
+    });
+
+    L.marker(
+      [routeStops[0].lat, routeStops[0].lng],
+      { icon }
+    )
+      .addTo(AppState.map)
+      .bindPopup(`
+        <b>${escapeHtml(bus.code)}</b><br>
+        ${escapeHtml(route?.name || '')}
+      `);
+  }
 
   // SOS section
-  renderSOSSection();
+  if (typeof renderSOSSection === 'function') {
+    renderSOSSection();
+  }
 }
 
-function renderSOSSection() {
-  const el = document.getElementById('sosSection');
-  if (!el) return;
-  let sos = null;
-  try { sos = JSON.parse(localStorage.getItem('qcSOS') || 'null'); } catch {}
-
-  // Only show if triggered in last 5 minutes
-  const recent = sos && (Date.now() - sos.time < 5 * 60 * 1000);
-
-  el.innerHTML = recent ? `
-    <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center gap-3 mb-2">
-        <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center animate-pulse">
-          <span class="text-xl">🚨</span>
-        </div>
-        <div>
-          <p class="text-sm font-bold text-qc-red">SOS ACTIVE</p>
-          <p class="text-xs text-red-700">${escapeHtml(sos.label)}</p>
-        </div>
-      </div>
-      <div class="text-xs text-red-800 space-y-0.5 pl-13">
-        <p><b>Bus:</b> ${escapeHtml(sos.busId)} · ${escapeHtml(sos.route)}</p>
-        <p><b>Conductor:</b> ${escapeHtml(sos.conductor)}</p>
-        <p><b>Time:</b> ${new Date(sos.time).toLocaleTimeString()}</p>
-      </div>
-    </div>
-  ` : '';
-}
-
-// Refresh SOS section every 5s while on monitor page
-setInterval(() => {
-  if (AppState.currentPage === 'monitor') renderSOSSection();
-}, 5000);
 
 // Expose
 window.Pages.monitor = Pages.monitor;

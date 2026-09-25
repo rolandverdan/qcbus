@@ -374,9 +374,10 @@ function renderActivityList() {
 // ==================================================
 // NAVIGATION
 // ==================================================
-function navigateTo(page) {
+async function navigateTo(page) {
   AppState.currentPage = page;
-  document.getElementById('content').innerHTML = Pages[page]();
+  document.getElementById('content').innerHTML =
+  Pages[page] ? await Pages[page]() : '';
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     const active = btn.dataset.page === page;

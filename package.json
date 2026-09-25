@@ -12,5 +12,9 @@
   "type": "commonjs",
   "devDependencies": {
     "tailwindcss": "^3.4.19"
+  },
+  "dependencies": {
+    "@dataconnect/generated": "file:src/dataconnect-generated",
+    "firebase": "^12.19.0"
   }
 }
