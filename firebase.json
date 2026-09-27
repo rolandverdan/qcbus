@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "public": ".",
+    "redirects": [
+      {
+        "source": "/",
+        "destination": "/commuters/",
+        "type": 301
+      }
+    ],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
