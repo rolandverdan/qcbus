@@ -526,6 +526,7 @@ async function loadConductorData() {
 // INIT
 // ==================================================
 async function initApp() {
+  
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       navigateTo(btn.dataset.page);
@@ -541,6 +542,7 @@ async function initApp() {
 
     try {
     await loadConductorData();
+    await restoreActiveTrip();
     await navigateTo('trip');
   } catch (error) {
     console.error('Conductor data load failed:', error);

@@ -198,9 +198,7 @@ async function restoreActiveTrip() {
   if (!AppState.conductor.id) return;
 
   try {
-    const trip = await getActiveTripRepo(
-      AppState.conductor.id
-    );
+    const trip = await getActiveTripRepo(AppState.conductor.id);
 
     if (!trip) return;
 
@@ -217,30 +215,22 @@ async function restoreActiveTrip() {
       onboard: Number(trip.onboard) || 0,
       totalIn: Number(trip.totalIn) || 0,
       totalOut: Number(trip.totalOut) || 0,
-      capacity:
-        Number(trip.capacity) ||
-        AppState.bus.capacity,
+      capacity: Number(trip.capacity) || AppState.bus.capacity,
     };
 
     updateTripStatus();
     startTripTimer();
 
-    console.log(
-      'Active trip restored:',
-      trip.id
-    );
-
+    console.log("Active trip restored:", trip.id);
   } catch (error) {
-    console.error(
-      'Failed to restore active trip:',
-      error
-    );
+    console.error("Failed to restore active trip:", error);
   }
 }
 
 // ---------- Expose ----------
 window.startTrip = startTrip;
 window.restoreActiveTrip = restoreActiveTrip;
+
 window.endTrip = endTrip;
 window.startTripTimer = startTripTimer;
 window.stopTripTimer = stopTripTimer;
