@@ -32,7 +32,7 @@ const { user, profile } = session;
 // APP STATE
 // ==================================================
 
-const AppState = {
+window.AppState = {
   currentPage: "home",
 
   user: {
@@ -43,29 +43,7 @@ const AppState = {
     savedRoutes: ["Route 1", "Route 5"]
   },
 
-  notifications: [
-    {
-      id: 1,
-      title: "Bus Arriving",
-      message: "Bus QC-1234 will arrive at your stop in 5 minutes",
-      time: "2 min ago",
-      read: false
-    },
-    {
-      id: 2,
-      title: "Route Update",
-      message: "Route 5 is experiencing delays due to traffic",
-      time: "15 min ago",
-      read: false
-    },
-    {
-      id: 3,
-      title: "Welcome!",
-      message: "Thanks for using QC Bus Tracker",
-      time: "1 hour ago",
-      read: true
-    }
-  ],
+  notifications: [],
 
   settings: {
     notifications: true,
@@ -1049,13 +1027,17 @@ async function listenToBuses() {
 // INIT
 // ==================================================
 
-function initApp() {
+async function initApp() {
 
   // ==================================================
   // LOAD SETTINGS
   // ==================================================
 
-  listenToBuses();
+    listenToBuses()
+    if (window.loadNotifications) {
+    await window.loadNotifications();
+  }
+  
 
   const saved =
     localStorage.getItem("qcSettings");
