@@ -21,15 +21,28 @@ export async function getStaffRepo() {
   }));
 }
 
+export async function getStaffByUidRepo(uid) {
+  const staff = await getStaffRepo();
+
+  return staff.find((member) => member.uid === uid) || null;
+}
+
 export async function addStaffRepo(data) {
   const staff = {
+    uid: data.uid || null,
+
     name: data.name,
     email: (data.email || "").toLowerCase(),
     phone: data.phone || "",
+
     role: data.role,
+
     licenseNumber: data.licenseNumber || "",
+
     status: "active",
+
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
 
   const docRef = await addDoc(staffCollection, staff);
@@ -45,6 +58,10 @@ export async function updateStaffRepo(id, patch) {
 
   await updateDoc(staffRef, {
     ...patch,
+    ...(patch.email !== undefined && {
+      email: patch.email.toLowerCase(),
+    }),
+    updatedAt: serverTimestamp(),
   });
 }
 

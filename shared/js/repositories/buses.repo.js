@@ -57,3 +57,12 @@ export async function deleteBusRepo(id) {
 
   await deleteDoc(busRef);
 }
+
+export async function getBusByConductorIdRepo(conductorId) {
+  const buses = await getBusesRepo();
+
+  return (
+    buses.find(bus => bus.conductorId === conductorId) ||
+    null
+  );
+}
