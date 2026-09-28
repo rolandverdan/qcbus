@@ -1,19 +1,40 @@
+import { requireRole } from "../../shared/js/auth.js";
+import { signOutUser } from "../../shared/js/repositories/auth.repo.js";
+
+import {
+  getBusByConductorIdRepo,
+} from "../../shared/js/repositories/buses.repo.js";
+
+import {
+  getRoutesRepo,
+} from "../../shared/js/repositories/routes.repo.js";
+
+const session = await requireRole("conductor");
+
+if (!session) {
+  throw new Error("Conductor authentication required.");
+}
+
+const { user, profile } = session;
+
 // ==================================================
 // APP STATE — CONDUCTOR
 // ==================================================
 const AppState = {
   currentPage: 'trip',
   conductor: {
-    name: 'Pedro Reyes',
-    id: 'COND-042',
-    email: 'pedro@qcbus.ph',
-  },
+  name: profile.name || user.displayName || 'Conductor',
+  id: profile.uid || user.uid,
+  email: user.email || '',
+},
   bus: {
-    id: 'QC-1234',
-    route: 'Route 1',
-    plateNumber: 'NCR 4521',
-    capacity: 45,
-  },
+  id: null,
+  route: 'No route assigned',
+  routeId: null,
+  plateNumber: '',
+  capacity: 45,
+  staffId: null,
+},
   trip: {
     active: false,
     startedAt: null,
@@ -426,32 +447,121 @@ function showToast(message, type = 'info') {
 // ==================================================
 // LOGOUT
 // ==================================================
-function logout() {
+async function logout() {
   if (AppState.trip.active) {
     if (!confirm('A trip is still active. End it before logging out?')) return;
     endTrip();
   }
-  showToast('Logged out (frontend only)', 'info');
-  // window.location.href = 'auth.html';
+
+  try {
+    await signOutUser();
+    window.location.replace('/commuters/auth.html');
+  } catch (error) {
+    console.error('Logout failed:', error);
+    showToast('Logout failed', 'error');
+  }
+}
+
+async function loadConductorData() {
+  const staff = await import(
+    "../../shared/js/repositories/staff.repo.js"
+  );
+
+  const staffMember =
+    await staff.getStaffByUidRepo(user.uid);
+
+  if (!staffMember) {
+    throw new Error(
+      "Your account is not linked to a conductor staff record."
+    );
+  }
+
+  const bus =
+    await getBusByConductorIdRepo(staffMember.id);
+
+  if (!bus) {
+    AppState.conductor.name =
+      staffMember.name || profile.name || 'Conductor';
+
+    AppState.conductor.id =
+      staffMember.id;
+
+    AppState.conductor.email =
+      staffMember.email || user.email || '';
+
+    return;
+  }
+
+  const routes = await getRoutesRepo();
+
+  const route = bus.routeId
+    ? routes.find(r => r.id === bus.routeId)
+    : null;
+
+  AppState.conductor.name =
+    staffMember.name || profile.name || 'Conductor';
+
+  AppState.conductor.id =
+    staffMember.id;
+
+  AppState.conductor.email =
+    staffMember.email || user.email || '';
+
+  AppState.bus = {
+    id: bus.code || bus.id,
+    staffId: staffMember.id,
+    routeId: bus.routeId || null,
+    route: route
+      ? `${route.code} · ${route.name}`
+      : 'No route assigned',
+    plateNumber: bus.plateNumber || '',
+    capacity: Number(bus.capacity) || 45,
+  };
+
+  AppState.occupancy.capacity =
+    AppState.bus.capacity;
 }
 
 // ==================================================
 // INIT
 // ==================================================
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.nav-btn').forEach(btn =>
-    btn.addEventListener('click', () => navigateTo(btn.dataset.page))
-  );
+async function initApp() {
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigateTo(btn.dataset.page);
+    });
+  });
 
-  document.getElementById('sosHeaderBtn').addEventListener('click', openSOS);
+  const sosButton = document.getElementById('sosHeaderBtn');
 
-  navigateTo('trip');
-
-  // Register SW
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW:', err));
+  if (sosButton) {
+    sosButton.addEventListener('click', openSOS);
   }
-});
+
+
+    try {
+    await loadConductorData();
+    await navigateTo('trip');
+  } catch (error) {
+    console.error('Conductor data load failed:', error);
+    showToast(
+      error.message || 'Failed to load conductor data',
+      'error'
+    );
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .register('./sw.js')
+      .catch(err => console.log('SW:', err));
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp, { once: true });
+} else {
+  initApp();
+}
 
 // Expose globally
 window.navigateTo = navigateTo;

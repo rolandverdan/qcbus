@@ -316,31 +316,65 @@ async function openBusModal(id = null) {
   `);
 
   document
-    .getElementById('busForm')
-    .addEventListener('submit', async (e) => {
-      e.preventDefault();
+  .getElementById('busForm')
+  .addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-      const data = Object.fromEntries(
-        new FormData(e.target)
-      );
+    const data = Object.fromEntries(
+      new FormData(e.target)
+    );
 
-      try {
-        if (isEdit) {
-          await Store.updateBus(id, data);
-          showToast('Bus updated', 'success');
-        } else {
-          await Store.addBus(data);
-          showToast('Bus registered', 'success');
+    try {
+      const staff = await Store.getStaff();
+
+      // Validate driver
+      if (data.driverId) {
+        const driver = staff.find(
+          s => s.id === data.driverId
+        );
+
+        if (!driver || driver.role !== 'driver') {
+          showToast('Invalid driver assignment', 'error');
+          return;
+        }
+      }
+
+      // Validate conductor
+      if (data.conductorId) {
+        const conductor = staff.find(
+          s => s.id === data.conductorId
+        );
+
+        if (!conductor || conductor.role !== 'conductor') {
+          showToast('Invalid conductor assignment', 'error');
+          return;
         }
 
-        closeModal();
-        await navigateTo('buses');
-
-      } catch (error) {
-        console.error('Bus save error:', error);
-        showToast('Failed to save bus', 'error');
+        if (!conductor.uid) {
+          showToast(
+            'This conductor has no linked login',
+            'error'
+          );
+          return;
+        }
       }
-    });
+
+      if (isEdit) {
+        await Store.updateBus(id, data);
+        showToast('Bus updated', 'success');
+      } else {
+        await Store.addBus(data);
+        showToast('Bus registered', 'success');
+      }
+
+      closeModal();
+      await navigateTo('buses');
+
+    } catch (error) {
+      console.error('Bus save error:', error);
+      showToast('Failed to save bus', 'error');
+    }
+  });
 }
 
 // ---------- BUS ACTIONS ----------

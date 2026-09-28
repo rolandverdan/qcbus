@@ -1,4 +1,8 @@
 import {
+  getUserByEmailRepo,
+} from "../../shared/js/repositories/users.repo.js";
+
+import {
   getRoutesRepo,
   addRouteRepo,
   updateRouteRepo,
@@ -7,6 +11,7 @@ import {
 
 import {
   getStaffRepo,
+  getStaffByUidRepo,
   addStaffRepo,
   updateStaffRepo,
   deleteStaffRepo,
@@ -25,6 +30,8 @@ import {
   updateBusRepo,
   deleteBusRepo,
 } from "../../shared/js/repositories/buses.repo.js";
+
+
 
 const Store = {
   KEYS: {
@@ -52,6 +59,10 @@ const Store = {
         detail: { key }
       })
     );
+  },
+
+  async getUserByEmail(email) {
+  return await getUserByEmailRepo(email);
   },
 
   uid(prefix = '') {
@@ -162,6 +173,10 @@ const Store = {
 
   async getStaff() {
     return await getStaffRepo();
+  },
+
+  async getStaffByUid(uid) {
+  return await getStaffByUidRepo(uid);
   },
 
   async addStaff(data) {

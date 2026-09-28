@@ -1,34 +1,42 @@
 // ==================================================
-// BROADCAST OCCUPANCY — temporary "sync" via localStorage
-// The commuter side can read this to show live occupancy.
-// Replace with WebSocket / API later.
+// FIRESTORE OCCUPANCY SYNC
 // ==================================================
-function broadcastOccupancy() {
-  const payload = {
-    busId: AppState.bus.id,
-    route: AppState.bus.route,
-    capacity: AppState.occupancy.capacity,
-    onboard: AppState.occupancy.onboard,
-    totalIn: AppState.occupancy.totalIn,
-    totalOut: AppState.occupancy.totalOut,
-    tripActive: AppState.trip.active,
-    tripId: AppState.trip.tripId,
-    lastUpdate: Date.now(),
-  };
 
-  localStorage.setItem('qcBusOccupancy', JSON.stringify(payload));
-  localStorage.setItem('qcBusOccupancy_updated', Date.now().toString());
+import {
+  updateTripRepo,
+} from "../../shared/js/repositories/trips.repo.js";
+
+
+async function broadcastOccupancy() {
+  if (!AppState.trip.active) return;
+
+  if (!AppState.trip.tripId) return;
+
+  try {
+    await updateTripRepo(
+      AppState.trip.tripId,
+      {
+        onboard: AppState.occupancy.onboard,
+        totalIn: AppState.occupancy.totalIn,
+        totalOut: AppState.occupancy.totalOut,
+      }
+    );
+  } catch (error) {
+    console.error(
+      'Occupancy sync failed:',
+      error
+    );
+  }
 }
 
-// Auto broadcast every 5s while trip active
+
+// Auto-sync every 5 seconds
 setInterval(() => {
-  if (AppState.trip.active) broadcastOccupancy();
+  if (AppState.trip.active) {
+    broadcastOccupancy();
+  }
 }, 5000);
 
-// Broadcast when tab closes (nice-to-have)
-window.addEventListener('beforeunload', () => {
-  if (AppState.trip.active) broadcastOccupancy();
-});
 
 // Expose
 window.broadcastOccupancy = broadcastOccupancy;

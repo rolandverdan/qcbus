@@ -1,3 +1,7 @@
+import { requireRole } from "../../shared/js/auth.js";
+
+requireRole("admin");
+
 const AppState = {
   currentPage: 'dashboard',
   admin: { name: 'Admin User', email: 'admin@qcbus.ph' },
@@ -167,6 +171,7 @@ async function staffById(id) {
   const staff = await Store.getStaff();
   return staff.find(s => s.id === id);
 }
+
 
 function busById(id) {
   return Store.getBuses().find(b => b.id === id);

@@ -7,7 +7,11 @@ Pages.staff = async function () {
     <div class="space-y-4 slide-in">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold text-gray-800">Staff (${staff.length})</h2>
-        <button onclick="openStaffModal()" class="px-3 py-1.5 bg-qc-purple text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1">
+
+        <button
+          onclick="openStaffModal()"
+          class="px-3 py-1.5 bg-qc-purple text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1"
+        >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
           </svg>
@@ -16,9 +20,29 @@ Pages.staff = async function () {
       </div>
 
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-1 flex">
-        <button onclick="filterStaff('all')" data-stafftab="all" class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg bg-purple-50 text-qc-purple transition">All (${staff.length})</button>
-        <button onclick="filterStaff('driver')" data-stafftab="driver" class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition">Drivers (${drivers.length})</button>
-        <button onclick="filterStaff('conductor')" data-stafftab="conductor" class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition">Conductors (${conductors.length})</button>
+        <button
+          onclick="filterStaff('all')"
+          data-stafftab="all"
+          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg bg-purple-50 text-qc-purple transition"
+        >
+          All (${staff.length})
+        </button>
+
+        <button
+          onclick="filterStaff('driver')"
+          data-stafftab="driver"
+          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+        >
+          Drivers (${drivers.length})
+        </button>
+
+        <button
+          onclick="filterStaff('conductor')"
+          data-stafftab="conductor"
+          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+        >
+          Conductors (${conductors.length})
+        </button>
       </div>
 
       <div id="staffList" class="space-y-3">
@@ -41,6 +65,7 @@ async function renderStaffList(list) {
 
   return list.map(member => {
     const isDriver = member.role === 'driver';
+
     const assignedBus = buses.find(
       b => isDriver
         ? b.driverId === member.id
@@ -49,6 +74,7 @@ async function renderStaffList(list) {
 
     return `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex items-center gap-3">
+
         <div class="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0 ${
           isDriver ? 'bg-qc-blue' : 'bg-qc-green'
         }">
@@ -63,6 +89,7 @@ async function renderStaffList(list) {
 
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
+
             <p class="font-semibold text-sm text-gray-800 truncate">
               ${escapeHtml(member.name)}
             </p>
@@ -74,6 +101,15 @@ async function renderStaffList(list) {
             }">
               ${isDriver ? 'Driver' : 'Conductor'}
             </span>
+
+            ${
+              !isDriver
+                ? member.uid
+                  ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700">Login linked</span>`
+                  : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-50 text-yellow-700">No login</span>`
+                : ''
+            }
+
           </div>
 
           <p class="text-xs text-gray-500 truncate">
@@ -97,6 +133,7 @@ async function renderStaffList(list) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01"/>
           </svg>
         </button>
+
       </div>
     `;
   }).join('');
@@ -121,10 +158,12 @@ async function filterStaff(role) {
       : all.filter(s => s.role === role);
 
   document.getElementById('staffList').innerHTML =
-    renderStaffList(filtered);
+    await renderStaffList(filtered);
 }
 
-// ---------- CREATE / EDIT STAFF ----------
+// ==================================================
+// CREATE / EDIT STAFF
+// ==================================================
 
 async function openStaffModal(id = null, presetRole = null) {
   const staff = await Store.getStaff();
@@ -136,150 +175,196 @@ async function openStaffModal(id = null, presetRole = null) {
   const isEdit = !!member;
   const role = member?.role || presetRole || 'conductor';
 
-  openModal(isEdit ? 'Edit Staff' : 'Add Staff Member', `
-    <form id="staffForm" class="space-y-4">
+  openModal(
+    isEdit ? 'Edit Staff' : 'Add Staff Member',
+    `
+      <form id="staffForm" class="space-y-4">
 
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1.5">
-          Role
-        </label>
-
-        <div class="grid grid-cols-2 gap-2">
-
-          <label class="cursor-pointer ${
-            isEdit ? 'pointer-events-none opacity-60' : ''
-          }">
-            <input
-              type="radio"
-              name="role"
-              value="driver"
-              ${role === 'driver' ? 'checked' : ''}
-              class="peer sr-only"
-            >
-
-            <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition">
-              🚗 Driver
-            </span>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Role
           </label>
 
-          <label class="cursor-pointer ${
-            isEdit ? 'pointer-events-none opacity-60' : ''
-          }">
-            <input
-              type="radio"
-              name="role"
-              value="conductor"
-              ${role === 'conductor' ? 'checked' : ''}
-              class="peer sr-only"
-            >
+          <div class="grid grid-cols-2 gap-2">
 
-            <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-green peer-checked:bg-green-50 peer-checked:text-qc-green transition">
-              🎫 Conductor
-            </span>
-          </label>
+            <label class="cursor-pointer ${
+              isEdit ? 'pointer-events-none opacity-60' : ''
+            }">
 
+              <input
+                type="radio"
+                name="role"
+                value="driver"
+                ${role === 'driver' ? 'checked' : ''}
+                class="peer sr-only"
+              >
+
+              <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition">
+                🚗 Driver
+              </span>
+
+            </label>
+
+            <label class="cursor-pointer ${
+              isEdit ? 'pointer-events-none opacity-60' : ''
+            }">
+
+              <input
+                type="radio"
+                name="role"
+                value="conductor"
+                ${role === 'conductor' ? 'checked' : ''}
+                class="peer sr-only"
+              >
+
+              <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-green peer-checked:bg-green-50 peer-checked:text-qc-green transition">
+                🎫 Conductor
+              </span>
+
+            </label>
+
+          </div>
         </div>
-      </div>
 
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1.5">
-          Full Name
-        </label>
-
-        <input
-          name="name"
-          required
-          placeholder="Juan Dela Cruz"
-          value="${escapeHtml(member?.name || '')}"
-          class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
-        >
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1.5">
-          Email (login username)
-        </label>
-
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="juan@qcbus.ph"
-          value="${escapeHtml(member?.email || '')}"
-          class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
-        >
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1.5">
-          Mobile Number
-        </label>
-
-        <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-            +63
-          </span>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Full Name
+          </label>
 
           <input
-            name="phone"
-            type="tel"
-            placeholder="912 345 6789"
-            value="${escapeHtml(member?.phone || '')}"
-            class="w-full pl-12 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
+            name="name"
+            required
+            placeholder="Juan Dela Cruz"
+            value="${escapeHtml(member?.name || '')}"
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
           >
         </div>
-      </div>
 
-      <div id="driverFields">
-        <label class="block text-xs font-medium text-gray-600 mb-1.5">
-          License Number
-        </label>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Email
+          </label>
 
-        <input
-          name="licenseNumber"
-          placeholder="N01-23-456789"
-          value="${escapeHtml(member?.licenseNumber || '')}"
-          class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
-        >
-      </div>
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="juan@qcbus.ph"
+            value="${escapeHtml(member?.email || '')}"
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
+          >
 
-      ${
-        !isEdit
-          ? `
-            <div class="bg-purple-50 border border-purple-100 rounded-xl p-3">
-              <p class="text-[11px] text-purple-800 font-semibold mb-2">
-                🔐 Account Credentials
-              </p>
+          ${
+            role === 'conductor'
+              ? `
+                <p class="text-[10px] text-gray-400 mt-1">
+                  Use the same email as the conductor's Firebase login account.
+                </p>
+              `
+              : ''
+          }
+        </div>
 
-              <p class="text-[11px] text-purple-700">
-                Staff authentication will be handled by Firebase Authentication.
-              </p>
-            </div>
-          `
-          : ''
-      }
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Mobile Number
+          </label>
 
-      <div class="flex gap-3 pt-2">
+          <div class="relative">
 
-        <button
-          type="button"
-          onclick="closeModal()"
-          class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm"
-        >
-          Cancel
-        </button>
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+              +63
+            </span>
 
-        <button
-          type="submit"
-          class="flex-1 py-3 rounded-xl bg-qc-purple text-white font-semibold text-sm shadow-md shadow-purple-200"
-        >
-          ${isEdit ? 'Save' : 'Create Account'}
-        </button>
+            <input
+              name="phone"
+              type="tel"
+              placeholder="912 345 6789"
+              value="${escapeHtml(member?.phone || '')}"
+              class="w-full pl-12 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
+            >
 
-      </div>
+          </div>
+        </div>
 
-    </form>
-  `);
+        <div id="driverFields">
+
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            License Number
+          </label>
+
+          <input
+            name="licenseNumber"
+            placeholder="N01-23-456789"
+            value="${escapeHtml(member?.licenseNumber || '')}"
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
+          >
+
+        </div>
+
+        ${
+          role === 'conductor'
+            ? `
+              <div class="bg-green-50 border border-green-100 rounded-xl p-3">
+
+                <p class="text-[11px] text-green-800 font-semibold mb-1">
+                  🔐 Conductor Login
+                </p>
+
+                <p class="text-[11px] text-green-700">
+                  A Firebase Authentication account with this email must already exist
+                  and have the conductor role.
+                </p>
+
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          !isEdit
+            ? `
+              <div class="bg-purple-50 border border-purple-100 rounded-xl p-3">
+
+                <p class="text-[11px] text-purple-800 font-semibold mb-2">
+                  Staff Record
+                </p>
+
+                <p class="text-[11px] text-purple-700">
+                  ${
+                    role === 'conductor'
+                      ? 'The existing conductor Firebase account will be linked automatically.'
+                      : 'Drivers do not require a Firebase login.'
+                  }
+                </p>
+
+              </div>
+            `
+            : ''
+        }
+
+        <div class="flex gap-3 pt-2">
+
+          <button
+            type="button"
+            onclick="closeModal()"
+            class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="flex-1 py-3 rounded-xl bg-qc-purple text-white font-semibold text-sm shadow-md shadow-purple-200"
+          >
+            ${isEdit ? 'Save' : 'Create Staff'}
+          </button>
+
+        </div>
+
+      </form>
+    `
+  );
 
   const syncDriverFields = () => {
     const checked =
@@ -308,52 +393,123 @@ async function openStaffModal(id = null, presetRole = null) {
         new FormData(e.target)
       );
 
+      const email = data.email.toLowerCase();
+
       try {
+        let uid = null;
+
+        // ==========================================
+        // CONDUCTOR LOGIN LINKING
+        // ==========================================
+
+        if (data.role === 'conductor') {
+          const user = await Store.getUserByEmail(email);
+
+          if (!user) {
+            showToast(
+              'No Firebase user found for this email',
+              'error'
+            );
+            return;
+          }
+
+          if (user.role !== 'conductor') {
+            showToast(
+              'This Firebase account is not a conductor',
+              'error'
+            );
+            return;
+          }
+
+          uid = user.uid;
+
+          const currentStaff = await Store.getStaff();
+
+          const alreadyLinked = currentStaff.some(
+            s => s.uid === uid && s.id !== id
+          );
+
+          if (alreadyLinked) {
+            showToast(
+              'This conductor account is already linked',
+              'error'
+            );
+            return;
+          }
+        }
+
+        // ==========================================
+        // EDIT
+        // ==========================================
+
         if (isEdit) {
           const patch = {
             name: data.name,
-            email: data.email.toLowerCase(),
+            email,
             phone: data.phone,
             licenseNumber: data.licenseNumber || '',
+            uid: data.role === 'conductor' ? uid : null,
           };
 
           await Store.updateStaff(id, patch);
 
           showToast('Staff updated', 'success');
-        } else {
+
+        }
+
+        // ==========================================
+        // CREATE
+        // ==========================================
+
+        else {
           const currentStaff = await Store.getStaff();
 
           if (
             currentStaff.some(
-              s => s.email === data.email.toLowerCase()
+              s => s.email === email
             )
           ) {
-            showToast('Email already in use', 'error');
+            showToast(
+              'Email already in use',
+              'error'
+            );
             return;
           }
 
           await Store.addStaff({
+            uid,
             name: data.name,
-            email: data.email,
+            email,
             phone: data.phone,
             role: data.role,
             licenseNumber: data.licenseNumber || '',
           });
 
-          showToast('Staff added to Firestore', 'success');
+          showToast(
+            data.role === 'conductor'
+              ? 'Conductor linked successfully'
+              : 'Driver added successfully',
+            'success'
+          );
         }
 
         closeModal();
+
         await navigateTo('staff');
 
       } catch (error) {
         console.error('Staff save error:', error);
-        showToast('Failed to save staff', 'error');
+        showToast(
+          error?.message || 'Failed to save staff',
+          'error'
+        );
       }
     });
 }
 
-// ---------- STAFF ACTIONS ----------
+// ==================================================
+// STAFF ACTIONS
+// ==================================================
 
 async function openStaffActions(id) {
   const staff = await Store.getStaff();
@@ -362,40 +518,45 @@ async function openStaffActions(id) {
 
   if (!member) return;
 
-  openModal(escapeHtml(member.name), `
-    <div class="space-y-2">
+  openModal(
+    escapeHtml(member.name),
+    `
+      <div class="space-y-2">
 
-      <button
-        onclick="openStaffModal('${id}')"
-        class="w-full p-3 flex items-center gap-3 hover:bg-gray-50 rounded-xl transition text-left"
-      >
-        <span class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
-          ✏️
-        </span>
+        <button
+          onclick="openStaffModal('${id}')"
+          class="w-full p-3 flex items-center gap-3 hover:bg-gray-50 rounded-xl transition text-left"
+        >
+          <span class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
+            ✏️
+          </span>
 
-        <span class="text-sm font-medium text-gray-700">
-          Edit Details
-        </span>
-      </button>
+          <span class="text-sm font-medium text-gray-700">
+            Edit Details
+          </span>
+        </button>
 
-      <button
-        onclick="confirmDeleteStaff('${id}')"
-        class="w-full p-3 flex items-center gap-3 hover:bg-red-50 rounded-xl transition text-left"
-      >
-        <span class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center">
-          🗑️
-        </span>
+        <button
+          onclick="confirmDeleteStaff('${id}')"
+          class="w-full p-3 flex items-center gap-3 hover:bg-red-50 rounded-xl transition text-left"
+        >
+          <span class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center">
+            🗑️
+          </span>
 
-        <span class="text-sm font-medium text-red-600">
-          Delete Account
-        </span>
-      </button>
+          <span class="text-sm font-medium text-red-600">
+            Delete Staff
+          </span>
+        </button>
 
-    </div>
-  `);
+      </div>
+    `
+  );
 }
 
-// ---------- DELETE STAFF ----------
+// ==================================================
+// DELETE STAFF
+// ==================================================
 
 async function confirmDeleteStaff(id) {
   closeModal();
@@ -421,7 +582,9 @@ async function confirmDeleteStaff(id) {
   }
 }
 
-// Expose
+// ==================================================
+// EXPOSE
+// ==================================================
 
 window.openStaffModal = openStaffModal;
 window.openStaffActions = openStaffActions;
