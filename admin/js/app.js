@@ -1,5 +1,8 @@
 import { requireRole } from "../../shared/js/auth.js";
 
+import "../../shared/js/loading.js";
+import { signOutUser } from "../../shared/js/repositories/auth.repo.js";
+
 requireRole("admin");
 
 const AppState = {
@@ -180,10 +183,15 @@ function busById(id) {
 // ==================================================
 // LOGOUT
 // ==================================================
-function logout() {
-  if (confirm('Log out of admin panel?')) {
-    showToast('Logged out (frontend only)', 'info');
-    // window.location.href = 'auth.html';
+async function logout() {
+  if (!confirm('Log out of admin panel?')) return;
+
+  try {
+    await signOutUser();
+    window.location.href = 'auth.html';
+  } catch (error) {
+    console.error('Logout failed:', error);
+    showToast('Logout failed', 'error');
   }
 }
 
@@ -191,6 +199,7 @@ function logout() {
 // INIT
 // ==================================================
 document.addEventListener('DOMContentLoaded', async () => {
+  showLoading();
   document.querySelectorAll('.nav-btn').forEach(btn =>
     btn.addEventListener('click', () => navigateTo(btn.dataset.page))
   );
@@ -200,6 +209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
+  hideLoading();
 });
 
 // ==================================================
