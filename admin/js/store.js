@@ -90,22 +90,21 @@ const Store = {
   },
 
   async deleteRoute(id) {
-    await deleteRouteRepo(id);
+  await deleteRouteRepo(id);
 
-    // Remove related local stops
-    this.saveStops(
-      this.getStops().filter(stop => stop.routeId !== id)
-    );
+  // Remove route assignment from buses
+  const buses = await this.getBuses();
 
-    // Remove route assignment from local buses
-    this.saveBuses(
-      this.getBuses().map(bus =>
-        bus.routeId === id
-          ? { ...bus, routeId: null }
-          : bus
+  await Promise.all(
+    buses
+      .filter(bus => bus.routeId === id)
+      .map(bus =>
+        this.updateBus(bus.id, {
+          routeId: null
+        })
       )
-    );
-  },
+  );
+},
 
       // ==================================================
     // STOPS — FIRESTORE

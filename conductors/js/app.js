@@ -1,5 +1,6 @@
 import { requireRole } from "../../shared/js/auth.js";
 import { signOutUser } from "../../shared/js/repositories/auth.repo.js";
+import "../../shared/js/loading.js";
 
 import {
   getBusByConductorIdRepo,
@@ -546,7 +547,8 @@ async function loadConductorData() {
 // INIT
 // ==================================================
 async function initApp() {
-
+  showLoading();
+  
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       navigateTo(btn.dataset.page);
@@ -577,6 +579,7 @@ async function initApp() {
       .register('./sw.js')
       .catch(err => console.log('SW:', err));
   }
+  hideLoading();
 }
 
 if (document.readyState === 'loading') {

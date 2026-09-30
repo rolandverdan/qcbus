@@ -17,6 +17,8 @@ import {
   signOutUser,
 } from "../../shared/js/repositories/auth.repo.js";
 
+import "../../shared/js/loading.js";
+
 // ==================================================
 // FIREBASE AUTH GUARD
 // ==================================================
@@ -1396,6 +1398,7 @@ async function listenToBuses() {
 // ==================================================
 
 async function initApp() {
+  showLoading();
 
   // ==================================================
   // LOAD SETTINGS + DATA
@@ -1559,7 +1562,7 @@ async function initApp() {
       });
 
   }
-
+  hideLoading();
 }
 
 

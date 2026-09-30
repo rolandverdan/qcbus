@@ -42,6 +42,40 @@
 </head>
 <body class="bg-gray-100 font-sans antialiased">
 
+    
+<!-- Loading Overlay -->
+    <div
+  id="appLoader"
+  class="fixed inset-0 z-[9999] flex items-center justify-center bg-white opacity-100 transition-opacity duration-500"
+>
+  <div class="flex flex-col items-center">
+
+    <div class="mb-6 animate-pulse">
+      <img
+        src="/images/qclogo2.png"
+        alt="QC Bus"
+        class="h-20 w-20 object-contain"
+      />
+    </div>
+
+    <h1 class="text-xl font-bold tracking-tight text-qc-blue">
+      QC Bus
+    </h1>
+
+    <p class="mt-2 text-sm text-gray-500">
+      Loading
+      <span class="inline-flex ml-1">
+        <span class="animate-bounce [animation-delay:0ms]">.</span>
+        <span class="animate-bounce [animation-delay:150ms]">.</span>
+        <span class="animate-bounce [animation-delay:300ms]">.</span>
+      </span>
+    </p>
+
+    </div>
+
+  </div>
+</div>
+
 <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl">
 
     <!-- ========== HEADER ========== -->
