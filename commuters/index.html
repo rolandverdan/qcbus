@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,7 +11,7 @@
 
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" href="icons/icon-192.png">
+    <link rel="icon" href="../images/qclogo2.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="css/style.css">
@@ -22,8 +21,8 @@
             theme: {
                 extend: {
                     colors: {
-                        'qc-blue': '#0D3B54',        // Darker navy (approximate - swap with exact)
-                        'qc-blue-accent': '#115272', // QC E-Services accent — exact
+                        'qc-blue': '#0D3B54',
+                        'qc-blue-accent': '#115272',
                         'qc-red': '#CE1126',
                         'qc-yellow': '#FCD116',
                     },
@@ -39,13 +38,13 @@
 
     <!-- App Container -->
     <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl">
-        
+
         <header class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md">
             <div class="px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
                     <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
                     <div class="leading-tight">
-                        <h1 class="font-bold text-base" id="pageTitle">QC Bus Tracker</h1>
+                        <h1 class="font-bold text-base" id="pageTitle">QCommute</h1>
                         <p class="text-[10px] text-white/75 tracking-wide">Quezon City</p>
                     </div>
                 </div>
@@ -78,11 +77,11 @@
                     </svg>
                     <span>Map</span>
                 </button>
-                <button data-page="notifications" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
+                <button data-page="report" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/>
                     </svg>
-                    <span>Alerts</span>
+                    <span>Report</span>
                 </button>
                 <button data-page="settings" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

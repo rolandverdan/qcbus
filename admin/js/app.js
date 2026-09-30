@@ -133,20 +133,34 @@ function resolveConfirm(value) {
 // ==================================================
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');
+  if (!toast) return;
 
+  // Base classes — keep opacity-0 so the toast fades back out cleanly
+  const base =
+    "fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white opacity-0 pointer-events-none transition-all duration-300 z-[120]";
+
+  const color =
+    type === 'success' ? 'bg-qc-green' :
+    type === 'error'   ? 'bg-qc-red' :
+    type === 'warn'    ? 'bg-yellow-500' : 'bg-qc-blue-accent';
+
+  // Reset classes + content
+  toast.className = `${base} ${color}`;
   toast.textContent = message;
 
-  toast.className = `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white transition-all duration-300 z-[120] show ${
-    type === 'success'
-      ? 'bg-qc-green'
-      : type === 'error'
-        ? 'bg-qc-red'
-        : type === 'warn'
-          ? 'bg-yellow-500'
-          : 'bg-qc-blue-accent'
-  }`;
+  // Force reflow so the transition from opacity-0 → 1 actually runs
+  void toast.offsetWidth;
 
-  setTimeout(() => toast.classList.remove('show'), 2200);
+  // Fade in
+  toast.classList.add('show');
+
+  // Clear any previous timer so rapid toasts don't stack
+  if (window.__toastTimer) clearTimeout(window.__toastTimer);
+
+  // Fade out
+  window.__toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 2200);
 }
 
 // ==================================================

@@ -23,18 +23,18 @@ const { user, profile } = session;
 const AppState = {
   currentPage: 'trip',
   conductor: {
-  name: profile.name || user.displayName || 'Conductor',
-  id: profile.uid || user.uid,
-  email: user.email || '',
-},
+    name: profile.name || user.displayName || 'Conductor',
+    id: profile.uid || user.uid,
+    email: user.email || '',
+  },
   bus: {
-  id: null,
-  route: 'No route assigned',
-  routeId: null,
-  plateNumber: '',
-  capacity: 45,
-  staffId: null,
-},
+    id: null,
+    route: 'No route assigned',
+    routeId: null,
+    plateNumber: '',
+    capacity: 45,
+    staffId: null,
+  },
   trip: {
     active: false,
     startedAt: null,
@@ -398,7 +398,7 @@ function renderActivityList() {
 async function navigateTo(page) {
   AppState.currentPage = page;
   document.getElementById('content').innerHTML =
-  Pages[page] ? await Pages[page]() : '';
+    Pages[page] ? await Pages[page]() : '';
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     const active = btn.dataset.page === page;
@@ -435,13 +435,33 @@ async function navigateTo(page) {
 // ==================================================
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white transition-all duration-300 z-[110] show ${
+  if (!toast) return;
+
+  // Reset to base classes (always include opacity-0 so it starts hidden)
+  const base =
+    "fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white opacity-0 pointer-events-none transition-all duration-300 z-[110]";
+
+  const color =
     type === 'success' ? 'bg-qc-green' :
     type === 'error'   ? 'bg-qc-red' :
-    type === 'warn'    ? 'bg-yellow-500' : 'bg-qc-blue-accent'
-  }`;
-  setTimeout(() => toast.classList.remove('show'), 2200);
+    type === 'warn'    ? 'bg-yellow-500' : 'bg-qc-blue-accent';
+
+  // Apply base + color
+  toast.className = `${base} ${color}`;
+  toast.textContent = message;
+
+  // Force reflow so the transition triggers
+  void toast.offsetWidth;
+
+  // Add 'show' class to animate in
+  toast.classList.add('show');
+
+  // Clear any previous timer to avoid overlaps
+  if (window.__toastTimer) clearTimeout(window.__toastTimer);
+
+  window.__toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 2200);
 }
 
 // ==================================================
@@ -526,7 +546,7 @@ async function loadConductorData() {
 // INIT
 // ==================================================
 async function initApp() {
-  
+
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       navigateTo(btn.dataset.page);
@@ -540,7 +560,7 @@ async function initApp() {
   }
 
 
-    try {
+  try {
     await loadConductorData();
     await restoreActiveTrip();
     await navigateTo('trip');

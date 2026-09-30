@@ -5,6 +5,8 @@ import {
 import {
   collection,
   onSnapshot,
+  addDoc,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { getRoutesRepo } from "../../shared/js/repositories/routes.repo.js";
@@ -148,6 +150,62 @@ const Pages = {
         </button>
 
       </div>
+
+
+      <!-- ============================================== -->
+      <!-- REPORT AN ISSUE — quick action                 -->
+      <!-- ============================================== -->
+
+      <button
+        onclick="navigateTo('report')"
+        class="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 hover:shadow-md transition text-left"
+      >
+
+        <div class="w-11 h-11 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
+
+          <svg
+            class="w-5 h-5 text-qc-red"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
+            />
+          </svg>
+
+        </div>
+
+        <div class="flex-1 min-w-0">
+
+          <p class="font-semibold text-sm text-gray-800">
+            Report an Issue
+          </p>
+
+          <p class="text-xs text-gray-500">
+            Report a driver, conductor, or passenger
+          </p>
+
+        </div>
+
+        <svg
+          class="w-5 h-5 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+
+      </button>
 
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -429,6 +487,182 @@ const Pages = {
         </div>
 
       `).join("")}
+
+    </div>
+  `,
+
+
+  // ==================================================
+  // REPORT AN ISSUE
+  // ==================================================
+
+  report: () => `
+    <div class="space-y-4 slide-in">
+
+      <div class="bg-gradient-to-r from-qc-blue to-qc-blue-accent text-white rounded-xl p-4 shadow-lg">
+        <h2 class="text-lg font-bold">Report an Issue</h2>
+        <p class="text-xs opacity-90 mt-1">
+          Report a driver, conductor, or fellow passenger. Your report can be anonymous.
+        </p>
+      </div>
+
+
+      <form id="reportForm" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
+
+        <!-- Bus / Route -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Bus or Route
+          </label>
+
+          <select
+            name="busRoute"
+            required
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-blue focus:ring-2 focus:ring-blue-100 outline-none transition bg-white"
+          >
+            <option value="">Select a bus or route…</option>
+
+            ${AppState.buses.map(bus => `
+              <option value="${bus.code || bus.id} · ${bus.route}">
+                ${bus.code || bus.id} · ${bus.route}
+              </option>
+            `).join("")}
+
+            <option value="Unknown">Unknown / Not listed</option>
+          </select>
+        </div>
+
+
+        <!-- Role -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            I want to report a
+          </label>
+
+          <div class="grid grid-cols-3 gap-2">
+            <label class="cursor-pointer">
+              <input
+                type="radio"
+                name="role"
+                value="driver"
+                required
+                class="peer sr-only"
+              >
+              <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition">
+                Driver
+              </span>
+            </label>
+
+            <label class="cursor-pointer">
+              <input
+                type="radio"
+                name="role"
+                value="conductor"
+                required
+                class="peer sr-only"
+              >
+              <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition">
+                Conductor
+              </span>
+            </label>
+
+            <label class="cursor-pointer">
+              <input
+                type="radio"
+                name="role"
+                value="passenger"
+                required
+                class="peer sr-only"
+              >
+              <span class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition">
+                Passenger
+              </span>
+            </label>
+          </div>
+        </div>
+
+
+        <!-- Category -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Type of issue
+          </label>
+
+          <select
+            name="category"
+            required
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-blue focus:ring-2 focus:ring-blue-100 outline-none transition bg-white"
+          >
+            <option value="">Choose a category…</option>
+
+            <optgroup label="Staff-related">
+              <option value="rude">Rude behavior</option>
+              <option value="overcharging">Overcharging / fare issue</option>
+              <option value="reckless">Reckless driving</option>
+              <option value="refused">Refused to stop / pick up</option>
+              <option value="not-wearing-id">Not wearing ID / uniform</option>
+            </optgroup>
+
+            <optgroup label="Passenger-related">
+              <option value="harassment">Harassment</option>
+              <option value="unruly">Unruly behavior</option>
+              <option value="smoking">Smoking / vaping inside bus</option>
+              <option value="noise">Excessive noise</option>
+              <option value="vandalism">Vandalism / damage</option>
+              <option value="theft">Theft / pickpocketing</option>
+            </optgroup>
+
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+
+        <!-- Description -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">
+            Description
+          </label>
+
+          <textarea
+            name="description"
+            rows="4"
+            required
+            placeholder="Describe what happened, when, and where…"
+            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-blue focus:ring-2 focus:ring-blue-100 outline-none transition resize-none"
+          ></textarea>
+        </div>
+
+
+        <!-- Anonymous toggle -->
+        <label class="flex items-start gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            name="anonymous"
+            class="mt-0.5 w-4 h-4 rounded border-gray-300 text-qc-blue focus:ring-qc-blue"
+          >
+          <span class="text-xs text-gray-600 leading-relaxed">
+            Submit anonymously (we won't include your name or contact info)
+          </span>
+        </label>
+
+
+        <!-- Submit -->
+        <button
+          type="submit"
+          class="w-full py-3 bg-qc-blue hover:bg-qc-blue-accent active:scale-[0.98] text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-200 transition"
+        >
+          Submit Report
+        </button>
+
+      </form>
+
+
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+        <p class="text-[11px] text-blue-800 leading-relaxed">
+          <strong>Note:</strong> Reports are reviewed by QC Bus administration.
+          False reports may lead to account suspension.
+        </p>
+      </div>
 
     </div>
   `,
@@ -801,6 +1035,7 @@ function navigateTo(page) {
     home: "QC Bus Tracker",
     map: "Live Map",
     notifications: "Notifications",
+    report: "Report",
     settings: "Settings",
     account: "My Account"
   };
@@ -925,6 +1160,120 @@ function updateNotifBadge() {
 
 
 // ==================================================
+// REPORT SUBMIT
+// ==================================================
+
+async function handleReportSubmit(event) {
+
+  event.preventDefault();
+
+  const form = event.target;
+
+  const data =
+    Object.fromEntries(
+      new FormData(form)
+    );
+
+  const anonymous = data.anonymous === "on";
+
+  const payload = {
+    busRoute: data.busRoute,
+
+    role: data.role,
+
+    category: data.category,
+
+    description: data.description,
+
+    anonymous,
+
+    reporterUid:
+      anonymous ? null : AppState.user.uid,
+
+    reporterName:
+      anonymous ? null : AppState.user.name,
+
+    reporterEmail:
+      anonymous ? null : AppState.user.email,
+
+    submittedAt: serverTimestamp()
+  };
+
+  const submitBtn =
+    form.querySelector('button[type="submit"]');
+
+  const originalText =
+    submitBtn.textContent;
+
+  submitBtn.disabled = true;
+
+  submitBtn.textContent = "Submitting…";
+
+  try {
+
+    await addDoc(
+      collection(db, "reports"),
+      payload
+    );
+
+    form.reset();
+
+    showReportToast(
+      "Report submitted. Thank you!",
+      "success"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Failed to submit report:",
+      error
+    );
+
+    showReportToast(
+      "Could not submit report. Please try again.",
+      "error"
+    );
+
+  } finally {
+
+    submitBtn.disabled = false;
+
+    submitBtn.textContent = originalText;
+
+  }
+}
+
+
+function showReportToast(message, type) {
+
+  const bg =
+    type === "success"
+      ? "bg-green-600"
+      : "bg-qc-red";
+
+  const toast =
+    document.createElement("div");
+
+  toast.className =
+    `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white ${bg} z-[110] transition-all duration-300`;
+
+  toast.textContent = message;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+
+    toast.style.opacity = "0";
+
+    setTimeout(() => toast.remove(), 300);
+
+  }, 2400);
+
+}
+
+
+// ==================================================
 // LOGOUT
 // ==================================================
 
@@ -961,12 +1310,15 @@ async function logout() {
   }
 }
 
+
 // ==================================================
 // FIRESTORE BUS LISTENER
 // ==================================================
+
 let unsubscribeBuses = null;
 
 async function listenToBuses() {
+
   if (unsubscribeBuses) {
     unsubscribeBuses();
   }
@@ -978,51 +1330,67 @@ async function listenToBuses() {
   unsubscribeBuses = onSnapshot(
     busesRef,
     (snapshot) => {
-      AppState.buses = snapshot.docs.map((busDoc) => {
-        const data = busDoc.data();
 
-        const route = routes.find(
-          (r) => r.id === data.routeId
-        );
+      AppState.buses =
+        snapshot.docs.map((busDoc) => {
 
-        return {
-          id: busDoc.id,
-          code: data.code || busDoc.id,
+          const data = busDoc.data();
 
-          routeId: data.routeId || null,
+          const route = routes.find(
+            (r) => r.id === data.routeId
+          );
 
-          route: route
-            ? `${route.code} · ${route.name}`
-            : "No route assigned",
+          return {
+            id: busDoc.id,
 
-          lat: Number(data.lat) || 14.6760,
-          lng: Number(data.lng) || 121.0437,
+            code: data.code || busDoc.id,
 
-          status: data.status || "idle",
+            routeId: data.routeId || null,
 
-          capacity: Number(data.capacity) || 45,
+            route: route
+              ? `${route.code} · ${route.name}`
+              : "No route assigned",
 
-          driverId: data.driverId || null,
-          conductorId: data.conductorId || null,
+            lat: Number(data.lat) || 14.6760,
+            lng: Number(data.lng) || 121.0437,
 
-          tripId: null,
-          tripActive: false,
+            status: data.status || "idle",
 
-          onboard: 0,
-          totalIn: 0,
-          totalOut: 0,
-        };
-      });
+            capacity: Number(data.capacity) || 45,
 
-      if (AppState.currentPage === "home") {
-        navigateTo("home");
+            driverId: data.driverId || null,
+            conductorId: data.conductorId || null,
+
+            tripId: null,
+            tripActive: false,
+
+            onboard: 0,
+            totalIn: 0,
+            totalOut: 0,
+          };
+        });
+
+
+      // Refresh current page if it depends on buses
+      if (
+        AppState.currentPage === "home" ||
+        AppState.currentPage === "report"
+      ) {
+        navigateTo(AppState.currentPage);
       }
+
     },
+
     (error) => {
-      console.error("Bus listener failed:", error);
+      console.error(
+        "Bus listener failed:",
+        error
+      );
     }
   );
 }
+
+
 // ==================================================
 // INIT
 // ==================================================
@@ -1030,14 +1398,15 @@ async function listenToBuses() {
 async function initApp() {
 
   // ==================================================
-  // LOAD SETTINGS
+  // LOAD SETTINGS + DATA
   // ==================================================
 
-    listenToBuses()
-    if (window.loadNotifications) {
+  listenToBuses();
+
+  if (window.loadNotifications) {
     await window.loadNotifications();
   }
-  
+
 
   const saved =
     localStorage.getItem("qcSettings");
@@ -1097,6 +1466,27 @@ async function initApp() {
 
 
   // ==================================================
+  // REPORT FORM SUBMIT DELEGATION
+  // ==================================================
+
+  document.addEventListener(
+    "submit",
+    event => {
+
+      if (
+        event.target &&
+        event.target.id === "reportForm"
+      ) {
+
+        handleReportSubmit(event);
+
+      }
+
+    }
+  );
+
+
+  // ==================================================
   // HEADER NOTIFICATION
   // ==================================================
 
@@ -1124,6 +1514,7 @@ async function initApp() {
     "home",
     "map",
     "notifications",
+    "report",
     "settings",
     "account"
   ];
@@ -1200,3 +1591,4 @@ window.toggleSetting = toggleSetting;
 window.markAllRead = markAllRead;
 window.logout = logout;
 window.AppState = AppState;
+window.handleReportSubmit = handleReportSubmit;

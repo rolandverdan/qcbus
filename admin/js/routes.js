@@ -43,7 +43,7 @@ Pages.routes = async function () {
                 </p>
 
                 <p class="text-xs text-gray-500">
-                  ${routeStops} stops · ${routeBuses} buses · ₱${route.fare}
+                  ${routeStops} stops · ${routeBuses} buses · Free
                 </p>
               </div>
 
@@ -102,37 +102,18 @@ async function openRouteModal(id = null) {
   openModal(isEdit ? 'Edit Route' : 'Create Route', `
     <form id="routeForm" class="space-y-4">
 
-      <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">
+          Route Code
+        </label>
 
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1.5">
-            Route Code
-          </label>
-
-          <input
-            name="code"
-            required
-            maxlength="6"
-            placeholder="R1"
-            value="${escapeHtml(route?.code || '')}"
-            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple focus:ring-2 focus:ring-purple-100 outline-none transition uppercase">
-        </div>
-
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1.5">
-            Base Fare (₱)
-          </label>
-
-          <input
-            name="fare"
-            type="number"
-            min="0"
-            step="0.25"
-            placeholder="15"
-            value="${route?.fare ?? 15}"
-            class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple focus:ring-2 focus:ring-purple-100 outline-none transition">
-        </div>
-
+        <input
+          name="code"
+          required
+          maxlength="6"
+          placeholder="R1"
+          value="${escapeHtml(route?.code || '')}"
+          class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple focus:ring-2 focus:ring-purple-100 outline-none transition uppercase">
       </div>
 
 
@@ -144,7 +125,7 @@ async function openRouteModal(id = null) {
         <input
           name="name"
           required
-          placeholder="Fairview – Cubao"
+          placeholder="QC Hall – Cubao"
           value="${escapeHtml(route?.name || '')}"
           class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple focus:ring-2 focus:ring-purple-100 outline-none transition">
       </div>
@@ -158,14 +139,14 @@ async function openRouteModal(id = null) {
         <div class="flex flex-wrap gap-2">
 
           ${[
-            '#1e40af',
-            '#16a34a',
-            '#dc2626',
-            '#f59e0b',
-            '#7c3aed',
-            '#0891b2',
-            '#db2777',
-            '#0f172a'
+            '#C8102E',
+            '#E6007E',
+            '#F5B400',
+            '#7B2D8E',
+            '#F58220',
+            '#3AAA35',
+            '#1E4B9C',
+            '#29ABE2'
           ].map((c) => `
             <label class="cursor-pointer">
 
@@ -173,7 +154,7 @@ async function openRouteModal(id = null) {
                 type="radio"
                 name="color"
                 value="${c}"
-                ${(route?.color || '#1e40af') === c ? 'checked' : ''}
+                ${(route?.color || '#C8102E') === c ? 'checked' : ''}
                 class="peer sr-only">
 
               <span
@@ -227,6 +208,9 @@ async function openRouteModal(id = null) {
     e.preventDefault();
 
     const data = Object.fromEntries(new FormData(e.target));
+
+    // Q City Bus is free — force fare to 0
+    data.fare = 0;
 
     try {
 
