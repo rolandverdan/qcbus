@@ -4,17 +4,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
     <meta name="theme-color" content="#1e40af">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="QC Bus">
+
     <title>QC Bus Tracker - Commuter</title>
 
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="icon" href="icons/icon-192.png">
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <link rel="stylesheet" href="css/style.css">
 
     <script>
@@ -22,123 +25,263 @@
             theme: {
                 extend: {
                     colors: {
-                        'qc-blue': '#0D3B54',        // Darker navy (approximate - swap with exact)
-                        'qc-blue-accent': '#115272', // QC E-Services accent — exact
+                        'qc-blue': '#0D3B54',
+                        'qc-blue-accent': '#115272',
                         'qc-red': '#CE1126',
                         'qc-yellow': '#FCD116',
                     },
+
                     fontFamily: {
-                        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        sans: [
+                            'system-ui',
+                            '-apple-system',
+                            'Segoe UI',
+                            'Roboto',
+                            'sans-serif'
+                        ],
                     }
                 }
             }
         }
     </script>
 </head>
+
 <body class="bg-gray-100 font-sans antialiased">
 
-<!-- Loading OVerlay -->
+    <!-- Loading Overlay -->
     <div
-  id="appLoader"
-  class="fixed inset-0 z-[9999] flex items-center justify-center bg-white opacity-100 transition-opacity duration-500"
->
-  <div class="flex flex-col items-center">
+        id="appLoader"
+        class="fixed inset-0 z-[9999] flex items-center justify-center bg-white opacity-100 transition-opacity duration-500"
+    >
+        <div class="flex flex-col items-center">
 
-    <div class="mb-6 animate-pulse">
-      <img
-        src="/images/qclogo2.png"
-        alt="QC Bus"
-        class="h-20 w-20 object-contain"
-      />
+            <div class="mb-6 animate-pulse">
+                <img
+                    src="/images/qclogo2.png"
+                    alt="SaQCay"
+                    class="h-20 w-20 object-contain"
+                />
+            </div>
+
+            <h1 class="text-xl font-bold tracking-tight text-qc-blue">
+                SaQCay
+            </h1>
+
+            <p class="mt-2 text-sm text-gray-500">
+                Loading
+                <span class="inline-flex ml-1">
+                    <span class="animate-bounce [animation-delay:0ms]">.</span>
+                    <span class="animate-bounce [animation-delay:150ms]">.</span>
+                    <span class="animate-bounce [animation-delay:300ms]">.</span>
+                </span>
+            </p>
+
+        </div>
     </div>
-
-    <h1 class="text-xl font-bold tracking-tight text-qc-blue">
-      QC Bus
-    </h1>
-
-    <p class="mt-2 text-sm text-gray-500">
-      Loading
-      <span class="inline-flex ml-1">
-        <span class="animate-bounce [animation-delay:0ms]">.</span>
-        <span class="animate-bounce [animation-delay:150ms]">.</span>
-        <span class="animate-bounce [animation-delay:300ms]">.</span>
-      </span>
-    </p>
-
-    </div>
-
-  </div>
-</div>
 
     <!-- App Container -->
-    <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl">
-        
-        <header class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md">
+    <div
+        id="app"
+        class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl"
+    >
+
+        <!-- Header -->
+        <header
+            class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md"
+        >
             <div class="px-4 py-3 flex items-center justify-between">
+
                 <div class="flex items-center gap-2.5">
-                    <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
+
+                    <img
+                        src="../images/qclogo2.png"
+                        alt="Quezon City"
+                        class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5"
+                    >
+
                     <div class="leading-tight">
-                        <h1 class="font-bold text-base" id="pageTitle">QC Bus Tracker</h1>
-                        <p class="text-[10px] text-white/75 tracking-wide">Quezon City</p>
+                        <h1
+                            class="font-bold text-base"
+                            id="pageTitle"
+                        >
+                            QC Bus Tracker
+                        </h1>
+
+                        <p class="text-[10px] text-white/75 tracking-wide">
+                            Quezon City
+                        </p>
                     </div>
+
                 </div>
-                <button id="notifBtn" class="relative p-2 hover:bg-white/10 rounded-full transition">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+
+                <button
+                    id="notifBtn"
+                    class="relative p-2 hover:bg-white/10 rounded-full transition"
+                >
+                    <svg
+                        class="w-6 h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                        />
                     </svg>
-                    <span id="notifBadge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-qc-red rounded-full"></span>
+
+                    <span
+                        id="notifBadge"
+                        class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-qc-red rounded-full"
+                    ></span>
                 </button>
+
             </div>
         </header>
 
         <!-- Page Content -->
-        <main id="content" class="p-4 pb-24">
+        <main
+            id="content"
+            class="p-4 pb-24"
+        >
             <!-- Dynamically loaded -->
         </main>
 
         <!-- Bottom Navigation -->
-        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 z-50">
+        <nav
+            class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 z-50"
+        >
             <div class="grid grid-cols-5 h-16">
-                <button data-page="home" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-qc-blue transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+
+                <!-- Home -->
+                <button
+                    data-page="home"
+                    class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-qc-blue transition"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                        />
                     </svg>
+
                     <span>Home</span>
                 </button>
-                <button data-page="map" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+
+                <!-- Map -->
+                <button
+                    data-page="map"
+                    class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                        />
                     </svg>
+
                     <span>Map</span>
                 </button>
-                <button data-page="notifications" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+
+                <!-- Notifications -->
+                <button
+                    data-page="notifications"
+                    class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                        />
                     </svg>
+
                     <span>Alerts</span>
                 </button>
-                <button data-page="settings" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+
+                <!-- Settings -->
+                <button
+                    data-page="settings"
+                    class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 01-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                     </svg>
+
                     <span>Settings</span>
                 </button>
-                <button data-page="account" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+
+                <!-- Account -->
+                <button
+                    data-page="account"
+                    class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
                     </svg>
+
                     <span>Account</span>
                 </button>
+
             </div>
         </nav>
+
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- App Scripts -->
+    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/map.js"></script>
+    <script type="module" src="js/notifications.js"></script>
+    <script type="module" src="js/settings.js"></script>
 
-<script type="module" src="js/app.js"></script>
-<script type="module" src="js/map.js"></script>
-<script type="module" src="js/notifications.js"></script>
-<script type="module" src="js/settings.js"></script>
 </body>
 </html>

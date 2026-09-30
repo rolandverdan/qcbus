@@ -1,6 +1,3 @@
-import {
-  getUserByEmailRepo,
-} from "../../shared/js/repositories/users.repo.js";
 
 import {
   getRoutesRepo,
@@ -18,10 +15,18 @@ import {
 } from "../../shared/js/repositories/staff.repo.js";
 
 import {
+  getUserByEmailRepo,
+  getUsersRepo,
+  createLoginAccountRepo,
+  updateUserProfile,
+} from "../../shared/js/repositories/users.repo.js";
+
+import {
   getStopsRepo,
   addStopRepo,
   updateStopRepo,
   deleteStopRepo,
+  reorderStopsRepo,
 } from "../../shared/js/repositories/stops.repo.js";
 
 import {
@@ -137,6 +142,13 @@ const Store = {
       return await updateStopRepo(id, patch);
     },
 
+    async reorderStops(routeId, orderedStopIds) {
+      return await reorderStopsRepo(
+        routeId,
+        orderedStopIds
+      );
+    },
+
     async deleteStop(id) {
       return await deleteStopRepo(id);
     },
@@ -197,6 +209,22 @@ const Store = {
       member => member.role === role
     );
   },
+    async createLoginAccount(data) {
+    return await createLoginAccountRepo(data);
+  },
+
+  async updateUserProfile(uid, patch) {
+    return await updateUserProfile(uid, patch);
+  },
+  async getUsers() {
+  return await getUsersRepo();
+},
+
+async getUsers() {
+  return await getUsersRepo();
+},
+
+
 };
 
 window.Store = Store;

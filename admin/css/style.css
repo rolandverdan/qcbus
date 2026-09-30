@@ -37,3 +37,17 @@ button { -webkit-user-select: none; user-select: none; }
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+.sortable-chosen {
+  outline: 2px solid #e9d5ff;
+  outline-offset: 1px;
+}
+
+.sortable-drag {
+  opacity: 0.95;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+}

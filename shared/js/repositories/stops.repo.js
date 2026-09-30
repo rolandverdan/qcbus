@@ -5,6 +5,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  writeBatch,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
@@ -44,16 +45,37 @@ export async function updateStopRepo(id, patch) {
 
   await updateDoc(stopRef, {
     ...patch,
+
     ...(patch.lat !== undefined && {
       lat: Number(patch.lat),
     }),
+
     ...(patch.lng !== undefined && {
       lng: Number(patch.lng),
     }),
+
     ...(patch.order !== undefined && {
       order: Number(patch.order),
     }),
   });
+}
+
+export async function reorderStopsRepo(
+  routeId,
+  orderedStopIds
+) {
+  const batch = writeBatch(db);
+
+  orderedStopIds.forEach((stopId, index) => {
+    const stopRef = doc(db, "stops", stopId);
+
+    batch.update(stopRef, {
+      routeId,
+      order: index + 1,
+    });
+  });
+
+  await batch.commit();
 }
 
 export async function deleteStopRepo(id) {

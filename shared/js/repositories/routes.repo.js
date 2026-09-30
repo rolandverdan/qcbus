@@ -40,6 +40,10 @@ export async function addRouteRepo(data) {
     color: data.color || "#1e40af",
     description: data.description || "",
     fare: Number(data.fare) || 15,
+
+    // Actual road-following route
+    geometry: data.geometry || null,
+
     createdAt: serverTimestamp(),
   };
 
@@ -50,7 +54,6 @@ export async function addRouteRepo(data) {
     ...route,
   };
 }
-
 // ==================================================
 // UPDATE — EDIT ROUTE
 // ==================================================
@@ -58,10 +61,15 @@ export async function addRouteRepo(data) {
 export async function updateRouteRepo(id, patch) {
   const routeRef = doc(db, "routes", id);
 
-  await updateDoc(routeRef, {
+  const updateData = {
     ...patch,
-    fare: Number(patch.fare),
-  });
+  };
+
+  if (patch.fare !== undefined) {
+    updateData.fare = Number(patch.fare);
+  }
+
+  await updateDoc(routeRef, updateData);
 }
 
 // ==================================================
