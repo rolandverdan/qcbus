@@ -115,18 +115,25 @@ export async function createLoginAccountRepo({
 export async function getUserProfile(uid) {
   const userRef = doc(db, usersCollection, uid);
 
-  const snapshot = await getDoc(userRef);
+  try {
+    const snapshot = await getDoc(userRef);
 
-  if (!snapshot.exists()) {
-    return null;
+    if (!snapshot.exists()) {
+      return null;
+    }
+
+    return {
+      id: snapshot.id,
+      ...snapshot.data(),
+    };
+
+  } catch (error) {
+    console.error("❌ getUserProfile Firestore error:", error);
+    console.error("Code:", error.code);
+    console.error("Message:", error.message);
+    throw error;
   }
-
-  return {
-    id: snapshot.id,
-    ...snapshot.data(),
-  };
 }
-
 // ==================================================
 // GET USER BY EMAIL
 // ==================================================
