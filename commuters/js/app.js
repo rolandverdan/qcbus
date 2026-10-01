@@ -950,15 +950,6 @@ const Pages = {
           class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
         >
           <span class="text-sm text-gray-700">
-            Fare History
-          </span>
-        </button>
-
-
-        <button
-          class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
-        >
-          <span class="text-sm text-gray-700">
             Help & Support
           </span>
         </button>
