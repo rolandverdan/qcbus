@@ -24,17 +24,10 @@ const { user, profile } = session;
 const AppState = {
   currentPage: 'trip',
   conductor: {
-<<<<<<< HEAD
     name: profile.name || user.displayName || 'Conductor',
     id: profile.uid || user.uid,
     email: user.email || '',
   },
-=======
-  name: profile?.name || user.displayName || 'Conductor',
-  id: profile?.uid || user.uid,
-  email: user.email || '',
-},
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
   bus: {
     id: null,
     route: 'No route assigned',

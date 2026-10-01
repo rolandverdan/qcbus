@@ -5,13 +5,8 @@ import {
 import {
   collection,
   onSnapshot,
-<<<<<<< HEAD
-  addDoc,
-  serverTimestamp,
-=======
   query,
   where,
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
@@ -494,7 +489,6 @@ const Pages = {
       </div>
 
 
-<<<<<<< HEAD
       <!-- ============================================== -->
       <!-- REPORT AN ISSUE — quick action                 -->
       <!-- ============================================== -->
@@ -550,9 +544,7 @@ const Pages = {
 
       </button>
 
-=======
       <!-- Nearby Buses -->
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
@@ -2046,19 +2038,6 @@ async function logout() {
   }
 }
 
-<<<<<<< HEAD
-
-// ==================================================
-// FIRESTORE BUS LISTENER
-// ==================================================
-
-let unsubscribeBuses = null;
-
-async function listenToBuses() {
-
-  if (unsubscribeBuses) {
-    unsubscribeBuses();
-=======
 
 // ==================================================
 // ROUTE LISTENER
@@ -2069,79 +2048,12 @@ function listenToRoutes() {
   if (unsubscribeRoutes) {
     unsubscribeRoutes();
     unsubscribeRoutes = null;
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
   }
 
 
   const routesRef =
     collection(db, "routes");
 
-<<<<<<< HEAD
-  unsubscribeBuses = onSnapshot(
-    busesRef,
-    (snapshot) => {
-
-      AppState.buses =
-        snapshot.docs.map((busDoc) => {
-
-          const data = busDoc.data();
-
-          const route = routes.find(
-            (r) => r.id === data.routeId
-          );
-
-          return {
-            id: busDoc.id,
-
-            code: data.code || busDoc.id,
-
-            routeId: data.routeId || null,
-
-            route: route
-              ? `${route.code} · ${route.name}`
-              : "No route assigned",
-
-            lat: Number(data.lat) || 14.6760,
-            lng: Number(data.lng) || 121.0437,
-
-            status: data.status || "idle",
-
-            capacity: Number(data.capacity) || 45,
-
-            driverId: data.driverId || null,
-            conductorId: data.conductorId || null,
-
-            tripId: null,
-            tripActive: false,
-
-            onboard: 0,
-            totalIn: 0,
-            totalOut: 0,
-          };
-        });
-
-
-      // Refresh current page if it depends on buses
-      if (
-        AppState.currentPage === "home" ||
-        AppState.currentPage === "report"
-      ) {
-        navigateTo(AppState.currentPage);
-      }
-
-    },
-
-    (error) => {
-      console.error(
-        "Bus listener failed:",
-        error
-      );
-    }
-  );
-}
-
-
-=======
 
   unsubscribeRoutes =
     onSnapshot(
@@ -2425,7 +2337,6 @@ function stopAllListeners() {
 }
 
 
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 // ==================================================
 // INIT
 // ==================================================
@@ -2434,24 +2345,11 @@ async function initApp() {
 
   showLoading();
 
-<<<<<<< HEAD
-  // ==================================================
-  // LOAD SETTINGS + DATA
-  // ==================================================
-
-  listenToBuses();
-
-  if (window.loadNotifications) {
-    await window.loadNotifications();
-  }
-
-=======
   try {
 
     // ==============================================
     // LOAD SETTINGS
     // ==============================================
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 
     const saved =
       localStorage.getItem(
@@ -2580,7 +2478,6 @@ async function initApp() {
     }
 
 
-<<<<<<< HEAD
   // ==================================================
   // REPORT FORM SUBMIT DELEGATION
   // ==================================================
@@ -2605,11 +2502,9 @@ async function initApp() {
   // ==================================================
   // HEADER NOTIFICATION
   // ==================================================
-=======
     // ==============================================
     // INITIAL PAGE
     // ==============================================
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 
     const hash =
       window.location.hash.replace(
@@ -2650,7 +2545,6 @@ async function initApp() {
       "serviceWorker" in navigator
     ) {
 
-<<<<<<< HEAD
   const validPages = [
     "home",
     "map",
@@ -2659,12 +2553,10 @@ async function initApp() {
     "settings",
     "account"
   ];
-=======
       navigator.serviceWorker
         .register("./sw.js")
         .then(
           (registration) => {
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
 
             console.log(
               "SW registered:",
@@ -2724,14 +2616,6 @@ if (
 // GLOBAL EXPOSURE
 // ==================================================
 
-<<<<<<< HEAD
-window.navigateTo = navigateTo;
-window.toggleSetting = toggleSetting;
-window.markAllRead = markAllRead;
-window.logout = logout;
-window.AppState = AppState;
-window.handleReportSubmit = handleReportSubmit;
-=======
 window.navigateTo =
   navigateTo;
 
@@ -2755,4 +2639,3 @@ window.stopAllListeners =
 
 window.AppState =
   AppState;
->>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
