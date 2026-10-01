@@ -24,10 +24,17 @@ const { user, profile } = session;
 const AppState = {
   currentPage: 'trip',
   conductor: {
+<<<<<<< HEAD
     name: profile.name || user.displayName || 'Conductor',
     id: profile.uid || user.uid,
     email: user.email || '',
   },
+=======
+  name: profile?.name || user.displayName || 'Conductor',
+  id: profile?.uid || user.uid,
+  email: user.email || '',
+},
+>>>>>>> 01ad4ed8886536df4f49794d20f231eac86e2850
   bus: {
     id: null,
     route: 'No route assigned',
@@ -314,7 +321,12 @@ const Pages = {
     <div class="space-y-4 slide-in">
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
         <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-qc-blue-accent rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-          ${AppState.conductor.name.split(' ').map(n => n[0]).join('')}
+              ${(AppState.conductor.name || 'Conductor')
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()}
         </div>
         <h2 class="font-semibold text-gray-800 mt-3">${AppState.conductor.name}</h2>
         <p class="text-xs text-gray-500">${AppState.conductor.id}</p>
@@ -326,7 +338,7 @@ const Pages = {
         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-qc-blue-accent rounded-lg flex items-center justify-center text-white text-xs font-bold">
-              ${AppState.bus.id.split('-')[1]}
+              ${(AppState.bus.id || 'BUS').split('-')[1] || AppState.bus.id || 'BUS'}
             </div>
             <div>
               <p class="font-medium text-sm text-gray-800">${AppState.bus.id}</p>
