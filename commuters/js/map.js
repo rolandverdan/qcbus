@@ -21,7 +21,6 @@ if (!document.querySelector('link[data-maplibre]')) {
 // MAP CONSTANTS
 // ==================================================
 
-// Quezon City Memorial Circle
 const QC_CIRCLE_CENTER = [
   121.0494,
   14.6517,
@@ -42,6 +41,8 @@ let userMarker = null;
 
 let selectedRouteId = null;
 
+let routeLayersInitialized = false;
+
 
 // ==================================================
 // HELPERS
@@ -58,8 +59,55 @@ function escapeHtml(value) {
 
 
 function getBusCoordinates(bus) {
-  const lat = Number(bus.lat);
-  const lng = Number(bus.lng);
+  const lat = Number(bus?.lat);
+  const lng = Number(bus?.lng);
+
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    return null;
+  }
+
+  return [lng, lat];
+}
+
+
+// ==================================================
+// STOP COORDINATES
+// ==================================================
+
+function getStopCoordinates(stop) {
+  if (!stop) {
+    return null;
+  }
+
+  // Normal Firestore format
+  let lat = Number(stop.lat);
+  let lng = Number(stop.lng);
+
+  // Alternative field names
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    lat = Number(stop.latitude);
+    lng = Number(stop.longitude);
+  }
+
+  // GeoPoint-style data
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    if (
+      stop.coordinates &&
+      Array.isArray(stop.coordinates)
+    ) {
+      lng = Number(stop.coordinates[0]);
+      lat = Number(stop.coordinates[1]);
+    }
+  }
 
   if (
     !Number.isFinite(lat) ||
@@ -88,7 +136,8 @@ function getStopsForRoute(routeId) {
 
   return (AppState.stops || [])
     .filter(
-      stop => stop.routeId === routeId
+      stop =>
+        stop.routeId === routeId
     )
     .sort(
       (a, b) =>
@@ -179,10 +228,6 @@ function initMap() {
   if (!container) return;
 
 
-  // ----------------------------------------------
-  // Already initialized
-  // ----------------------------------------------
-
   if (map) {
     map.resize();
 
@@ -195,16 +240,11 @@ function initMap() {
   }
 
 
-  // ----------------------------------------------
-  // Create route picker
-  // ----------------------------------------------
+  routeLayersInitialized = false;
+
 
   createRoutePicker();
 
-
-  // ----------------------------------------------
-  // Create MapLibre
-  // ----------------------------------------------
 
   map = new maplibregl.Map({
     container: "mapContainer",
@@ -220,10 +260,6 @@ function initMap() {
   });
 
 
-  // ----------------------------------------------
-  // Navigation controls
-  // ----------------------------------------------
-
   map.addControl(
     new maplibregl.NavigationControl({
       showCompass: false,
@@ -232,21 +268,13 @@ function initMap() {
   );
 
 
-  // ----------------------------------------------
-  // Map loaded
-  // ----------------------------------------------
-
   map.on("load", () => {
     if (!map) return;
 
     updateRouteLayers();
-
     updateBusMarkers();
-
     updateBusLegend();
-
     getUserLocation();
-
 
     setTimeout(() => {
       if (map) {
@@ -256,41 +284,65 @@ function initMap() {
   });
 
 
-  // ----------------------------------------------
-  // Route click
-  // ----------------------------------------------
+  // ==================================================
+  // MAP BACKGROUND CLICK
+  // ==================================================
 
-  map.on(
-    "click",
-    "all-routes-line",
-    event => {
-
-      const feature =
-        event.features?.[0];
-
-      if (!feature) return;
+  map.on("click", event => {
+    if (!map) return;
 
 
-      const routeId =
-        feature.properties?.routeId;
+    const routeLayers = [
+      "selected-route-line",
+      "selected-route-casing",
+      "all-routes-line",
+      "all-routes-casing",
+    ].filter(layerId =>
+      map.getLayer(layerId)
+    );
 
-      if (!routeId) return;
+
+    const features =
+      routeLayers.length > 0
+        ? map.queryRenderedFeatures(
+            event.point,
+            {
+              layers: routeLayers,
+            }
+          )
+        : [];
 
 
-      selectRoute(routeId);
+    const routeFeature =
+      features.find(
+        feature =>
+          feature.properties?.routeId
+      );
+
+
+    if (routeFeature) {
+      selectRoute(
+        routeFeature.properties.routeId
+      );
+
+      return;
     }
-  );
 
 
-  // ----------------------------------------------
-  // Route hover
-  // ----------------------------------------------
+    if (selectedRouteId) {
+      clearSelectedRoute();
+    }
+  });
+
+
+  // ==================================================
+  // ROUTE HOVER
+  // ==================================================
 
   map.on(
     "mouseenter",
     "all-routes-line",
     () => {
-
       if (!map) return;
 
       map.getCanvas().style.cursor =
@@ -303,7 +355,30 @@ function initMap() {
     "mouseleave",
     "all-routes-line",
     () => {
+      if (!map) return;
 
+      map.getCanvas().style.cursor =
+        "";
+    }
+  );
+
+
+  map.on(
+    "mouseenter",
+    "selected-route-line",
+    () => {
+      if (!map) return;
+
+      map.getCanvas().style.cursor =
+        "pointer";
+    }
+  );
+
+
+  map.on(
+    "mouseleave",
+    "selected-route-line",
+    () => {
       if (!map) return;
 
       map.getCanvas().style.cursor =
@@ -473,10 +548,6 @@ function createRoutePicker() {
   );
 
 
-  // ----------------------------------------------
-  // Search
-  // ----------------------------------------------
-
   const searchInput =
     document.getElementById(
       "routeSearchInput"
@@ -493,10 +564,6 @@ function createRoutePicker() {
     );
   }
 
-
-  // ----------------------------------------------
-  // All routes
-  // ----------------------------------------------
 
   const clearButton =
     document.getElementById(
@@ -562,7 +629,6 @@ function updateRoutePicker(
 
 
   if (filteredRoutes.length === 0) {
-
     list.innerHTML = `
       <div
         class="
@@ -692,10 +758,6 @@ function updateRoutePicker(
       .join("");
 
 
-  // ----------------------------------------------
-  // Bind route buttons
-  // ----------------------------------------------
-
   list
     .querySelectorAll(
       "[data-route-id]"
@@ -714,10 +776,6 @@ function updateRoutePicker(
       );
     });
 
-
-  // ----------------------------------------------
-  // All routes button
-  // ----------------------------------------------
 
   const clearButton =
     document.getElementById(
@@ -741,28 +799,22 @@ function selectRoute(routeId) {
   const route =
     getRouteById(routeId);
 
+  if (!route) return;
 
+
+  // Same route stays selected
   if (selectedRouteId === routeId) {
-    clearSelectedRoute();
     return;
   }
-  
-  if (!route) return;
 
 
   selectedRouteId =
     routeId;
 
-      // Clicking the selected route again = deselect
-  
-
 
   updateRoutePicker();
-
   updateRouteLayers();
-
   updateBusMarkers();
-
   updateBusLegend();
 
   fitMapToRoute(route);
@@ -774,16 +826,12 @@ function selectRoute(routeId) {
 // ==================================================
 
 function clearSelectedRoute() {
-  selectedRouteId =
-    null;
+  selectedRouteId = null;
 
 
   updateRoutePicker();
-
   updateRouteLayers();
-
   updateBusMarkers();
-
   updateBusLegend();
 
   resetMapView();
@@ -807,9 +855,7 @@ function getAllRouteFeatures() {
     .map(route => {
 
       const geometry =
-        parseRouteGeometry(
-          route
-        );
+        parseRouteGeometry(route);
 
       if (!geometry) {
         return null;
@@ -852,134 +898,178 @@ function updateRouteLayers() {
   }
 
 
-  removeRouteLayers();
-
-
   const features =
     getAllRouteFeatures();
 
 
-  if (
-    features.length === 0
-  ) {
-    return;
+  const allRoutesData = {
+    type: "FeatureCollection",
+    features,
+  };
+
+
+  // ==================================================
+  // ALL ROUTES SOURCE
+  // ==================================================
+
+  if (!map.getSource("all-routes")) {
+    map.addSource("all-routes", {
+      type: "geojson",
+      data: allRoutesData,
+    });
   }
 
 
-  // ----------------------------------------------
-  // ALL ROUTES SOURCE
-  // ----------------------------------------------
+  // ==================================================
+  // ALL ROUTES CASING
+  // ==================================================
 
-  map.addSource(
-    "all-routes",
-    {
+  if (!map.getLayer("all-routes-casing")) {
+    map.addLayer({
+      id: "all-routes-casing",
+
+      type: "line",
+
+      source: "all-routes",
+
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
+
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": 7,
+        "line-opacity": 0.9,
+      },
+    });
+  }
+
+
+  // ==================================================
+  // ALL ROUTES LINE
+  // ==================================================
+
+  if (!map.getLayer("all-routes-line")) {
+    map.addLayer({
+      id: "all-routes-line",
+
+      type: "line",
+
+      source: "all-routes",
+
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
+
+      paint: {
+        "line-color": [
+          "coalesce",
+          ["get", "color"],
+          "#1e40af",
+        ],
+
+        "line-width": 5,
+
+        "line-opacity": 0.9,
+      },
+    });
+  }
+
+
+  // ==================================================
+  // SELECTED ROUTE SOURCE
+  // ==================================================
+
+  if (!map.getSource("selected-route")) {
+    map.addSource("selected-route", {
       type: "geojson",
 
       data: {
         type: "FeatureCollection",
-
-        features,
+        features: [],
       },
-    }
-  );
+    });
+  }
 
 
-  // ----------------------------------------------
-  // ALL ROUTES WHITE CASING
-  // ----------------------------------------------
+  // ==================================================
+  // SELECTED ROUTE CASING
+  // ==================================================
 
-  map.addLayer({
-    id:
-      "all-routes-casing",
+  if (!map.getLayer("selected-route-casing")) {
+    map.addLayer({
+      id: "selected-route-casing",
 
-    type: "line",
+      type: "line",
 
-    source:
-      "all-routes",
+      source: "selected-route",
 
-    paint: {
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
 
-      "line-color":
-        "#ffffff",
+      paint: {
+        "line-color": "#ffffff",
 
-      "line-width":
-        selectedRouteId
-          ? 5
-          : 7,
+        "line-width": 10,
 
-      "line-opacity":
-        selectedRouteId
-          ? 0.35
-          : 0.9,
-
-      "line-cap":
-        "round",
-
-      "line-join":
-        "round",
-    },
-  });
+        "line-opacity": 0,
+      },
+    });
+  }
 
 
-  // ----------------------------------------------
-  // ALL ROUTES COLORED LINE
-  // ----------------------------------------------
+  // ==================================================
+  // SELECTED ROUTE LINE
+  // ==================================================
 
- map.addLayer({
-  id:
-    "all-routes-line",
+  if (!map.getLayer("selected-route-line")) {
+    map.addLayer({
+      id: "selected-route-line",
 
-  type: "line",
+      type: "line",
 
-  source:
-    "all-routes",
+      source: "selected-route",
 
-  paint: {
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
 
-    "line-color": [
-      "coalesce",
+      paint: {
+        "line-color": "#1e40af",
 
-      [
-        "get",
-        "color",
-      ],
+        "line-width": 7,
 
-      "#1e40af",
-    ],
-
-    "line-width":
-      selectedRouteId
-        ? 4
-        : 5,
-
-    "line-opacity":
-      selectedRouteId
-        ? [
-            "case",
-
-            [
-              "==",
-
-              [
-                "get",
-                "routeId",
-              ],
-
-              selectedRouteId,
-            ],
-
-            1,
-
-            0.25,
-          ]
-        : 0.9,
-  },
-});
+        "line-opacity": 0,
+      },
+    });
+  }
 
 
-  // ----------------------------------------------
-  // SELECTED ROUTE EMPHASIS
-  // ----------------------------------------------
+  routeLayersInitialized = true;
+
+
+  // ==================================================
+  // UPDATE ALL ROUTES DATA
+  // ==================================================
+
+  const allRoutesSource =
+    map.getSource("all-routes");
+
+  if (allRoutesSource) {
+    allRoutesSource.setData(
+      allRoutesData
+    );
+  }
+
+
+  // ==================================================
+  // SELECTED ROUTE
+  // ==================================================
 
   if (selectedRouteId) {
 
@@ -988,155 +1078,209 @@ function updateRouteLayers() {
         selectedRouteId
       );
 
+
     const geometry =
-      parseRouteGeometry(
-        route
-      );
+      route
+        ? parseRouteGeometry(route)
+        : null;
 
 
-    if (geometry) {
+    if (route && geometry) {
 
       const color =
-        getRouteColor(
-          route
-        );
+        getRouteColor(route);
 
 
-      map.addSource(
-        "selected-route",
-        {
-          type:
-            "geojson",
+      const selectedData = {
+        type: "FeatureCollection",
 
-          data: {
-            type:
-              "Feature",
+        features: [
+          {
+            type: "Feature",
 
-            properties: {},
+            properties: {
+              routeId:
+                selectedRouteId,
+            },
 
             geometry,
           },
-        }
-      );
+        ],
+      };
 
 
-      map.addLayer({
-        id:
-          "selected-route-casing",
-
-        type:
-          "line",
-
-        source:
-          "selected-route",
-
-        paint: {
-
-          "line-color":
-            "#ffffff",
-
-          "line-width":
-            10,
-
-          "line-opacity":
-            0.95,
-
-          "line-cap":
-            "round",
-
-          "line-join":
-            "round",
-        },
-      });
+      const selectedSource =
+        map.getSource(
+          "selected-route"
+        );
 
 
-      map.addLayer({
-        id:
+      if (selectedSource) {
+        selectedSource.setData(
+          selectedData
+        );
+      }
+
+
+      // Highlight selected route
+
+      if (
+        map.getLayer(
+          "selected-route-line"
+        )
+      ) {
+        map.setPaintProperty(
           "selected-route-line",
+          "line-color",
+          color
+        );
 
-        type:
-          "line",
+        map.setPaintProperty(
+          "selected-route-line",
+          "line-opacity",
+          1
+        );
+      }
 
-        source:
-          "selected-route",
 
-        paint: {
+      if (
+        map.getLayer(
+          "selected-route-casing"
+        )
+      ) {
+        map.setPaintProperty(
+          "selected-route-casing",
+          "line-opacity",
+          0.95
+        );
+      }
 
-          "line-color":
-            color,
 
-          "line-width":
-            7,
+      // Dim other routes
 
-          "line-opacity":
+      if (
+        map.getLayer(
+          "all-routes-line"
+        )
+      ) {
+        map.setPaintProperty(
+          "all-routes-line",
+          "line-opacity",
+          [
+            "case",
+
+            [
+              "==",
+              ["get", "routeId"],
+              selectedRouteId,
+            ],
+
             1,
 
-          "line-cap":
-            "round",
+            0.25,
+          ]
+        );
+      }
 
-          "line-join":
-            "round",
-        },
-      });
+
+      if (
+        map.getLayer(
+          "all-routes-casing"
+        )
+      ) {
+        map.setPaintProperty(
+          "all-routes-casing",
+          "line-opacity",
+          0.35
+        );
+      }
+
+
+      // ==================================================
+      // SHOW STOPS
+      // ==================================================
+
+      updateStopMarkers();
+
+      return;
     }
-
-
-    // ------------------------------------------
-    // Show stops ONLY when route selected
-    // ------------------------------------------
-
-    updateStopMarkers();
   }
-}
 
 
-// ==================================================
-// REMOVE ROUTE LAYERS
-// ==================================================
+  // ==================================================
+  // NO SELECTED ROUTE
+  // ==================================================
 
-function removeRouteLayers() {
-  if (!map) return;
-
-
-  [
-    "selected-route-line",
-    "selected-route-casing",
-    "all-routes-line",
-    "all-routes-casing",
-  ].forEach(layerId => {
-
-    if (
-      map.getLayer(
-        layerId
-      )
-    ) {
-      map.removeLayer(
-        layerId
-      );
-    }
-  });
+  if (
+    map.getLayer(
+      "all-routes-line"
+    )
+  ) {
+    map.setPaintProperty(
+      "all-routes-line",
+      "line-opacity",
+      0.9
+    );
+  }
 
 
-  [
-    "selected-route",
-    "all-routes",
-  ].forEach(sourceId => {
+  if (
+    map.getLayer(
+      "all-routes-casing"
+    )
+  ) {
+    map.setPaintProperty(
+      "all-routes-casing",
+      "line-opacity",
+      0.9
+    );
+  }
 
-    if (
-      map.getSource(
-        sourceId
-      )
-    ) {
-      map.removeSource(
-        sourceId
-      );
-    }
-  });
 
+  if (
+    map.getLayer(
+      "selected-route-line"
+    )
+  ) {
+    map.setPaintProperty(
+      "selected-route-line",
+      "line-opacity",
+      0
+    );
+  }
+
+
+  if (
+    map.getLayer(
+      "selected-route-casing"
+    )
+  ) {
+    map.setPaintProperty(
+      "selected-route-casing",
+      "line-opacity",
+      0
+    );
+  }
+
+
+  const selectedSource =
+    map.getSource(
+      "selected-route"
+    );
+
+
+  if (selectedSource) {
+    selectedSource.setData({
+      type: "FeatureCollection",
+      features: [],
+    });
+  }
+
+
+  // Remove stops
 
   stopMarkers.forEach(
-    marker =>
-      marker.remove()
+    marker => marker.remove()
   );
 
   stopMarkers = [];
@@ -1149,20 +1293,30 @@ function removeRouteLayers() {
 
 function updateStopMarkers() {
   if (!map) return;
+  
+  let activeStopPopup = null;
+  let tooltipTimer = null;
 
+
+  // Remove previous stop markers
 
   stopMarkers.forEach(
-    marker =>
-      marker.remove()
+    marker => marker.remove()
   );
 
   stopMarkers = [];
 
 
+  // No selected route = no stops
+
   if (!selectedRouteId) {
     return;
   }
 
+
+  // ==================================================
+  // GET STOPS FROM APPSTATE
+  // ==================================================
 
   const stops =
     getStopsForRoute(
@@ -1170,35 +1324,66 @@ function updateStopMarkers() {
     );
 
 
+  console.log(
+    "Stops for selected route:",
+    selectedRouteId,
+    stops
+  );
+
+
+  if (!stops.length) {
+    console.log(
+      "No stops found for route:",
+      selectedRouteId
+    );
+
+    return;
+  }
+
+
+  // ==================================================
+  // CREATE NUMBERED STOP MARKERS
+  // ==================================================
+
   stops.forEach(
     (stop, index) => {
 
-      const lat =
-        Number(stop.lat);
+      const coordinates =
+        getStopCoordinates(
+          stop
+        );
 
-      const lng =
-        Number(stop.lng);
 
+      if (!coordinates) {
+        console.warn(
+          "Stop has no valid coordinates:",
+          stop
+        );
 
-      if (
-        !Number.isFinite(lat) ||
-        !Number.isFinite(lng)
-      ) {
         return;
       }
 
 
-      const route =
-        getRouteById(
-          selectedRouteId
-        );
+      const [lng, lat] =
+        coordinates;
 
 
-      const color =
-        getRouteColor(
-          route
-        );
+      const stopName =
+        stop.name ||
+        stop.stopName ||
+        `Stop ${index + 1}`;
 
+
+      const stopPlace =
+        stop.location ||
+        stop.address ||
+        stop.place ||
+        "";
+
+
+      // ----------------------------------------------
+      // Marker element
+      // ----------------------------------------------
 
       const element =
         document.createElement(
@@ -1210,79 +1395,204 @@ function updateStopMarkers() {
         "route-stop-marker";
 
 
-      element.innerHTML = `
-        <div
-          class="
-            w-8
-            h-8
-            rounded-full
-            bg-white
-            shadow-md
-            flex
-            items-center
-            justify-center
-            text-[10px]
-            font-bold
-          "
-          style="
-            border:3px solid ${escapeHtml(color)};
-            color:${escapeHtml(color)};
-          "
-        >
-          ${index + 1}
-        </div>
+      element.textContent =
+        index + 1;
+
+
+      element.title =
+        stopName;
+
+
+      element.style.cssText = `
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #2563eb;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        border: 3px solid #ffffff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        cursor: pointer;
+        user-select: none;
+        z-index: 20;
       `;
 
 
+      // ----------------------------------------------
+      // STOP POPUP
+      // ----------------------------------------------
+
       const popup =
         new maplibregl.Popup({
-          offset: 20,
+          offset: 22,
           closeButton: true,
-        }).setHTML(`
+          closeOnClick: true,
+          maxWidth: "280px",
+        });
+
+
+      popup.setHTML(`
+        <div
+          style="
+            min-width:180px;
+            padding:2px;
+          "
+        >
+
           <div
             style="
-              min-width:160px;
+              display:flex;
+              align-items:center;
+              gap:9px;
+              margin-bottom:8px;
             "
           >
 
-            <strong
-              style="
-                font-size:13px;
-              "
-            >
-              ${escapeHtml(
-                stop.name ||
-                `Stop ${index + 1}`
-              )}
-            </strong>
-
             <div
               style="
-                margin-top:4px;
-                font-size:11px;
-                color:#888;
+                width:30px;
+                height:30px;
+                border-radius:50%;
+                background:#2563eb;
+                color:#ffffff;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-weight:700;
+                font-size:12px;
+                flex-shrink:0;
               "
             >
-              Stop ${index + 1}
+              ${index + 1}
+            </div>
+
+
+            <div>
+
+              <div
+                style="
+                  font-size:14px;
+                  font-weight:700;
+                  color:#111827;
+                  line-height:1.2;
+                "
+              >
+                ${escapeHtml(
+                  stopName
+                )}
+              </div>
+
+
+              <div
+                style="
+                  font-size:11px;
+                  color:#6b7280;
+                  margin-top:2px;
+                "
+              >
+                Bus Stop ${index + 1}
+              </div>
+
             </div>
 
           </div>
-        `);
 
+
+          ${
+            stopPlace
+              ? `
+                <div
+                  style="
+                    border-top:1px solid #e5e7eb;
+                    padding-top:8px;
+                    font-size:12px;
+                    color:#4b5563;
+                  "
+                >
+                  📍 ${escapeHtml(
+                    stopPlace
+                  )}
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+      `);
+
+
+      // ----------------------------------------------
+      // Prevent map background click
+      // ----------------------------------------------
+
+      element.addEventListener(
+        "pointerdown",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      );
+
+
+      element.addEventListener(
+        "mousedown",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      );
+
+
+      // ----------------------------------------------
+      // Click numbered stop
+      // ----------------------------------------------
+let tooltipTimer;
+
+element.addEventListener("click", event => {
+  event.preventDefault();
+  event.stopPropagation();
+
+  clearTimeout(tooltipTimer);
+
+  popup
+    .setLngLat([lng, lat])
+    .setHTML(`
+      <div style="font-weight:700; font-size:14px;">
+        ${stopName}
+      </div>
+      ${
+        stopPlace
+          ? `<div style="font-size:12px; color:#666; margin-top:3px;">
+              ${stopPlace}
+            </div>`
+          : ""
+      }
+    `)
+    .addTo(map);
+
+  tooltipTimer = setTimeout(() => {
+    popup.remove();
+  }, 2500);
+});
+
+
+      // ----------------------------------------------
+      // Create marker
+      // ----------------------------------------------
 
       const marker =
         new maplibregl.Marker({
           element,
-          anchor:
-            "center",
+          anchor: "center",
         })
           .setLngLat([
             lng,
             lat,
           ])
-          .setPopup(
-            popup
-          )
           .addTo(map);
 
 
@@ -1314,9 +1624,7 @@ function fitMapToRoute(route) {
     );
 
 
-  // ----------------------------------------------
   // Fallback to stops
-  // ----------------------------------------------
 
   if (
     coordinates.length === 0
@@ -1326,19 +1634,13 @@ function fitMapToRoute(route) {
       getStopsForRoute(
         route.id
       )
-        .map(stop => [
-          Number(stop.lng),
-          Number(stop.lat),
-        ])
-        .filter(
-          ([lng, lat]) =>
-            Number.isFinite(
-              lng
-            ) &&
-            Number.isFinite(
-              lat
+        .map(
+          stop =>
+            getStopCoordinates(
+              stop
             )
-        );
+        )
+        .filter(Boolean);
   }
 
 
@@ -1363,15 +1665,26 @@ function fitMapToRoute(route) {
         coordinate.length >= 2
       ) {
 
-        bounds.extend([
+        const lng =
           Number(
             coordinate[0]
-          ),
+          );
 
+        const lat =
           Number(
             coordinate[1]
-          ),
-        ]);
+          );
+
+
+        if (
+          Number.isFinite(lng) &&
+          Number.isFinite(lat)
+        ) {
+          bounds.extend([
+            lng,
+            lat,
+          ]);
+        }
       }
     }
   );
@@ -1451,13 +1764,11 @@ function updateBusMarkers() {
 
   const buses =
     selectedRouteId
-
       ? AppState.buses.filter(
           bus =>
             bus.routeId ===
             selectedRouteId
         )
-
       : AppState.buses;
 
 
@@ -1522,6 +1833,22 @@ function updateBusMarkers() {
         "custom-bus-marker";
 
 
+      markerElement.addEventListener(
+        "click",
+        event => {
+          event.stopPropagation();
+        }
+      );
+
+
+      markerElement.addEventListener(
+        "mousedown",
+        event => {
+          event.stopPropagation();
+        }
+      );
+
+
       markerElement.innerHTML = `
         <div class="relative">
 
@@ -1576,7 +1903,6 @@ function updateBusMarkers() {
 
       const passengerInfo =
         bus.tripActive
-
           ? `
             <div
               style="
@@ -1591,7 +1917,6 @@ function updateBusMarkers() {
               </strong>
             </div>
           `
-
           : `
             <div
               style="
@@ -1613,60 +1938,56 @@ function updateBusMarkers() {
 
       const popup =
         new maplibregl.Popup({
-          offset:
-            28,
-
-          closeButton:
-            true,
-
-          closeOnClick:
-            true,
-        }).setHTML(`
-          <div
-            style="
-              min-width:190px;
-            "
-          >
-
+          offset: 28,
+          closeButton: true,
+          closeOnClick: true,
+        })
+          .setHTML(`
             <div
               style="
-                font-weight:700;
-                font-size:14px;
-                margin-bottom:4px;
+                min-width:190px;
               "
             >
-              ${escapeHtml(
-                displayId
-              )}
+
+              <div
+                style="
+                  font-weight:700;
+                  font-size:14px;
+                  margin-bottom:4px;
+                "
+              >
+                ${escapeHtml(
+                  displayId
+                )}
+              </div>
+
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#6b7280;
+                  margin-bottom:6px;
+                "
+              >
+                ${route}
+              </div>
+
+
+              <div
+                style="
+                  font-size:12px;
+                  color:${statusColor};
+                  font-weight:600;
+                "
+              >
+                ● ${status}
+              </div>
+
+
+              ${passengerInfo}
+
             </div>
-
-
-            <div
-              style="
-                font-size:12px;
-                color:#6b7280;
-                margin-bottom:6px;
-              "
-            >
-              ${route}
-            </div>
-
-
-            <div
-              style="
-                font-size:12px;
-                color:${statusColor};
-                font-weight:600;
-              "
-            >
-              ● ${status}
-            </div>
-
-
-            ${passengerInfo}
-
-          </div>
-        `);
+          `);
 
 
       const marker =
@@ -1719,13 +2040,11 @@ function updateBusLegend() {
 
   const buses =
     selectedRouteId
-
       ? AppState.buses.filter(
           bus =>
             bus.routeId ===
             selectedRouteId
         )
-
       : AppState.buses;
 
 
@@ -1814,7 +2133,6 @@ function updateBusLegend() {
 
             ${
               bus.tripActive
-
                 ? `
                   <p
                     class="
@@ -1827,7 +2145,6 @@ function updateBusLegend() {
                     onboard
                   </p>
                 `
-
                 : `
                   <p
                     class="
@@ -1887,6 +2204,22 @@ function getUserLocation() {
         "user-marker";
 
 
+      userElement.addEventListener(
+        "click",
+        event => {
+          event.stopPropagation();
+        }
+      );
+
+
+      userElement.addEventListener(
+        "mousedown",
+        event => {
+          event.stopPropagation();
+        }
+      );
+
+
       userElement.innerHTML = `
         <div class="relative">
 
@@ -1934,8 +2267,7 @@ function getUserLocation() {
           ])
           .setPopup(
             new maplibregl.Popup({
-              offset:
-                12,
+              offset: 12,
             }).setHTML(`
               <div
                 style="
@@ -2013,8 +2345,9 @@ function destroyMap() {
   }
 
 
-  selectedRouteId =
-    null;
+  selectedRouteId = null;
+
+  routeLayersInitialized = false;
 }
 
 
