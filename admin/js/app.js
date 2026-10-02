@@ -62,6 +62,10 @@ async function navigateTo(page) {
       title: 'Stops',
       sub: 'Quezon City · Route stops'
     },
+    reports: {
+      title: 'Reports',
+      sub: 'Quezon City · Commuter submissions'
+    },
   };
 
   document.getElementById('pageTitle').textContent =
