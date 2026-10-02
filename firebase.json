@@ -8,12 +8,8 @@
     "rewrites": [
       {
         "source": "/",
-<<<<<<< HEAD
-        "destination": "/commuters/auth.html"
-=======
         "destination": "/landing-page-folder/",
         "type": 301
->>>>>>> apk
       }
     ],
     "ignore": [
