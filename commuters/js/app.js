@@ -2,6 +2,8 @@ import {
   requireRole,
 } from "../../shared/js/auth.js";
 
+import { auth } from "../../shared/js/firebase.js";
+
 import {
   collection,
   onSnapshot,
@@ -12,10 +14,18 @@ import {
 import { db } from "../../shared/js/firebase.js";
 
 import {
+  getUserProfile,
+} from "../../shared/js/repositories/users.repo.js";
+
+import {
   signOutUser,
 } from "../../shared/js/repositories/auth.repo.js";
 
 import "../../shared/js/loading.js";
+
+import {
+  createReport,
+} from "../../shared/js/repositories/reports.repo.js";
 
 // ==================================================
 // FIREBASE AUTH GUARD
@@ -381,6 +391,8 @@ function refreshCurrentPage() {
     }
   }
 }
+
+
 
 
 // ==================================================
@@ -1188,17 +1200,22 @@ const Pages = {
   `,
 
 
+  
   // ==================================================
   // REPORT AN ISSUE
   // ==================================================
 
+
+
+
+  
   report: () => `
     <div class="space-y-4 slide-in">
 
       <div class="bg-gradient-to-r from-qc-blue to-qc-blue-accent text-white rounded-xl p-4 shadow-lg">
         <h2 class="text-lg font-bold">Report an Issue</h2>
         <p class="text-xs opacity-90 mt-1">
-          Report a driver, conductor, or fellow passenger. Your report can be anonymous.
+          Report a driver, conductor, or fellow passenger.
         </p>
       </div>
 
@@ -1328,18 +1345,6 @@ const Pages = {
           ></textarea>
         </div>
 
-
-        <!-- Anonymous toggle -->
-        <label class="flex items-start gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            name="anonymous"
-            class="mt-0.5 w-4 h-4 rounded border-gray-300 text-qc-blue focus:ring-qc-blue"
-          >
-          <span class="text-xs text-gray-600 leading-relaxed">
-            Submit anonymously (we won't include your name or contact info)
-          </span>
-        </label>
 
 
         <!-- Submit -->
@@ -1887,119 +1892,219 @@ function updateNotifBadge() {
   }
 }
 
-
 // ==================================================
-// REPORT SUBMIT
+// REPORT FORM SUBMIT
 // ==================================================
 
 async function handleReportSubmit(event) {
-
   event.preventDefault();
 
   const form = event.target;
-
-  const data =
-    Object.fromEntries(
-      new FormData(form)
-    );
-
-  const anonymous = data.anonymous === "on";
-
-  const payload = {
-    busRoute: data.busRoute,
-
-    role: data.role,
-
-    category: data.category,
-
-    description: data.description,
-
-    anonymous,
-
-    reporterUid:
-      anonymous ? null : AppState.user.uid,
-
-    reporterName:
-      anonymous ? null : AppState.user.name,
-
-    reporterEmail:
-      anonymous ? null : AppState.user.email,
-
-    submittedAt: serverTimestamp()
-  };
-
-  const submitBtn =
+  const submitButton =
     form.querySelector('button[type="submit"]');
 
-  const originalText =
-    submitBtn.textContent;
+  const data = new FormData(form);
 
-  submitBtn.disabled = true;
+  const report = {
+    busRoute: data.get("busRoute"),
+    role: data.get("role"),
+    category: data.get("category"),
+    description: data.get("description")?.trim(),
+  };
 
-  submitBtn.textContent = "Submitting…";
+  // ------------------------------------------
+  // VALIDATION
+  // ------------------------------------------
 
-  try {
-
-    await addDoc(
-      collection(db, "reports"),
-      payload
-    );
-
-    form.reset();
-
+  if (
+    !report.busRoute ||
+    !report.role ||
+    !report.category ||
+    !report.description
+  ) {
     showReportToast(
-      "Report submitted. Thank you!",
-      "success"
-    );
-
-  } catch (error) {
-
-    console.error(
-      "Failed to submit report:",
-      error
-    );
-
-    showReportToast(
-      "Could not submit report. Please try again.",
+      "Please complete all required fields.",
       "error"
     );
 
-  } finally {
+    return;
+  }
 
-    submitBtn.disabled = false;
+  // ------------------------------------------
+  // LOADING STATE
+  // ------------------------------------------
 
-    submitBtn.textContent = originalText;
+  const originalText =
+    submitButton.textContent;
+
+  submitButton.disabled = true;
+  submitButton.textContent = "Submitting...";
+  submitButton.classList.add(
+    "opacity-70",
+    "cursor-not-allowed"
+  );
+
+// ------------------------------------------
+// get user profile
+// ------------------------------------------
+
+const user = auth.currentUser;
+
+if (!user) {
+  showReportToast(
+    "You must be logged in to submit a report.",
+    "error"
+  );
+
+  return;
+}
+
+const userProfile =
+  await getUserProfile(user.uid);
+
+if (!userProfile) {
+  showReportToast(
+    "Unable to load your user profile.",
+    "error"
+  );
+
+  return;
+}
+
+report.reporterId = user.uid;
+report.reporterName =
+  userProfile.name ||
+  user.email ||
+  "Unknown";
+
+
+
+  
+  try {
+
+    // ------------------------------------------
+    // SAVE REPORT
+    // ------------------------------------------
+
+    const createdReport =
+      await createReport(report);
+
+    console.log(
+      "Report created:",
+      createdReport
+    );
+
+    // ------------------------------------------
+    // SUCCESS STATE
+    // ------------------------------------------
+
+    form.reset();
+
+    submitButton.textContent =
+      "Report Submitted ✓";
+
+    submitButton.classList.remove(
+      "bg-qc-blue",
+      "hover:bg-qc-blue-accent",
+      "opacity-70",
+      "cursor-not-allowed"
+    );
+
+    submitButton.classList.add(
+      "bg-green-500"
+    );
+
+    showReportToast(
+  "Your report has been submitted successfully.",
+  "success"
+);
+
+      // ------------------------------------------
+      // RESTORE BUTTON
+      // ------------------------------------------
+
+      setTimeout(() => {
+
+        submitButton.disabled = false;
+
+        submitButton.textContent =
+          originalText;
+
+        submitButton.classList.remove(
+          "bg-green-500"
+        );
+
+        submitButton.classList.add(
+          "bg-qc-blue",
+          "hover:bg-qc-blue-accent"
+        );
+
+      }, 1800);
+
+    } catch (error) {
+
+      console.error(
+        "Failed to submit report:",
+        error
+      );
+
+      submitButton.disabled = false;
+
+      submitButton.textContent =
+        originalText;
+
+      submitButton.classList.remove(
+        "opacity-70",
+        "cursor-not-allowed"
+      );
+
+      showReportToast(
+        "Failed to submit report. Please try again.",
+        "error"
+      );
+    }
+  }
+
+
+  function showReportToast(message, type) {
+
+    const bg =
+      type === "success"
+        ? "bg-green-600"
+        : "bg-qc-red";
+
+    const toast =
+      document.createElement("div");
+
+    toast.className =
+      `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white ${bg} z-[110] transition-all duration-300`;
+
+    toast.textContent = message;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+
+      toast.style.opacity = "0";
+
+      setTimeout(() => toast.remove(), 300);
+
+    }, 2400);
 
   }
-}
 
+// ==================================================
+// REPORT FORM SUBMIT DELEGATION
+// ==================================================
 
-function showReportToast(message, type) {
-
-  const bg =
-    type === "success"
-      ? "bg-green-600"
-      : "bg-qc-red";
-
-  const toast =
-    document.createElement("div");
-
-  toast.className =
-    `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white ${bg} z-[110] transition-all duration-300`;
-
-  toast.textContent = message;
-
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-
-    toast.style.opacity = "0";
-
-    setTimeout(() => toast.remove(), 300);
-
-  }, 2400);
-
-}
+document.addEventListener("submit", event => {
+  if (
+    event.target &&
+    event.target.id === "reportForm"
+  ) {
+    handleReportSubmit(event);
+  }
+});
 
 
 // ==================================================
@@ -2478,26 +2583,7 @@ async function initApp() {
     }
 
 
-  // ==================================================
-  // REPORT FORM SUBMIT DELEGATION
-  // ==================================================
-
-  document.addEventListener(
-    "submit",
-    event => {
-
-      if (
-        event.target &&
-        event.target.id === "reportForm"
-      ) {
-
-        handleReportSubmit(event);
-
-      }
-
-    }
-  );
-
+ 
 
   // ==================================================
   // HEADER NOTIFICATION
