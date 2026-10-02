@@ -8,7 +8,7 @@
     "rewrites": [
       {
         "source": "/",
-        "destination": "/landing-page-folder/",
+        "destination": "/landing-page-folder/index.html",
         "type": 301
       }
     ],

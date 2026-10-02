@@ -21,6 +21,10 @@
                 }
             }
         }
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+            // Instantly bypass the landing page and go straight to the app
+            window.location.replace("/commuters/"); 
+            }
     </script>
 </head>
 <body class="bg-gray-50 font-sans antialiased text-gray-800 flex flex-col min-h-screen">
