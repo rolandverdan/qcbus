@@ -2,7 +2,7 @@
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "com.firebaseapp.QCommute.twa",
-        "sha256_cert_fingerprints": ["A0:81:0C:9B:90:A5:3E:32:30:E9:1E:EF:17:0A:88:2F:E8:5F:25:18:31:CC:C7:05:C2:0E:5D:7B:08:42:0F:E0"]
+        "package_name": "app.web.qcommute_88bf5.twa",
+        "sha256_cert_fingerprints": ["2D:13:D3:0B:8D:6F:5B:01:13:37:AE:B1:F4:A2:01:7C:15:62:06:10:A6:C7:9F:4F:75:D5:43:FB:0E:B8:0E:15"]
       }
     }]

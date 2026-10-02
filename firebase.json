@@ -8,7 +8,7 @@
     "redirects": [
       {
         "source": "/",
-        "destination": "/commuters/",
+        "destination": "/landing-page-folder/",
         "type": 301
       }
     ],
