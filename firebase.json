@@ -5,11 +5,10 @@
   },
   "hosting": {
     "public": ".",
-    "redirects": [
+    "rewrites": [
       {
         "source": "/",
-        "destination": "/commuters/",
-        "type": 301
+        "destination": "/commuters/auth.html"
       }
     ],
     "ignore": [
