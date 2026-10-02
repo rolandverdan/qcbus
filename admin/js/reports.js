@@ -1,73 +1,81 @@
-// ==================================================
-// ADMIN — REPORTS PAGE (FRONT-END ONLY)
-// Hardcoded data — no Firestore connection yet
-// ==================================================
+import {
+  getReports,
+  updateReportStatusByAdmin,
+  deleteReport,
+} from "../../shared/js/repositories/reports.repo.js";
 
-// ---------- Hardcoded sample reports ----------
-let allReports = [
-  {
-    id: 'rep-001',
-    busRoute: 'QC-1234 · R1 · QC Hall – Cubao',
-    role: 'driver',
-    category: 'reckless',
-    description: 'Driver was speeding along Commonwealth Ave and nearly hit a motorcycle near Batasan.',
-    anonymous: false,
-    reporterName: 'Maria Santos',
-    reporterEmail: 'maria@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 15),      // 15 min ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-002',
-    busRoute: 'QC-5678 · R5 · QC Hall – Mindanao Ave',
-    role: 'conductor',
-    category: 'overcharging',
-    description: 'Conductor charged me ₱25 even though the Q City Bus is free. He insisted it was a "special" trip.',
-    anonymous: true,
-    reporterName: null,
-    reporterEmail: null,
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),  // 2 hrs ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-003',
-    busRoute: 'QC-9012 · R3 · Welcome Rotonda – Aurora',
-    role: 'passenger',
-    category: 'smoking',
-    description: 'Fellow passenger was vaping inside the bus and refused to stop when asked.',
-    anonymous: false,
-    reporterName: 'Jose Rivera',
-    reporterEmail: 'jose@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 5),  // 5 hrs ago
-    status: 'resolved',
-  },
-  {
-    id: 'rep-004',
-    busRoute: 'QC-3344 · R6 · QC Hall – Gilmore',
-    role: 'driver',
-    category: 'refused',
-    description: 'Driver skipped the stop at Tomas Morato even though there were passengers waiting.',
-    anonymous: false,
-    reporterName: 'Ana Cruz',
-    reporterEmail: 'ana@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-005',
-    busRoute: 'QC-7788 · R2 · QC Hall – Litex',
-    role: 'conductor',
-    category: 'rude',
-    description: 'Conductor was shouting at an elderly passenger who was slow to find her fare card.',
-    anonymous: true,
-    reporterName: null,
-    reporterEmail: null,
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 30), // ~1.25 days ago
-    status: 'reviewing',
-  },
-];
+import {
+  getUserProfile,
+} from "../../shared/js/repositories/users.repo.js";
 
-let activeFilter = 'all';
+import {
+  auth,
+} from "../../shared/js/firebase.js";
+
+let allReports = [];
+let activeFilter = "all";
+
+
+async function loadReports() {
+  try {
+    const reports = await getReports();
+
+    allReports = await Promise.all(
+      reports.map(async (report) => {
+        let reporterName = "Unknown";
+        let reporterEmail = "";
+
+        if (report.reporterId) {
+          try {
+            const profile = await getUserProfile(
+              report.reporterId
+            );
+
+            if (profile) {
+              reporterName =
+                profile.name ||
+                "Unknown";
+
+              reporterEmail =
+                profile.email ||
+                "";
+            }
+          } catch (error) {
+            console.error(
+              "Failed to load reporter:",
+              error
+            );
+          }
+        }
+
+        return {
+          ...report,
+
+          reporterName,
+          reporterEmail,
+
+          submittedAt:
+            report.createdAt?.toDate
+              ? report.createdAt.toDate()
+              : new Date(),
+        };
+      })
+    );
+
+    window.navigateTo("reports");
+
+  } catch (error) {
+    console.error(
+      "Failed to load reports:",
+      error
+    );
+
+    window.showToast(
+      "Failed to load reports.",
+      "error"
+    );
+  }
+}
 
 // ==================================================
 // PAGE TEMPLATE
@@ -192,9 +200,10 @@ function renderReportCard(r) {
 
         <!-- Reporter -->
         <p class="text-[11px] text-gray-400 mb-3">
-          ${r.anonymous
-            ? '🕶️ Anonymous report'
-            : `👤 ${escapeHtml(r.reporterName || 'Unknown')} · ${escapeHtml(r.reporterEmail || '')}`}
+            👤 ${escapeHtml(r.reporterName || "Unknown")}
+            ${r.reporterEmail
+            ? ` · ${escapeHtml(r.reporterEmail)}`
+            : ""}
         </p>
 
         <!-- Actions -->
@@ -257,39 +266,116 @@ function setReportFilter(key) {
 // ==================================================
 // ACTIONS (local only — no Firestore yet)
 // ==================================================
-function markReportResolved(id) {
-  const r = allReports.find(x => x.id === id);
-  if (!r) return;
-  r.status = 'resolved';
-  window.showToast('Marked as resolved', 'success');
-  window.navigateTo('reports');
-}
+async function markReportResolved(id) {
+  try {
+    if (!auth.currentUser) {
+      window.showToast(
+        "Admin authentication required.",
+        "error"
+      );
+      return;
+    }
 
-function markReportPending(id) {
-  const r = allReports.find(x => x.id === id);
-  if (!r) return;
-  r.status = 'pending';
-  window.showToast('Report reopened', 'info');
-  window.navigateTo('reports');
-}
+    await updateReportStatusByAdmin(
+      id,
+      "resolved",
+      auth.currentUser.uid
+    );
 
+    await loadReports();
+
+    window.showToast(
+      "Report marked as resolved.",
+      "success"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to resolve report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to update report.",
+      "error"
+    );
+  }
+}
+async function markReportPending(id) {
+  try {
+    if (!auth.currentUser) {
+      window.showToast(
+        "Admin authentication required.",
+        "error"
+      );
+      return;
+    }
+
+    await updateReportStatusByAdmin(
+      id,
+      "pending",
+      auth.currentUser.uid
+    );
+
+    await loadReports();
+
+    window.showToast(
+      "Report reopened.",
+      "info"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to reopen report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to update report.",
+      "error"
+    );
+  }
+}
 async function confirmDeleteReport(id) {
   const ok = await window.confirmAction(
-    'Delete Report?',
-    'This will permanently remove the report. This cannot be undone.',
-    'Delete'
+    "Delete Report?",
+    "This will permanently remove the report. This cannot be undone.",
+    "Delete"
   );
-  if (!ok) return;
 
-  allReports = allReports.filter(x => x.id !== id);
-  window.showToast('Report deleted', 'info');
-  window.navigateTo('reports');
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await deleteReport(id);
+
+    await loadReports();
+
+    window.showToast(
+      "Report deleted.",
+      "info"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to delete report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to delete report.",
+      "error"
+    );
+  }
 }
 
 // ==================================================
 // EXPOSE
 // ==================================================
+window.confirmDeleteReport = confirmDeleteReport;
 window.setReportFilter = setReportFilter;
 window.markReportResolved = markReportResolved;
 window.markReportPending = markReportPending;
 window.confirmDeleteReport = confirmDeleteReport;
+loadReports();
