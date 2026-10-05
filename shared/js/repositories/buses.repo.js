@@ -52,6 +52,17 @@ export async function updateBusRepo(id, patch) {
   });
 }
 
+export async function updateBusLocationRepo(id, location) {
+  const busRef = doc(db, "buses", id);
+
+  await updateDoc(busRef, {
+    lat: Number(location.lat),
+    lng: Number(location.lng),
+    speedKmh: Number(location.speedKmh) || 0,
+    locationUpdatedAt: serverTimestamp(),
+  });
+}
+
 export async function deleteBusRepo(id) {
   const busRef = doc(db, "buses", id);
 

@@ -1,6 +1,10 @@
 // ==================================================
 // PASSENGER COUNTER
 // ==================================================
+import {
+  markExpectedDropoffsAlightedRepo,
+} from "../../shared/js/repositories/dropoffs.repo.js";
+
 let counterRefreshInterval = null;
 
 async function addPassenger(direction, amount = 1) {
@@ -10,6 +14,7 @@ async function addPassenger(direction, amount = 1) {
   }
 
   const occ = AppState.occupancy;
+  let dropoffSyncFailed = false;
 
   if (direction === 'in') {
     if (occ.onboard >= occ.capacity) {
@@ -40,6 +45,19 @@ async function addPassenger(direction, amount = 1) {
       'out',
       `−${removed} alighted (${occ.onboard}/${occ.capacity})`
     );
+
+    if (AppState.currentAlightStopId) {
+      try {
+        await markExpectedDropoffsAlightedRepo(
+          AppState.trip.tripId,
+          AppState.currentAlightStopId,
+          removed
+        );
+      } catch (error) {
+        console.error('Expected drop-off update failed:', error);
+        dropoffSyncFailed = true;
+      }
+    }
   }
 
   // Save to Firestore
@@ -57,6 +75,10 @@ async function addPassenger(direction, amount = 1) {
     softRefreshCounter();
   } else {
     navigateTo('counter');
+  }
+
+  if (dropoffSyncFailed) {
+    showToast('Alight counted, but expected drop-offs could not sync', 'warn');
   }
 
   // Buzz feedback

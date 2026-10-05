@@ -38,8 +38,10 @@ let map = null;
 let busMarkers = [];
 let stopMarkers = [];
 let userMarker = null;
+let activeStopPopup = null;
 
 let selectedRouteId = null;
+let pendingSelectedRouteId = null;
 
 let routeLayersInitialized = false;
 
@@ -275,6 +277,12 @@ function initMap() {
     updateBusMarkers();
     updateBusLegend();
     getUserLocation();
+
+    if (pendingSelectedRouteId) {
+      const routeId = pendingSelectedRouteId;
+      pendingSelectedRouteId = null;
+      selectRoute(routeId);
+    }
 
     setTimeout(() => {
       if (map) {
@@ -799,11 +807,20 @@ function selectRoute(routeId) {
   const route =
     getRouteById(routeId);
 
-  if (!route) return;
+  if (!route) {
+    pendingSelectedRouteId = routeId;
+    return;
+  }
+
+  if (!map || !map.isStyleLoaded()) {
+    pendingSelectedRouteId = routeId;
+    return;
+  }
 
 
   // Same route stays selected
   if (selectedRouteId === routeId) {
+    fitMapToRoute(route);
     return;
   }
 
@@ -827,6 +844,7 @@ function selectRoute(routeId) {
 
 function clearSelectedRoute() {
   selectedRouteId = null;
+  pendingSelectedRouteId = null;
 
 
   updateRoutePicker();
@@ -1293,9 +1311,11 @@ function updateRouteLayers() {
 
 function updateStopMarkers() {
   if (!map) return;
-  
-  let activeStopPopup = null;
-  let tooltipTimer = null;
+
+  if (activeStopPopup) {
+    activeStopPopup.remove();
+    activeStopPopup = null;
+  }
 
 
   // Remove previous stop markers
@@ -1418,7 +1438,7 @@ function updateStopMarkers() {
         box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         cursor: pointer;
         user-select: none;
-        z-index: 20;
+        z-index: 5;
       `;
 
 
@@ -1432,7 +1452,14 @@ function updateStopMarkers() {
           closeButton: true,
           closeOnClick: true,
           maxWidth: "280px",
+          className: "stop-dropoff-popup",
         });
+
+      popup.on("close", () => {
+        if (activeStopPopup === popup) {
+          activeStopPopup = null;
+        }
+      });
 
 
       popup.setHTML(`
@@ -1548,36 +1575,102 @@ function updateStopMarkers() {
 
 
       // ----------------------------------------------
-      // Click numbered stop
+      // Confirm drop-off from the stop popup
       // ----------------------------------------------
-let tooltipTimer;
+      element.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
 
-element.addEventListener("click", event => {
-  event.preventDefault();
-  event.stopPropagation();
+        const trips = (AppState.activeTrips || []).filter(
+          trip => trip.status === "active" && trip.routeId === selectedRouteId
+        );
+        const selectedTripId = trips.some(
+          trip => trip.id === AppState.dropoff?.tripId
+        )
+          ? AppState.dropoff.tripId
+          : trips.length === 1
+            ? trips[0].id
+            : "";
 
-  clearTimeout(tooltipTimer);
+        const renderStopPopup = () => `
+          <div style="min-width:200px; padding:2px;">
+            <div style="display:flex; align-items:center; gap:9px; margin-bottom:8px;">
+              <div style="width:30px; height:30px; border-radius:50%; background:#2563eb; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0;">
+                ${index + 1}
+              </div>
+              <div>
+                <div style="font-size:14px; font-weight:700; color:#111827;">${escapeHtml(stopName)}</div>
+                <div style="font-size:11px; color:#6b7280; margin-top:2px;">Bus Stop ${index + 1}</div>
+              </div>
+            </div>
+            ${stopPlace ? `<div style="border-top:1px solid #e5e7eb; padding-top:8px; font-size:12px; color:#4b5563;">${escapeHtml(stopPlace)}</div>` : ""}
+            ${trips.length > 1 ? `
+              <label style="display:block; margin-top:10px; font-size:11px; color:#4b5563;">
+                Bus you are riding
+                <select id="dropoffTripSelect" style="display:block; width:100%; margin-top:4px; padding:7px; border:1px solid #d1d5db; border-radius:6px; background:#fff;">
+                  <option value="">Select an active bus</option>
+                  ${trips.map(trip => `
+                    <option value="${escapeHtml(trip.id)}" ${trip.id === selectedTripId ? "selected" : ""}>
+                      ${escapeHtml(trip.busCode || trip.busId || "Bus")}
+                    </option>
+                  `).join("")}
+                </select>
+              </label>
+            ` : trips.length === 1 ? `
+              <div style="margin-top:10px; font-size:11px; color:#4b5563;">Active bus: ${escapeHtml(trips[0].busCode || trips[0].busId || "Bus")}</div>
+            ` : `
+              <div style="margin-top:10px; font-size:11px; color:#b91c1c;">No active bus is running on this route.</div>
+            `}
+            <button id="confirmDropoffButton" type="button" ${selectedTripId ? "" : "disabled"} style="width:100%; margin-top:10px; padding:9px 12px; border:0; border-radius:7px; background:${selectedTripId ? "#115272" : "#9ca3af"}; color:#fff; font-size:12px; font-weight:700; cursor:${selectedTripId ? "pointer" : "not-allowed"};">
+              ${AppState.dropoff?.tripId === selectedTripId && AppState.dropoff?.stopId === stop.id ? "Drop-off confirmed" : "Confirm this stop"}
+            </button>
+            <p id="dropoffConfirmMessage" aria-live="polite" style="margin-top:6px; font-size:11px; color:#15803d;"></p>
+          </div>
+        `;
 
-  popup
-    .setLngLat([lng, lat])
-    .setHTML(`
-      <div style="font-weight:700; font-size:14px;">
-        ${stopName}
-      </div>
-      ${
-        stopPlace
-          ? `<div style="font-size:12px; color:#666; margin-top:3px;">
-              ${stopPlace}
-            </div>`
-          : ""
-      }
-    `)
-    .addTo(map);
+        if (activeStopPopup) {
+          activeStopPopup.remove();
+        }
 
-  tooltipTimer = setTimeout(() => {
-    popup.remove();
-  }, 2500);
-});
+        activeStopPopup = popup;
+        popup.setLngLat([lng, lat]).setHTML(renderStopPopup()).addTo(map);
+
+        const popupElement = popup.getElement();
+        const confirmButton = popupElement.querySelector("#confirmDropoffButton");
+        const tripSelect = popupElement.querySelector("#dropoffTripSelect");
+
+        if (tripSelect) {
+          tripSelect.addEventListener("change", () => {
+            if (confirmButton) {
+              confirmButton.disabled = !tripSelect.value;
+              confirmButton.style.background = tripSelect.value ? "#115272" : "#9ca3af";
+              confirmButton.style.cursor = tripSelect.value ? "pointer" : "not-allowed";
+            }
+
+            if (tripSelect.value) {
+              window.selectDropoffTrip(tripSelect.value);
+            }
+          });
+        }
+
+        confirmButton?.addEventListener("click", async () => {
+          const tripId = tripSelect?.value || selectedTripId;
+          if (!tripId) return;
+
+          confirmButton.disabled = true;
+          confirmButton.textContent = "Saving...";
+          const confirmed = await window.confirmDropoffStop(tripId, stop);
+          const message = popupElement.querySelector("#dropoffConfirmMessage");
+
+          if (confirmed) {
+            confirmButton.textContent = "Drop-off confirmed";
+            if (message) message.textContent = "Your expected drop-off has been saved.";
+          } else {
+            confirmButton.disabled = false;
+            confirmButton.textContent = "Confirm this stop";
+          }
+        });
+      });
 
 
       // ----------------------------------------------
@@ -2304,6 +2397,10 @@ function getUserLocation() {
 // ==================================================
 
 function destroyMap() {
+  if (activeStopPopup) {
+    activeStopPopup.remove();
+    activeStopPopup = null;
+  }
 
   busMarkers.forEach(
     marker =>
@@ -2346,6 +2443,7 @@ function destroyMap() {
 
 
   selectedRouteId = null;
+  pendingSelectedRouteId = null;
 
   routeLayersInitialized = false;
 }
@@ -2366,6 +2464,9 @@ window.updateBusLegend =
 
 window.updateRouteLayers =
   updateRouteLayers;
+
+window.selectMapRoute =
+  selectRoute;
 
 window.destroyMap =
   destroyMap;

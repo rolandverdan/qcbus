@@ -142,6 +142,25 @@
     </nav>
 </div>
 
+<div id="liveMapPanel" class="live-map-panel hidden" aria-hidden="true">
+    <div class="live-map-panel-header">
+        <div>
+            <h2>Live route map</h2>
+            <p id="liveMapStopLabel">Waiting for location</p>
+        </div>
+        <button id="liveMapClose" type="button" aria-label="Close live map" title="Close map">×</button>
+    </div>
+    <div id="liveMapCanvas" class="live-map-canvas"></div>
+</div>
+
+<button id="liveMapFab" class="live-map-fab hidden" type="button" aria-label="Open live route map" title="Open live route map">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z" />
+        <path d="M9 3v15m6-12v15" />
+        <circle cx="12" cy="10" r="2" fill="currentColor" />
+    </svg>
+</button>
+
 <!-- ========== SOS OVERLAY MODAL ========== -->
 <div id="sosModal" class="fixed inset-0 z-[100] hidden">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSOS()"></div>
@@ -205,5 +224,6 @@
 <script type="module" src="js/counter.js"></script>
 <script type="module" src="js/sos.js"></script>
 <script type="module" src="js/sync.js"></script>
+<script type="module" src="js/live-map.js"></script>
 </body>
 </html>

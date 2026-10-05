@@ -10,6 +10,12 @@ import {
   getRoutesRepo,
 } from "../../shared/js/repositories/routes.repo.js";
 
+import {
+  getStopsRepo,
+} from "../../shared/js/repositories/stops.repo.js";
+
+import { getEta } from "../../shared/js/eta.js";
+
 const session = await requireRole("conductor");
 
 if (!session) {
@@ -30,11 +36,17 @@ const AppState = {
   },
   bus: {
     id: null,
+    documentId: null,
     route: 'No route assigned',
     routeId: null,
+    routeGeometry: null,
     plateNumber: '',
     capacity: 45,
     staffId: null,
+    lat: null,
+    lng: null,
+    speedKmh: null,
+    locationUpdatedAt: null,
   },
   trip: {
     active: false,
@@ -48,6 +60,9 @@ const AppState = {
     totalOut: 0,    // total alighted this trip
     capacity: 45,
   },
+  dropoffRequests: [],
+  routeStops: [],
+  currentAlightStopId: null,
   history: [], // events: { type: 'in'|'out', time, source }
   sos: {
     active: false,
@@ -59,6 +74,70 @@ const AppState = {
 // ==================================================
 // PAGE TEMPLATES
 // ==================================================
+function getDropoffCounts() {
+  return Object.values(
+    AppState.dropoffRequests.reduce((counts, request) => {
+      if (request.status === "alighted") return counts;
+
+      const key = request.stopId || request.stopName;
+      if (!key) return counts;
+
+      if (!counts[key]) {
+        counts[key] = {
+          id: request.stopId || "",
+          name: request.stopName || "Selected stop",
+          order: Number(request.stopOrder) || 0,
+          count: 0,
+        };
+      }
+
+      counts[key].count += 1;
+      return counts;
+    }, {})
+  ).sort((a, b) => a.order - b.order);
+}
+
+function renderConductorEta() {
+  const stop = AppState.routeStops.find(
+    (routeStop) => routeStop.id === AppState.currentAlightStopId
+  );
+
+  if (!stop) {
+    return `
+      <span class="text-sm font-semibold text-gray-700">Waiting for location</span>
+      <span class="text-xs text-gray-500">Nearest stop and ETA appear when GPS is available</span>
+    `;
+  }
+
+  const eta = getEta(AppState.bus, stop);
+  return `
+    <span class="text-sm font-semibold text-gray-800">${escapeTripText(eta.label)}</span>
+    <span class="text-xs text-gray-500">${escapeTripText(eta.detail)}</span>
+  `;
+}
+
+function updateConductorEta() {
+  const stop = AppState.routeStops.find(
+    (routeStop) => routeStop.id === AppState.currentAlightStopId
+  );
+  const expected = AppState.dropoffRequests.filter(
+    (request) =>
+      request.stopId === AppState.currentAlightStopId &&
+      request.status !== "alighted"
+  ).length;
+  const nameElement = document.getElementById("currentStopName");
+  const countElement = document.getElementById("currentStopExpected");
+  const etaElement = document.getElementById("currentStopEta");
+
+  if (nameElement) {
+    nameElement.textContent = stop?.name || "Waiting for location";
+  }
+  if (countElement) {
+    countElement.textContent = `${expected} expected`;
+  }
+  if (etaElement) etaElement.innerHTML = renderConductorEta();
+}
+
 const Pages = {
 
   // ---------- TRIP PAGE ----------
@@ -201,6 +280,17 @@ const Pages = {
     const { onboard, capacity, totalIn, totalOut } = AppState.occupancy;
     const pct = Math.min(100, Math.round((onboard / capacity) * 100));
     const isFull = onboard >= capacity;
+    const dropoffCounts = getDropoffCounts();
+    const nearestStop = AppState.routeStops.find(
+      (stop) => stop.id === AppState.currentAlightStopId
+    );
+    const nearestStopExpected = dropoffCounts.find(
+      (stop) => stop.id === AppState.currentAlightStopId
+    )?.count || 0;
+    const expectedDropoffs = dropoffCounts.reduce(
+      (total, stop) => total + stop.count,
+      0
+    );
 
     return `
     <div class="space-y-4 slide-in">
@@ -216,6 +306,48 @@ const Pages = {
           <div class="h-full ${loadBarColor()} transition-all duration-500" style="width:${pct}%"></div>
         </div>
         <p class="text-xs ${loadColor()} font-semibold mt-2">${loadPercent()}% full ${isFull ? '· BUS FULL' : ''}</p>
+      </div>
+
+      <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">Expected remaining to alight</p>
+            <p class="mt-1 text-xs text-blue-700">${expectedDropoffs ? `Across ${dropoffCounts.length} ${dropoffCounts.length === 1 ? "stop" : "stops"}` : "No passengers remaining"}</p>
+          </div>
+          <span class="text-3xl font-bold leading-none text-qc-blue-accent">${expectedDropoffs}</span>
+        </div>
+        ${dropoffCounts.length ? `
+          <div class="mt-3 divide-y divide-blue-100 border-t border-blue-100">
+            ${dropoffCounts.map((stop) => `
+              <div class="flex items-center justify-between gap-3 py-2.5 last:pb-0">
+                <span class="text-sm text-gray-800">${escapeTripText(stop.name)}</span>
+                <span class="shrink-0 text-sm font-bold text-blue-800">${stop.count} ${stop.count === 1 ? "person" : "people"}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : `
+          <p class="mt-3 border-t border-blue-100 pt-3 text-xs text-blue-700">Commuter selections will appear here during this trip.</p>
+        `}
+      </div>
+
+      <div class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-qc-blue-accent">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21s7-4.35 7-11a7 7 0 10-14 0c0 6.65 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.5" stroke-width="2" />
+            </svg>
+          </div>
+          <div>
+            <div class="text-sm font-semibold text-gray-800">Nearest stop</div>
+            <p id="currentStopName" class="text-xs text-gray-500">${escapeTripText(nearestStop?.name || "Waiting for location")}</p>
+          </div>
+          <span id="currentStopExpected" class="ml-auto shrink-0 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800">${nearestStopExpected} expected</span>
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+          <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Stop ETA</span>
+          <div id="currentStopEta" class="flex flex-col items-end text-right">${renderConductorEta()}</div>
+        </div>
       </div>
 
       <!-- IN / OUT buttons -->
@@ -364,6 +496,15 @@ const Pages = {
     </div>
   `,
 };
+
+function escapeTripText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 // ==================================================
 // HELPERS
@@ -519,6 +660,7 @@ async function loadConductorData() {
   }
 
   const routes = await getRoutesRepo();
+  const stops = await getStopsRepo();
 
   const route = bus.routeId
     ? routes.find(r => r.id === bus.routeId)
@@ -535,14 +677,30 @@ async function loadConductorData() {
 
   AppState.bus = {
     id: bus.code || bus.id,
+    documentId: bus.id,
     staffId: staffMember.id,
     routeId: bus.routeId || null,
+    routeGeometry: route?.geometry || null,
     route: route
       ? `${route.code} · ${route.name}`
       : 'No route assigned',
     plateNumber: bus.plateNumber || '',
     capacity: Number(bus.capacity) || 45,
+    lat: bus.lat !== null && bus.lat !== undefined && Number.isFinite(Number(bus.lat))
+      ? Number(bus.lat)
+      : null,
+    lng: bus.lng !== null && bus.lng !== undefined && Number.isFinite(Number(bus.lng))
+      ? Number(bus.lng)
+      : null,
+    speedKmh: bus.speedKmh !== null && bus.speedKmh !== undefined && Number.isFinite(Number(bus.speedKmh))
+      ? Number(bus.speedKmh)
+      : null,
+    locationUpdatedAt: bus.locationUpdatedAt || null,
   };
+
+  AppState.routeStops = stops
+    .filter((stop) => stop.routeId === AppState.bus.routeId)
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
 
   AppState.occupancy.capacity =
     AppState.bus.capacity;
@@ -603,3 +761,9 @@ window.loadPercent = loadPercent;
 window.loadColor = loadColor;
 window.loadBarColor = loadBarColor;
 window.renderActivityList = renderActivityList;
+window.setNearestAlightStop = (stopId) => {
+  AppState.currentAlightStopId = stopId || null;
+  updateConductorEta();
+  window.updateFloatingLiveMap?.();
+};
+window.updateConductorEta = updateConductorEta;

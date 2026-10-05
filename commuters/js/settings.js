@@ -8,7 +8,7 @@ const SettingsManager = {
   },
   reset() {
     AppState.settings = {
-      notifications: true,
+      notifications: false,
       darkMode: false,
       language: 'en',
       autoRefresh: true,

@@ -17,6 +17,10 @@ body {
   z-index: 1;
 }
 
+.maplibregl-popup.stop-dropoff-popup {
+  z-index: 10000 !important;
+}
+
 /* Dark mode */
 body.dark-mode {
   background-color: #111827;
