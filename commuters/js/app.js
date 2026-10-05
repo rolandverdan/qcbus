@@ -15,6 +15,7 @@ import { db } from "../../shared/js/firebase.js";
 
 import {
   getUserProfile,
+  updateUserProfile,
 } from "../../shared/js/repositories/users.repo.js";
 
 import {
@@ -248,6 +249,109 @@ function getInitials(name) {
 }
 
 
+
+// ==================================================
+// SAVED ROUTES
+// ==================================================
+async function toggleSavedRoute(routeId) {
+  const route = getRouteById(routeId);
+
+  if (!route) {
+    console.error("Route not found:", routeId);
+    return;
+  }
+
+  const currentSavedRoutes = Array.isArray(AppState.user.savedRoutes)
+    ? [...AppState.user.savedRoutes]
+    : [];
+
+  const alreadySaved = currentSavedRoutes.includes(routeId);
+
+  const updatedSavedRoutes = alreadySaved
+    ? currentSavedRoutes.filter((id) => id !== routeId)
+    : [...currentSavedRoutes, routeId];
+
+  try {
+    await updateUserProfile(AppState.user.uid, {
+      savedRoutes: updatedSavedRoutes,
+    });
+
+    AppState.user.savedRoutes = updatedSavedRoutes;
+
+    showSavedRouteToast(
+      alreadySaved
+        ? "Route removed from saved routes"
+        : "Route saved successfully"
+    );
+
+    navigateTo(AppState.currentPage, false);
+
+  } catch (error) {
+    console.error("Failed to update saved route:", error);
+
+    showSavedRouteToast(
+      "Unable to update saved route",
+      true
+    );
+  }
+}
+
+function showSavedRouteToast(message, isError = false) {
+  const existingToast =
+    document.getElementById("savedRouteToast");
+
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toast = document.createElement("div");
+
+  toast.id = "savedRouteToast";
+
+  toast.className = `
+    fixed
+    bottom-24
+    left-1/2
+    -translate-x-1/2
+    z-[9999]
+    px-4
+    py-3
+    rounded-xl
+    shadow-lg
+    text-sm
+    font-medium
+    flex
+    items-center
+    gap-2
+    ${
+      isError
+        ? "bg-red-600 text-white"
+        : "bg-gray-900 text-white"
+    }
+  `;
+
+  toast.innerHTML = `
+    <span>
+      ${isError ? "⚠️" : "✓"}
+    </span>
+
+    <span>
+      ${escapeHtml(message)}
+    </span>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 2500);
+}
+
+
+const savedRoutes = AppState.user.savedRoutes
+  .map((routeId) => getRouteById(routeId))
+  .filter(Boolean);
+
 // ==================================================
 // REBUILD BUS DATA
 // ==================================================
@@ -394,6 +498,203 @@ function refreshCurrentPage() {
 
 
 
+
+  // ==================================================
+  // EDIT PROFILE
+  // ==================================================
+
+  function openEditProfile() {
+  const existingModal =
+    document.getElementById("editProfileModal");
+
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  const modal = document.createElement("div");
+
+  modal.id = "editProfileModal";
+
+  modal.className =
+    "fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4";
+
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl">
+
+      <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+
+        <div>
+          <h2 class="text-lg font-semibold text-gray-800">
+            Edit Profile
+          </h2>
+
+          <p class="text-xs text-gray-500 mt-1">
+            Update your account information.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onclick="closeEditProfile()"
+          class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+        >
+          ✕
+        </button>
+
+      </div>
+
+
+      <form id="editProfileForm" class="p-5 space-y-4">
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Full Name
+          </label>
+
+          <input
+            id="editProfileName"
+            type="text"
+            value="${escapeHtml(AppState.user.name)}"
+            required
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
+          />
+        </div>
+
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Email
+          </label>
+
+          <input
+            type="email"
+            value="${escapeHtml(AppState.user.email)}"
+            disabled
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-sm text-gray-400"
+          />
+        </div>
+
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Phone Number
+          </label>
+
+          <input
+            id="editProfilePhone"
+            type="tel"
+            value="${escapeHtml(AppState.user.phone)}"
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
+          />
+        </div>
+
+
+        <div class="flex gap-2 pt-2">
+
+          <button
+            type="button"
+            onclick="closeEditProfile()"
+            class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="flex-1 px-4 py-2.5 rounded-xl bg-qc-blue text-white text-sm font-medium"
+          >
+            Save Changes
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+
+function closeEditProfile() {
+  const modal =
+    document.getElementById("editProfileModal");
+
+  if (modal) {
+    modal.remove();
+  }
+}
+
+
+async function handleEditProfileSubmit(event) {
+  event.preventDefault();
+
+  const name =
+    document
+      .getElementById("editProfileName")
+      .value
+      .trim();
+
+  const phone =
+    document
+      .getElementById("editProfilePhone")
+      .value
+      .trim();
+
+  if (!name) {
+    showSavedRouteToast(
+      "Name cannot be empty",
+      true
+    );
+    return;
+  }
+
+  const button =
+    event.target.querySelector(
+      'button[type="submit"]'
+    );
+
+  button.disabled = true;
+  button.textContent = "Saving...";
+
+  try {
+
+    await updateUserProfile(
+      AppState.user.uid,
+      {
+        name,
+        phone,
+      }
+    );
+
+    AppState.user.name = name;
+    AppState.user.phone = phone;
+
+    closeEditProfile();
+
+    showSavedRouteToast(
+      "Profile updated successfully"
+    );
+
+    refreshCurrentPage();
+
+  } catch (error) {
+
+    console.error(
+      "Failed to update profile:",
+      error
+    );
+
+    button.disabled = false;
+    button.textContent = "Save Changes";
+
+    showSavedRouteToast(
+      "Unable to update profile",
+      true
+    );
+  }
+}
 
 // ==================================================
 // PAGE TEMPLATES
@@ -741,48 +1042,95 @@ const Pages = {
         </div>
 
       </div>
+<!-- Saved Routes -->
 
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
-      <!-- Saved Routes -->
+  <div class="flex items-center justify-between mb-3">
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <h3 class="font-semibold text-gray-800">
+      Your Saved Routes
+    </h3>
 
-        <h3 class="font-semibold text-gray-800 mb-3">
-          Your Saved Routes
-        </h3>
+    <button
+      onclick="navigateTo('routes')"
+      class="text-xs text-qc-blue font-medium hover:underline"
+    >
+      Manage
+    </button>
 
-        <div class="flex flex-wrap gap-2">
+  </div>
 
-          ${
-            AppState.user.savedRoutes.length
-              ? AppState.user.savedRoutes
-                  .map(
-                    (route) => `
-                      <span class="px-3 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium">
-                        ${escapeHtml(route)}
-                      </span>
-                    `
-                  )
-                  .join("")
-              : `
-                <span class="text-xs text-gray-400">
-                  No saved routes yet.
-                </span>
-              `
-          }
+  <div class="space-y-2">
 
-          <button
-            onclick="navigateTo('routes')"
-            class="px-3 py-1.5 border border-dashed border-gray-300 text-gray-400 rounded-full text-xs font-medium hover:border-qc-blue hover:text-qc-blue transition"
-          >
-            + Browse Routes
-          </button>
+    ${
+      AppState.user.savedRoutes.length
+        ? AppState.user.savedRoutes
+            .map((routeId) => {
 
-        </div>
+              const route = getRouteById(routeId);
 
-      </div>
+              return `
+                <button
+                  onclick="navigateTo('routes')"
+                  class="w-full flex items-center justify-between p-3 bg-blue-50 rounded-xl text-left hover:bg-blue-100 transition"
+                >
 
-    </div>
+                  <div class="min-w-0">
+
+                    <p class="text-sm font-semibold text-qc-blue">
+                      ${
+                        route
+                          ? escapeHtml(
+                              route.code ||
+                              "Route"
+                            )
+                          : "Saved Route"
+                      }
+                    </p>
+
+                    <p class="text-xs text-gray-500 mt-0.5 truncate">
+                      ${
+                        route
+                          ? escapeHtml(
+                              route.name ||
+                              "Unnamed route"
+                            )
+                          : `Route ID: ${escapeHtml(routeId)}`
+                      }
+                    </p>
+
+                  </div>
+
+                  <span class="text-blue-400 ml-3">
+                    →
+                  </span>
+
+                </button>
+              `;
+            })
+            .join("")
+        : `
+          <div class="text-center py-4">
+
+            <p class="text-xs text-gray-400">
+              No saved routes yet.
+            </p>
+
+            <button
+              onclick="navigateTo('routes')"
+              class="mt-2 text-xs font-medium text-qc-blue hover:underline"
+            >
+              Browse routes
+            </button>
+
+          </div>
+        `
+    }
+
+  </div>
+
+</div>
   `,
 
 
@@ -853,9 +1201,47 @@ const Pages = {
                         </div>
 
 
-                        <span class="text-sm font-semibold text-qc-blue flex-shrink-0">
+                        <div class="flex items-center gap-2 flex-shrink-0">
+
+                        <span class="text-sm font-semibold text-qc-blue">
                           ${formatFare(route.fare)}
                         </span>
+
+                        <button
+                          onclick="toggleSavedRoute('${escapeHtml(route.id)}')"
+                          class="w-9 h-9 rounded-full flex items-center justify-center transition ${
+                            AppState.user.savedRoutes.includes(route.id)
+                              ? "bg-yellow-50 text-yellow-500"
+                              : "bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-qc-blue"
+                          }"
+                          title="${
+                            AppState.user.savedRoutes.includes(route.id)
+                              ? "Remove from saved routes"
+                              : "Save route"
+                          }"
+                        >
+
+                          <svg
+                            class="w-5 h-5"
+                            fill="${
+                              AppState.user.savedRoutes.includes(route.id)
+                                ? "currentColor"
+                                : "none"
+                            }"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.344l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.344a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0l-4.725 2.885a.562.562 0 01-.84-.61l1.285-5.344a.563.563 0 00-.182-.557L2.821 10.384c-.38-.325-.178-.948.321-.988l5.518-.442a.563.563 0 00.475-.344L11.48 3.5z"
+                            />
+                          </svg>
+
+                        </button>
+
+                      </div>
 
                       </div>
 
@@ -1598,10 +1984,11 @@ const Pages = {
 
 
         <button
-          class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
-        >
-          Edit Profile
-        </button>
+  onclick="openEditProfile()"
+  class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
+>
+  Edit Profile
+</button>
 
       </div>
 
@@ -1774,6 +2161,7 @@ function navigateTo(page, updateHash = true) {
       titles[page] ||
       "QC Bus Tracker";
   }
+
 
 
   // ==================================================
@@ -2106,6 +2494,15 @@ document.addEventListener("submit", event => {
   }
 });
 
+
+document.addEventListener("submit", (event) => {
+  if (
+    event.target &&
+    event.target.id === "editProfileForm"
+  ) {
+    handleEditProfileSubmit(event);
+  }
+});
 
 // ==================================================
 // LOGOUT
@@ -2470,6 +2867,11 @@ async function initApp() {
           ...AppState.settings,
           ...JSON.parse(saved),
         };
+        function isRouteSaved(routeId) {
+  return Array.isArray(AppState.user.savedRoutes)
+    ? AppState.user.savedRoutes.includes(routeId)
+    : false;
+}
 
 
         document.body.classList.toggle(
@@ -2702,6 +3104,10 @@ if (
 // GLOBAL EXPOSURE
 // ==================================================
 
+
+  window.toggleSavedRoute =
+  toggleSavedRoute;
+
 window.navigateTo =
   navigateTo;
 
@@ -2722,6 +3128,12 @@ window.listenToActiveTrips =
 
 window.stopAllListeners =
   stopAllListeners;
+
+  window.openEditProfile =
+  openEditProfile;
+
+window.closeEditProfile =
+  closeEditProfile;
 
 window.AppState =
   AppState;
