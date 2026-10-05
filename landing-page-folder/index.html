@@ -56,7 +56,13 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                         </svg>
                         Download for Android
-                    </a>
+                    </a>    
+                    <button onclick="document.getElementById('ios-modal').classList.remove('hidden')" class="w-full sm:w-auto bg-white/10 border border-white/20 text-white font-bold py-3.5 px-8 rounded-xl hover:bg-white/20 transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M15.193 5.752c.708-1.009 1.189-2.349 1.054-3.752-1.109.051-2.483.744-3.23 1.761-.667.893-1.229 2.259-1.077 3.642 1.24.088 2.545-.646 3.253-1.651zM16.486 7.424c-1.639-.088-3.109 1.028-3.902 1.028-.809 0-2.008-.94-3.328-.913-1.724.027-3.32 1.01-4.208 2.574-1.802 3.167-.46 7.848 1.298 10.428.859 1.267 1.879 2.684 3.237 2.632 1.294-.054 1.789-.844 3.353-.844 1.554 0 2.008.816 3.353.871 1.391.055 2.274-1.22 3.111-2.472 1.03-1.525 1.455-3.003 1.48-3.08-.032-.014-2.883-1.118-2.91-4.409-.023-2.756 2.25-4.086 2.361-4.148-1.282-1.888-3.27-2.124-3.845-2.167z"/>
+                        </svg>
+                        Install for iOS
+                    </button>
                 </div>
                 <p class="text-xs text-white/50 mt-4">Requires Android 8.0 or later.</p>
             </div>
@@ -95,6 +101,34 @@
             </div>
         </div>
     </main>
+
+    <div id="ios-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4 transition-opacity">
+        <div class="bg-white rounded-3xl sm:rounded-2xl p-8 w-full max-w-sm text-center relative shadow-2xl">
+            <button onclick="document.getElementById('ios-modal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-800 p-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            
+            <h3 class="font-extrabold text-2xl text-qc-blue mb-2">Install on iPhone</h3>
+            <p class="text-gray-500 mb-6 text-sm">Apple requires a manual installation through Safari.</p>
+            
+            <!-- The Directions -->
+            <div class="text-left text-gray-700 space-y-5 mb-8">
+                <div class="flex items-start gap-4">
+                    <span class="bg-blue-50 text-qc-blue font-bold rounded-full w-8 h-8 flex items-center justify-center shrink-0">1</span>
+                    <p class="text-sm mt-1">Tap the <strong>Share</strong> icon at the bottom of the Safari menu.</p>
+                </div>
+                <div class="flex items-start gap-4">
+                    <span class="bg-blue-50 text-qc-blue font-bold rounded-full w-8 h-8 flex items-center justify-center shrink-0">2</span>
+                    <p class="text-sm mt-1">Scroll down and tap <strong>Add to Home Screen</strong>.</p>
+                </div>
+            </div>
+            
+            <!-- Button to launch the web app -->
+            <a href="/commuters/" class="block w-full bg-qc-blue text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-qc-blue-accent transition-all">
+                Open App to Install
+            </a>
+        </div>
+    </div>
 
     <footer class="bg-white border-t border-gray-200 py-8 text-center text-sm text-gray-500">
         <p>&copy; 2026 Quezon City Government. All rights reserved.</p>
