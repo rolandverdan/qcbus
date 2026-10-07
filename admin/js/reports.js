@@ -1,22 +1,7 @@
-<<<<<<< HEAD
 // ==================================================
 // ADMIN — REPORTS PAGE (FRONT-END ONLY)
 // Data is loaded from Firestore later; empty for now
 // ==================================================
-
-// ---------- Reports data (empty until connected) ----------
-let allReports = [];
-=======
-import {
-  getReports,
-  updateReportStatusByAdmin,
-  deleteReport,
-} from "../../shared/js/repositories/reports.repo.js";
-
-import {
-  getUserProfile,
-} from "../../shared/js/repositories/users.repo.js";
->>>>>>> 1b5336d2a85c34c7d3626d6f6cc02fbbdc4bc266
 
 import {
   auth,
