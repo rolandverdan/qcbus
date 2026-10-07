@@ -1310,7 +1310,6 @@ const Pages = {
 
             <optgroup label="Staff-related">
               <option value="rude">Rude behavior</option>
-              <option value="overcharging">Overcharging / fare issue</option>
               <option value="reckless">Reckless driving</option>
               <option value="refused">Refused to stop / pick up</option>
               <option value="not-wearing-id">Not wearing ID / uniform</option>
