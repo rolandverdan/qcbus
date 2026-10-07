@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // ==================================================
 // ADMIN — REPORTS PAGE (FRONT-END ONLY)
 // Data is loaded from Firestore later; empty for now
@@ -5,8 +6,86 @@
 
 // ---------- Reports data (empty until connected) ----------
 let allReports = [];
+=======
+import {
+  getReports,
+  updateReportStatusByAdmin,
+  deleteReport,
+} from "../../shared/js/repositories/reports.repo.js";
 
-let activeFilter = 'all';
+import {
+  getUserProfile,
+} from "../../shared/js/repositories/users.repo.js";
+>>>>>>> 1b5336d2a85c34c7d3626d6f6cc02fbbdc4bc266
+
+import {
+  auth,
+} from "../../shared/js/firebase.js";
+
+let allReports = [];
+let activeFilter = "all";
+
+
+async function loadReports() {
+  try {
+    const reports = await getReports();
+
+    allReports = await Promise.all(
+      reports.map(async (report) => {
+        let reporterName = "Unknown";
+        let reporterEmail = "";
+
+        if (report.reporterId) {
+          try {
+            const profile = await getUserProfile(
+              report.reporterId
+            );
+
+            if (profile) {
+              reporterName =
+                profile.name ||
+                "Unknown";
+
+              reporterEmail =
+                profile.email ||
+                "";
+            }
+          } catch (error) {
+            console.error(
+              "Failed to load reporter:",
+              error
+            );
+          }
+        }
+
+        return {
+          ...report,
+
+          reporterName,
+          reporterEmail,
+
+          submittedAt:
+            report.createdAt?.toDate
+              ? report.createdAt.toDate()
+              : new Date(),
+        };
+      })
+    );
+
+    window.navigateTo("reports");
+
+  } catch (error) {
+    console.error(
+      "Failed to load reports:",
+      error
+    );
+
+    window.showToast(
+      "Failed to load reports.",
+      "error"
+    );
+  }
+}
 
 // ==================================================
 // PAGE TEMPLATE
@@ -131,9 +210,10 @@ function renderReportCard(r) {
 
         <!-- Reporter -->
         <p class="text-[11px] text-gray-400 mb-3">
-          ${r.anonymous
-            ? '🕶️ Anonymous report'
-            : `👤 ${escapeHtml(r.reporterName || 'Unknown')} · ${escapeHtml(r.reporterEmail || '')}`}
+            👤 ${escapeHtml(r.reporterName || "Unknown")}
+            ${r.reporterEmail
+            ? ` · ${escapeHtml(r.reporterEmail)}`
+            : ""}
         </p>
 
         <!-- Actions -->
@@ -195,39 +275,116 @@ function setReportFilter(key) {
 // ==================================================
 // ACTIONS (local only — no Firestore yet)
 // ==================================================
-function markReportResolved(id) {
-  const r = allReports.find(x => x.id === id);
-  if (!r) return;
-  r.status = 'resolved';
-  window.showToast('Marked as resolved', 'success');
-  window.navigateTo('reports');
-}
+async function markReportResolved(id) {
+  try {
+    if (!auth.currentUser) {
+      window.showToast(
+        "Admin authentication required.",
+        "error"
+      );
+      return;
+    }
 
-function markReportPending(id) {
-  const r = allReports.find(x => x.id === id);
-  if (!r) return;
-  r.status = 'pending';
-  window.showToast('Report reopened', 'info');
-  window.navigateTo('reports');
-}
+    await updateReportStatusByAdmin(
+      id,
+      "resolved",
+      auth.currentUser.uid
+    );
 
+    await loadReports();
+
+    window.showToast(
+      "Report marked as resolved.",
+      "success"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to resolve report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to update report.",
+      "error"
+    );
+  }
+}
+async function markReportPending(id) {
+  try {
+    if (!auth.currentUser) {
+      window.showToast(
+        "Admin authentication required.",
+        "error"
+      );
+      return;
+    }
+
+    await updateReportStatusByAdmin(
+      id,
+      "pending",
+      auth.currentUser.uid
+    );
+
+    await loadReports();
+
+    window.showToast(
+      "Report reopened.",
+      "info"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to reopen report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to update report.",
+      "error"
+    );
+  }
+}
 async function confirmDeleteReport(id) {
   const ok = await window.confirmAction(
-    'Delete Report?',
-    'This will permanently remove the report. This cannot be undone.',
-    'Delete'
+    "Delete Report?",
+    "This will permanently remove the report. This cannot be undone.",
+    "Delete"
   );
-  if (!ok) return;
 
-  allReports = allReports.filter(x => x.id !== id);
-  window.showToast('Report deleted', 'info');
-  window.navigateTo('reports');
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await deleteReport(id);
+
+    await loadReports();
+
+    window.showToast(
+      "Report deleted.",
+      "info"
+    );
+
+  } catch (error) {
+    console.error(
+      "Failed to delete report:",
+      error
+    );
+
+    window.showToast(
+      "Failed to delete report.",
+      "error"
+    );
+  }
 }
 
 // ==================================================
 // EXPOSE
 // ==================================================
+window.confirmDeleteReport = confirmDeleteReport;
 window.setReportFilter = setReportFilter;
 window.markReportResolved = markReportResolved;
 window.markReportPending = markReportPending;
 window.confirmDeleteReport = confirmDeleteReport;
+loadReports();

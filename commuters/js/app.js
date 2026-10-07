@@ -12,9 +12,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
+import { getEta } from "../../shared/js/eta.js";
 
 import {
   getUserProfile,
+  updateUserProfile,
 } from "../../shared/js/repositories/users.repo.js";
 
 import {
@@ -26,6 +28,11 @@ import "../../shared/js/loading.js";
 import {
   createReport,
 } from "../../shared/js/repositories/reports.repo.js";
+
+import {
+  listenToDropoffRequestRepo,
+  saveDropoffRequestRepo,
+} from "../../shared/js/repositories/dropoffs.repo.js";
 
 // ==================================================
 // FIREBASE AUTH GUARD
@@ -60,7 +67,7 @@ const AppState = {
   notifications: [],
 
   settings: {
-    notifications: true,
+    notifications: false,
     darkMode: false,
     language: "en",
     autoRefresh: true,
@@ -71,6 +78,11 @@ const AppState = {
   stops: [],
   buses: [],
   activeTrips: [],
+  dropoff: {
+    tripId: null,
+    stopId: null,
+    stopName: "",
+  },
 };
 
 window.AppState = AppState;
@@ -84,6 +96,7 @@ let unsubscribeRoutes = null;
 let unsubscribeStops = null;
 let unsubscribeBuses = null;
 let unsubscribeTrips = null;
+let unsubscribeMyDropoff = null;
 
 let rawBuses = [];
 
@@ -163,6 +176,45 @@ function getActiveTripForBus(busId, busCode) {
 }
 
 
+function renderCommuterDropoffEta() {
+  const trip = AppState.activeTrips.find(
+    (activeTrip) => activeTrip.id === AppState.dropoff.tripId
+  );
+  const stop = AppState.stops.find(
+    (routeStop) => routeStop.id === AppState.dropoff.stopId
+  );
+
+  if (!trip || !stop) {
+    return `
+      <p class="text-sm font-semibold text-gray-800">Drop-off ETA</p>
+      <p class="mt-1 text-xs text-gray-500">Confirm a stop on the map to see its live estimate.</p>
+    `;
+  }
+
+  const bus = AppState.buses.find(
+    (activeBus) => activeBus.tripId === trip.id
+  );
+  const eta = getEta(bus, stop);
+
+  return `
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">Drop-off ETA</p>
+        <p class="mt-1 text-sm font-semibold text-gray-800">${escapeHtml(stop.name || stop.stopName || "Selected stop")}</p>
+        <p class="mt-1 text-xs text-gray-500">${escapeHtml(eta.detail)}</p>
+      </div>
+      <span class="shrink-0 text-xl font-bold text-qc-blue-accent">${escapeHtml(eta.label)}</span>
+    </div>
+  `;
+}
+
+
+function updateCommuterDropoffEta() {
+  const etaCard = document.getElementById("dropoffEtaCard");
+  if (etaCard) etaCard.innerHTML = renderCommuterDropoffEta();
+}
+
+
 function getRouteLabel(route) {
   if (!route) {
     return "No route assigned";
@@ -237,6 +289,133 @@ function getInitials(name) {
 }
 
 
+
+// ==================================================
+// SAVED ROUTES
+// ==================================================
+async function toggleSavedRoute(routeId) {
+  const route = getRouteById(routeId);
+
+  if (!route) {
+    console.error("Route not found:", routeId);
+    return;
+  }
+
+  const currentSavedRoutes = Array.isArray(AppState.user.savedRoutes)
+    ? [...AppState.user.savedRoutes]
+    : [];
+
+  const alreadySaved = currentSavedRoutes.includes(routeId);
+
+  const updatedSavedRoutes = alreadySaved
+    ? currentSavedRoutes.filter((id) => id !== routeId)
+    : [...currentSavedRoutes, routeId];
+
+  try {
+    await updateUserProfile(AppState.user.uid, {
+      savedRoutes: updatedSavedRoutes,
+    });
+
+    AppState.user.savedRoutes = updatedSavedRoutes;
+
+    showSavedRouteToast(
+      alreadySaved
+        ? "Route removed from saved routes"
+        : "Route saved successfully"
+    );
+
+    navigateTo(AppState.currentPage, false);
+
+  } catch (error) {
+    console.error("Failed to update saved route:", error);
+
+    showSavedRouteToast(
+      "Unable to update saved route",
+      true
+    );
+  }
+}
+
+
+function openSavedRoute(routeId) {
+  if (!getRouteById(routeId)) {
+    showSavedRouteToast("This saved route is no longer available", true);
+    return;
+  }
+
+  navigateTo("routes", true, { scrollToTop: false });
+
+  requestAnimationFrame(() => {
+    const routeCard = Array.from(
+      document.querySelectorAll("[data-saved-route-id]")
+    ).find((card) => card.dataset.savedRouteId === routeId);
+
+    if (!routeCard) return;
+
+    routeCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    routeCard.classList.add("ring-2", "ring-qc-blue-accent");
+    setTimeout(() => {
+      routeCard.classList.remove("ring-2", "ring-qc-blue-accent");
+    }, 1600);
+  });
+}
+
+function showSavedRouteToast(message, isError = false) {
+  const existingToast =
+    document.getElementById("savedRouteToast");
+
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toast = document.createElement("div");
+
+  toast.id = "savedRouteToast";
+
+  toast.className = `
+    fixed
+    bottom-24
+    left-1/2
+    -translate-x-1/2
+    z-[9999]
+    px-4
+    py-3
+    rounded-xl
+    shadow-lg
+    text-sm
+    font-medium
+    flex
+    items-center
+    gap-2
+    ${
+      isError
+        ? "bg-red-600 text-white"
+        : "bg-gray-900 text-white"
+    }
+  `;
+
+  toast.innerHTML = `
+    <span>
+      ${isError ? "⚠️" : "✓"}
+    </span>
+
+    <span>
+      ${escapeHtml(message)}
+    </span>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 2500);
+}
+
+
+const savedRoutes = AppState.user.savedRoutes
+  .map((routeId) => getRouteById(routeId))
+  .filter(Boolean);
+
 // ==================================================
 // REBUILD BUS DATA
 // ==================================================
@@ -294,6 +473,12 @@ function rebuildBuses() {
       lng:
         rawBus.lng,
 
+      speedKmh:
+        rawBus.speedKmh,
+
+      locationUpdatedAt:
+        rawBus.locationUpdatedAt,
+
       status:
         activeTrip
           ? "On Trip"
@@ -335,21 +520,54 @@ function rebuildBuses() {
 // REFRESH CURRENT PAGE
 // ==================================================
 
-function refreshCurrentPage() {
+function getHomeBusViewSignature() {
+  return JSON.stringify(
+    AppState.buses.map((bus) => [
+      bus.id,
+      bus.code,
+      bus.route,
+      bus.status,
+      bus.onboard,
+      bus.capacity,
+      bus.tripActive,
+    ])
+  );
+}
+
+
+function refreshCurrentPage({ refreshHome = true, refreshRoutes = true } = {}) {
   if (
     !document.getElementById("content")
   ) {
     return;
   }
 
-  if (
-    AppState.currentPage === "home" ||
-    AppState.currentPage === "routes"
-  ) {
-    navigateTo(
-      AppState.currentPage,
-      false
-    );
+  if (AppState.currentPage === "home" && refreshHome) {
+    const content = document.getElementById("content");
+    const scrollY = window.scrollY;
+    content.innerHTML = Pages.home();
+    content.firstElementChild?.classList.remove("slide-in");
+    window.scrollTo(0, scrollY);
+
+    return;
+  }
+
+  if (AppState.currentPage === "routes" && refreshRoutes) {
+    const content = document.getElementById("content");
+    const scrollY = window.scrollY;
+    content.innerHTML = Pages.routes();
+    content.firstElementChild?.classList.remove("slide-in");
+    window.scrollTo(0, scrollY);
+
+    return;
+  }
+
+  if (AppState.currentPage === "notifications") {
+    const content = document.getElementById("content");
+    const scrollY = window.scrollY;
+    content.innerHTML = Pages.notifications();
+    content.firstElementChild?.classList.remove("slide-in");
+    window.scrollTo(0, scrollY);
 
     return;
   }
@@ -375,11 +593,280 @@ function refreshCurrentPage() {
     ) {
       window.updateRouteLayers();
     }
+
+    updateCommuterDropoffEta();
+  }
+}
+
+
+function selectDropoffTrip(tripId) {
+  if (unsubscribeMyDropoff) {
+    unsubscribeMyDropoff();
+    unsubscribeMyDropoff = null;
+  }
+
+  AppState.dropoff = {
+    tripId: tripId || null,
+    stopId: null,
+    stopName: "",
+  };
+
+  const trip = AppState.activeTrips.find(
+    (activeTrip) => activeTrip.id === tripId
+  );
+
+  if (trip) {
+    unsubscribeMyDropoff = listenToDropoffRequestRepo(
+      trip.id,
+      AppState.user.uid,
+      (request) => {
+        if (AppState.dropoff.tripId !== trip.id) return;
+
+        AppState.dropoff.stopId = request?.stopId || null;
+        AppState.dropoff.stopName = request?.stopName || "";
+        updateCommuterDropoffEta();
+          window.evaluateDropoffAlerts?.();
+      },
+      (error) => console.error("Drop-off listener failed:", error)
+    );
+  }
+
+}
+
+
+async function confirmDropoffStop(tripId, stop) {
+  const trip = AppState.activeTrips.find(
+    (activeTrip) => activeTrip.id === tripId && activeTrip.status === "active"
+  );
+
+  if (!trip || trip.routeId !== stop.routeId) {
+    showSavedRouteToast("Choose an active bus on this route", true);
+    return false;
+  }
+
+  const stopName = stop.name || stop.stopName || "Selected stop";
+
+  try {
+    if (AppState.dropoff.tripId !== trip.id) {
+      selectDropoffTrip(trip.id);
+    }
+
+    await saveDropoffRequestRepo(trip.id, AppState.user.uid, {
+      ...stop,
+      name: stopName,
+    });
+    AppState.dropoff.stopId = stop.id;
+    AppState.dropoff.stopName = stopName;
+    updateCommuterDropoffEta();
+    showSavedRouteToast(`Drop-off set for ${stopName}`);
+      window.evaluateDropoffAlerts?.();
+    return true;
+  } catch (error) {
+    console.error("Failed to save drop-off:", error);
+    showSavedRouteToast("Unable to set drop-off", true);
+    return false;
   }
 }
 
 
 
+
+  // ==================================================
+  // EDIT PROFILE
+  // ==================================================
+
+  function openEditProfile() {
+  const existingModal =
+    document.getElementById("editProfileModal");
+
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  const modal = document.createElement("div");
+
+  modal.id = "editProfileModal";
+
+  modal.className =
+    "fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4";
+
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl">
+
+      <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+
+        <div>
+          <h2 class="text-lg font-semibold text-gray-800">
+            Edit Profile
+          </h2>
+
+          <p class="text-xs text-gray-500 mt-1">
+            Update your account information.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onclick="closeEditProfile()"
+          class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+        >
+          ✕
+        </button>
+
+      </div>
+
+
+      <form id="editProfileForm" class="p-5 space-y-4">
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Full Name
+          </label>
+
+          <input
+            id="editProfileName"
+            type="text"
+            value="${escapeHtml(AppState.user.name)}"
+            required
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
+          />
+        </div>
+
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Email
+          </label>
+
+          <input
+            type="email"
+            value="${escapeHtml(AppState.user.email)}"
+            disabled
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-sm text-gray-400"
+          />
+        </div>
+
+
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Phone Number
+          </label>
+
+          <input
+            id="editProfilePhone"
+            type="tel"
+            value="${escapeHtml(AppState.user.phone)}"
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
+          />
+        </div>
+
+
+        <div class="flex gap-2 pt-2">
+
+          <button
+            type="button"
+            onclick="closeEditProfile()"
+            class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="flex-1 px-4 py-2.5 rounded-xl bg-qc-blue text-white text-sm font-medium"
+          >
+            Save Changes
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+
+function closeEditProfile() {
+  const modal =
+    document.getElementById("editProfileModal");
+
+  if (modal) {
+    modal.remove();
+  }
+}
+
+
+async function handleEditProfileSubmit(event) {
+  event.preventDefault();
+
+  const name =
+    document
+      .getElementById("editProfileName")
+      .value
+      .trim();
+
+  const phone =
+    document
+      .getElementById("editProfilePhone")
+      .value
+      .trim();
+
+  if (!name) {
+    showSavedRouteToast(
+      "Name cannot be empty",
+      true
+    );
+    return;
+  }
+
+  const button =
+    event.target.querySelector(
+      'button[type="submit"]'
+    );
+
+  button.disabled = true;
+  button.textContent = "Saving...";
+
+  try {
+
+    await updateUserProfile(
+      AppState.user.uid,
+      {
+        name,
+        phone,
+      }
+    );
+
+    AppState.user.name = name;
+    AppState.user.phone = phone;
+
+    closeEditProfile();
+
+    showSavedRouteToast(
+      "Profile updated successfully"
+    );
+
+    refreshCurrentPage();
+
+  } catch (error) {
+
+    console.error(
+      "Failed to update profile:",
+      error
+    );
+
+    button.disabled = false;
+    button.textContent = "Save Changes";
+
+    showSavedRouteToast(
+      "Unable to update profile",
+      true
+    );
+  }
+}
 
 // ==================================================
 // PAGE TEMPLATES
@@ -727,48 +1214,93 @@ const Pages = {
         </div>
 
       </div>
+<!-- Saved Routes -->
 
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
-      <!-- Saved Routes -->
+  <div class="flex items-center justify-between mb-3">
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <h3 class="font-semibold text-gray-800">
+      Your Saved Routes
+    </h3>
 
-        <h3 class="font-semibold text-gray-800 mb-3">
-          Your Saved Routes
-        </h3>
+    <button
+      onclick="navigateTo('routes')"
+      class="text-xs text-qc-blue font-medium hover:underline"
+    >
+      Manage
+    </button>
 
-        <div class="flex flex-wrap gap-2">
+  </div>
 
-          ${
-            AppState.user.savedRoutes.length
-              ? AppState.user.savedRoutes
-                  .map(
-                    (route) => `
-                      <span class="px-3 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium">
-                        ${escapeHtml(route)}
-                      </span>
-                    `
-                  )
-                  .join("")
-              : `
-                <span class="text-xs text-gray-400">
-                  No saved routes yet.
-                </span>
-              `
-          }
+  <div class="space-y-2">
 
-          <button
-            onclick="navigateTo('routes')"
-            class="px-3 py-1.5 border border-dashed border-gray-300 text-gray-400 rounded-full text-xs font-medium hover:border-qc-blue hover:text-qc-blue transition"
-          >
-            + Browse Routes
-          </button>
+    ${
+      AppState.user.savedRoutes.length
+        ? AppState.user.savedRoutes
+            .map((routeId) => {
 
-        </div>
+              const route = getRouteById(routeId);
 
-      </div>
+              if (!route) {
+                return `
+                  <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-gray-700">Saved route unavailable</p>
+                      <p class="mt-0.5 text-xs text-gray-500">This route may have been removed.</p>
+                    </div>
+                    <button onclick="toggleSavedRoute('${escapeHtml(routeId)}')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-qc-red hover:bg-red-50" aria-label="Remove unavailable saved route">Remove</button>
+                  </div>
+                `;
+              }
 
-    </div>
+              return `
+                <button
+                  onclick="openSavedRoute('${escapeHtml(routeId)}')"
+                  class="w-full flex items-center justify-between p-3 bg-blue-50 rounded-xl text-left hover:bg-blue-100 transition"
+                >
+
+                  <div class="min-w-0">
+
+                    <p class="text-sm font-semibold text-qc-blue">
+                      ${escapeHtml(route.name || "Saved route")}
+                    </p>
+
+                    <p class="text-xs text-gray-500 mt-0.5 truncate">
+                      ${escapeHtml(route.description || "View route and stops on the map")}
+                    </p>
+
+                  </div>
+
+                  <span class="text-blue-400 ml-3">
+                    →
+                  </span>
+
+                </button>
+              `;
+            })
+            .join("")
+        : `
+          <div class="text-center py-4">
+
+            <p class="text-xs text-gray-400">
+              No saved routes yet.
+            </p>
+
+            <button
+              onclick="navigateTo('routes')"
+              class="mt-2 text-xs font-medium text-qc-blue hover:underline"
+            >
+              Browse routes
+            </button>
+
+          </div>
+        `
+    }
+
+  </div>
+
+</div>
   `,
 
 
@@ -808,7 +1340,8 @@ const Pages = {
 
                 return `
                   <div
-                    class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+                    data-saved-route-id="${escapeHtml(route.id)}"
+                    class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden scroll-mt-20 transition-shadow"
                   >
 
                     <div class="p-4">
@@ -839,6 +1372,51 @@ const Pages = {
                         </div>
 
 
+<<<<<<< HEAD
+=======
+                        <div class="flex items-center gap-2 flex-shrink-0">
+
+                        <span class="text-sm font-semibold text-qc-blue">
+                          ${formatFare(route.fare)}
+                        </span>
+
+                        <button
+                          onclick="toggleSavedRoute('${escapeHtml(route.id)}')"
+                          class="w-9 h-9 rounded-full flex items-center justify-center transition ${
+                            AppState.user.savedRoutes.includes(route.id)
+                              ? "bg-yellow-50 text-yellow-500"
+                              : "bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-qc-blue"
+                          }"
+                          title="${
+                            AppState.user.savedRoutes.includes(route.id)
+                              ? "Remove from saved routes"
+                              : "Save route"
+                          }"
+                        >
+
+                          <svg
+                            class="w-5 h-5"
+                            fill="${
+                              AppState.user.savedRoutes.includes(route.id)
+                                ? "currentColor"
+                                : "none"
+                            }"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.344l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.344a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0l-4.725 2.885a.562.562 0 01-.84-.61l1.285-5.344a.563.563 0 00-.182-.557L2.821 10.384c-.38-.325-.178-.948.321-.988l5.518-.442a.563.563 0 00.475-.344L11.48 3.5z"
+                            />
+                          </svg>
+
+                        </button>
+
+                      </div>
+
+>>>>>>> 1b5336d2a85c34c7d3626d6f6cc02fbbdc4bc266
                       </div>
 
 
@@ -998,6 +1576,11 @@ const Pages = {
       ></div>
 
 
+      <div id="dropoffEtaCard" class="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+        ${renderCommuterDropoffEta()}
+      </div>
+
+
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
         <div class="flex items-center justify-between mb-2">
@@ -1099,7 +1682,10 @@ const Pages = {
                       notif.read
                         ? "border-gray-100"
                         : "border-blue-200 bg-blue-50/30"
-                    } p-4"
+                    } p-4 cursor-pointer"
+                    role="button"
+                    tabindex="0"
+                    onclick="markNotificationAsRead('${escapeHtml(notif.id)}')"
                   >
 
                     <div class="flex items-start gap-3">
@@ -1579,10 +2165,11 @@ const Pages = {
 
 
         <button
-          class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
-        >
-          Edit Profile
-        </button>
+  onclick="openEditProfile()"
+  class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
+>
+  Edit Profile
+</button>
 
       </div>
 
@@ -1669,7 +2256,7 @@ const Pages = {
 // NAVIGATION
 // ==================================================
 
-function navigateTo(page, updateHash = true) {
+function navigateTo(page, updateHash = true, options = {}) {
 
   if (!Pages[page]) {
     console.warn("Unknown page:", page);
@@ -1757,6 +2344,7 @@ function navigateTo(page, updateHash = true) {
   }
 
 
+
   // ==================================================
   // MAP
   // ==================================================
@@ -1780,10 +2368,12 @@ function navigateTo(page, updateHash = true) {
   // SCROLL
   // ==================================================
 
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth",
-  });
+  if (options.scrollToTop !== false) {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
 
 
   // ==================================================
@@ -1800,14 +2390,55 @@ function navigateTo(page, updateHash = true) {
 // SETTINGS
 // ==================================================
 
-function toggleSetting(key) {
+async function toggleSetting(key) {
 
   if (!(key in AppState.settings)) {
     return;
   }
 
-  AppState.settings[key] =
-    !AppState.settings[key];
+  if (key === "notifications") {
+    const browserPermission = "Notification" in window
+      ? Notification.permission
+      : "unsupported";
+    const needsPermission =
+      !AppState.settings.notifications ||
+      browserPermission !== "granted";
+
+    if (needsPermission) {
+      const granted = await window.requestNotificationPermission?.();
+      if (!granted) {
+        AppState.settings.notifications = false;
+        localStorage.setItem("qcSettings", JSON.stringify(AppState.settings));
+        showSavedRouteToast(
+          browserPermission === "denied"
+            ? "Allow notifications in your browser settings"
+            : "Notification permission was not granted",
+          true
+        );
+        navigateTo("settings");
+        return;
+      }
+
+      AppState.settings.notifications = true;
+
+      const pushSetup = await window.registerPushNotifications?.();
+      if (!pushSetup?.ok) {
+        AppState.settings.notifications = false;
+        localStorage.setItem("qcSettings", JSON.stringify(AppState.settings));
+        const message = pushSetup?.reason === "vapid"
+          ? "Add the Firebase Web Push key before enabling PWA alerts"
+          : "Push registration failed. Please try again.";
+        showSavedRouteToast(message, true);
+        navigateTo("settings");
+        return;
+      }
+    } else {
+      AppState.settings.notifications = false;
+      await window.unregisterPushNotifications?.();
+    }
+  } else {
+    AppState.settings[key] = !AppState.settings[key];
+  }
 
 
   if (key === "darkMode") {
@@ -1836,18 +2467,16 @@ function toggleSetting(key) {
 // ==================================================
 
 function markAllRead() {
+  if (window.markAllNotificationsAsRead) {
+    window.markAllNotificationsAsRead();
+    return;
+  }
 
-  AppState.notifications.forEach(
-    (notification) => {
-      notification.read = true;
-    }
-  );
-
+  AppState.notifications.forEach((notification) => {
+    notification.read = true;
+  });
   updateNotifBadge();
-
-  navigateTo(
-    "notifications"
-  );
+  navigateTo("notifications");
 }
 
 
@@ -2088,6 +2717,15 @@ document.addEventListener("submit", event => {
 });
 
 
+document.addEventListener("submit", (event) => {
+  if (
+    event.target &&
+    event.target.id === "editProfileForm"
+  ) {
+    handleEditProfileSubmit(event);
+  }
+});
+
 // ==================================================
 // LOGOUT
 // ==================================================
@@ -2104,6 +2742,8 @@ async function logout() {
 
 
   try {
+
+    await window.unregisterPushNotifications?.();
 
     await signOutUser();
 
@@ -2249,6 +2889,7 @@ function listenToBuses() {
       busesRef,
 
       (snapshot) => {
+        const previousHomeSignature = getHomeBusViewSignature();
 
         rawBuses =
           snapshot.docs.map(
@@ -2285,6 +2926,12 @@ function listenToBuses() {
                     ? lng
                     : null,
 
+                speedKmh:
+                  getNumber(data.speedKmh, null),
+
+                locationUpdatedAt:
+                  data.locationUpdatedAt || null,
+
                 status:
                   data.status ||
                   "idle",
@@ -2316,7 +2963,10 @@ function listenToBuses() {
         );
 
 
-        refreshCurrentPage();
+        refreshCurrentPage({
+          refreshHome: previousHomeSignature !== getHomeBusViewSignature(),
+          refreshRoutes: false,
+        });
       },
 
       (error) => {
@@ -2362,6 +3012,7 @@ function listenToActiveTrips() {
       activeTripsQuery,
 
       (snapshot) => {
+        const previousHomeSignature = getHomeBusViewSignature();
 
         AppState.activeTrips =
           snapshot.docs.map(
@@ -2370,6 +3021,23 @@ function listenToActiveTrips() {
               ...tripDoc.data(),
             })
           );
+
+        if (
+          AppState.dropoff.tripId &&
+          !AppState.activeTrips.some(
+            (trip) => trip.id === AppState.dropoff.tripId
+          )
+        ) {
+          if (unsubscribeMyDropoff) {
+            unsubscribeMyDropoff();
+            unsubscribeMyDropoff = null;
+          }
+          AppState.dropoff = {
+            tripId: null,
+            stopId: null,
+            stopName: "",
+          };
+        }
 
 
         rebuildBuses();
@@ -2381,7 +3049,10 @@ function listenToActiveTrips() {
         );
 
 
-        refreshCurrentPage();
+        refreshCurrentPage({
+          refreshHome: previousHomeSignature !== getHomeBusViewSignature(),
+          refreshRoutes: false,
+        });
       },
 
       (error) => {
@@ -2420,6 +3091,11 @@ function stopAllListeners() {
     unsubscribeTrips();
     unsubscribeTrips = null;
   }
+
+  if (unsubscribeMyDropoff) {
+    unsubscribeMyDropoff();
+    unsubscribeMyDropoff = null;
+  }
 }
 
 
@@ -2451,6 +3127,11 @@ async function initApp() {
           ...AppState.settings,
           ...JSON.parse(saved),
         };
+        function isRouteSaved(routeId) {
+  return Array.isArray(AppState.user.savedRoutes)
+    ? AppState.user.savedRoutes.includes(routeId)
+    : false;
+}
 
 
         document.body.classList.toggle(
@@ -2488,6 +3169,19 @@ async function initApp() {
     ) {
 
       await window.loadNotifications();
+    }
+
+    if (
+      AppState.settings.notifications &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      const pushSetup = await window.registerPushNotifications?.();
+      if (!pushSetup?.ok) {
+        console.warn("PWA push registration is not ready:", pushSetup?.reason);
+        AppState.settings.notifications = false;
+        localStorage.setItem("qcSettings", JSON.stringify(AppState.settings));
+      }
     }
 
 
@@ -2683,6 +3377,13 @@ if (
 // GLOBAL EXPOSURE
 // ==================================================
 
+
+  window.toggleSavedRoute =
+  toggleSavedRoute;
+
+window.openSavedRoute =
+  openSavedRoute;
+
 window.navigateTo =
   navigateTo;
 
@@ -2703,6 +3404,21 @@ window.listenToActiveTrips =
 
 window.stopAllListeners =
   stopAllListeners;
+
+window.selectDropoffTrip =
+  selectDropoffTrip;
+
+window.confirmDropoffStop =
+  confirmDropoffStop;
+
+  window.openEditProfile =
+  openEditProfile;
+
+  window.refreshCurrentPage =
+    refreshCurrentPage;
+
+window.closeEditProfile =
+  closeEditProfile;
 
 window.AppState =
   AppState;

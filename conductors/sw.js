@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-conductor-v1';
+const CACHE_NAME = 'qc-conductor-v3';
 const urlsToCache = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const urlsToCache = [
   './js/counter.js',
   './js/sos.js',
   './js/sync.js',
+  './js/live-map.js',
   'https://cdn.tailwindcss.com'
 ];
 

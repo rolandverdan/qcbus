@@ -1861,34 +1861,28 @@ function updateMonitorRouteLayers() {
 // ==================================================
 // STOP MARKERS
 // ==================================================
-
 function updateMonitorStopMarkers() {
 
   if (!monitorMap) {
     return;
   }
 
-
+  // Remove existing stop markers
   monitorStopMarkers.forEach(
-    marker =>
-      marker.remove()
+    marker => marker.remove()
   );
 
   monitorStopMarkers = [];
 
-
-  if (
-    !selectedMonitorRouteId
-  ) {
+  // Stops only appear when a route is selected
+  if (!selectedMonitorRouteId) {
     return;
   }
-
 
   const stops =
     getMonitorStops(
       selectedMonitorRouteId
     );
-
 
   stops.forEach(
     (stop, index) => {
@@ -1899,7 +1893,6 @@ function updateMonitorStopMarkers() {
       const lng =
         Number(stop.lng);
 
-
       if (
         !Number.isFinite(lat) ||
         !Number.isFinite(lng)
@@ -1907,72 +1900,210 @@ function updateMonitorStopMarkers() {
         return;
       }
 
+      const stopName =
+        stop.name ||
+        stop.stopName ||
+        `Stop ${index + 1}`;
+
+      const stopPlace =
+        stop.location ||
+        stop.address ||
+        stop.place ||
+        "";
+
+      // ==============================================
+      // NUMBERED STOP MARKER
+      // ==============================================
 
       const element =
-        document.createElement(
-          "div"
-        );
+        document.createElement("div");
 
+      element.className =
+        "route-stop-marker";
 
-      element.innerHTML = `
-        <div
-          class="
-            w-7
-            h-7
-            rounded-full
-            bg-white
-            border-2
-            border-gray-700
-            shadow-md
-            flex
-            items-center
-            justify-center
-            text-[10px]
-            font-bold
-            text-gray-700
-          "
-        >
-          ${index + 1}
-        </div>
+      element.textContent =
+        index + 1;
+
+      element.title =
+        stopName;
+
+      element.style.cssText = `
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #2563eb;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        border: 3px solid #ffffff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        cursor: pointer;
+        user-select: none;
+        z-index: 20;
       `;
 
+      // ==============================================
+      // STOP POPUP
+      // ==============================================
 
       const popup =
         new maplibregl.Popup({
-          offset: 18,
-          closeButton: true
-        })
-        .setHTML(`
+          offset: 22,
+          closeButton: true,
+          closeOnClick: true,
+          maxWidth: "280px"
+        });
+
+      popup.setHTML(`
+        <div
+          style="
+            min-width:180px;
+            padding:2px;
+          "
+        >
+
           <div
             style="
-              min-width:160px;
+              display:flex;
+              align-items:center;
+              gap:9px;
+              margin-bottom:8px;
             "
           >
 
-            <strong
-              style="
-                font-size:13px;
-              "
-            >
-              ${escapeHtml(
-                stop.name ||
-                `Stop ${index + 1}`
-              )}
-            </strong>
-
             <div
               style="
-                margin-top:4px;
-                font-size:11px;
-                color:#888;
+                width:30px;
+                height:30px;
+                border-radius:50%;
+                background:#2563eb;
+                color:#ffffff;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-weight:700;
+                font-size:12px;
+                flex-shrink:0;
               "
             >
-              Stop ${index + 1}
+              ${index + 1}
+            </div>
+
+            <div>
+
+              <div
+                style="
+                  font-size:14px;
+                  font-weight:700;
+                  color:#111827;
+                  line-height:1.2;
+                "
+              >
+                ${escapeHtml(stopName)}
+              </div>
+
+              <div
+                style="
+                  font-size:11px;
+                  color:#6b7280;
+                  margin-top:2px;
+                "
+              >
+                Bus Stop ${index + 1}
+              </div>
+
             </div>
 
           </div>
-        `);
 
+          ${
+            stopPlace
+              ? `
+                <div
+                  style="
+                    border-top:1px solid #e5e7eb;
+                    padding-top:8px;
+                    font-size:12px;
+                    color:#4b5563;
+                  "
+                >
+                  📍 ${escapeHtml(stopPlace)}
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+      `);
+
+      // ==============================================
+      // PREVENT MAP BACKGROUND CLICK
+      // ==============================================
+
+      element.addEventListener(
+        "pointerdown",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      );
+
+      element.addEventListener(
+        "mousedown",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      );
+
+      // ==============================================
+      // CLICK STOP
+      // ==============================================
+
+      let tooltipTimer = null;
+
+      element.addEventListener(
+        "click",
+        event => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          clearTimeout(
+            tooltipTimer
+          );
+
+          popup
+            .setLngLat([
+              lng,
+              lat
+            ])
+            .addTo(
+              monitorMap
+            );
+
+          tooltipTimer =
+            setTimeout(
+              () => {
+
+                if (
+                  popup.isOpen()
+                ) {
+                  popup.remove();
+                }
+
+              },
+              2500
+            );
+        }
+      );
+
+      // ==============================================
+      // CREATE MARKER
+      // ==============================================
 
       const marker =
         new maplibregl.Marker({
@@ -1983,13 +2114,9 @@ function updateMonitorStopMarkers() {
           lng,
           lat
         ])
-        .setPopup(
-          popup
-        )
         .addTo(
           monitorMap
         );
-
 
       monitorStopMarkers.push(
         marker
@@ -1998,6 +2125,7 @@ function updateMonitorStopMarkers() {
     }
   );
 }
+
 
 
 // ==================================================
@@ -2091,6 +2219,30 @@ function updateMonitorBusMarkers() {
       document.createElement(
         "div"
       );
+
+      element.addEventListener(
+  "pointerdown",
+  event => {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+);
+
+element.addEventListener(
+  "mousedown",
+  event => {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+);
+
+element.addEventListener(
+  "click",
+  event => {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+);
 
 
     const shortCode =
@@ -2391,13 +2543,15 @@ function resetMonitorMapView() {
 // ==================================================
 // MAP ROUTE INTERACTION
 // ==================================================
-
 function bindMonitorRouteInteraction() {
 
   if (!monitorMap) {
     return;
   }
 
+  // ==============================================
+  // MAP CLICK
+  // ==============================================
 
   monitorMap.on(
     "click",
@@ -2405,48 +2559,35 @@ function bindMonitorRouteInteraction() {
 
       const layers = [];
 
-
       if (
         monitorMap.getLayer(
           "monitor-selected-route-line"
         )
       ) {
-
         layers.push(
           "monitor-selected-route-line"
         );
-
       }
-
 
       if (
         monitorMap.getLayer(
           "monitor-all-routes-line"
         )
       ) {
-
         layers.push(
           "monitor-all-routes-line"
         );
-
       }
-
-
-      if (
-        layers.length === 0
-      ) {
-        return;
-      }
-
 
       const features =
-        monitorMap.queryRenderedFeatures(
-          event.point,
-          {
-            layers
-          }
-        );
-
+        layers.length > 0
+          ? monitorMap.queryRenderedFeatures(
+              event.point,
+              {
+                layers
+              }
+            )
+          : [];
 
       const feature =
         features.find(
@@ -2454,6 +2595,9 @@ function bindMonitorRouteInteraction() {
             item.properties?.routeId
         );
 
+      // ==========================================
+      // CLICKED A ROUTE
+      // ==========================================
 
       if (
         feature?.properties?.routeId
@@ -2461,10 +2605,22 @@ function bindMonitorRouteInteraction() {
 
         selectMonitorRoute(
           String(
-            feature.properties
-              .routeId
+            feature.properties.routeId
           )
         );
+
+        return;
+      }
+
+      // ==========================================
+      // CLICKED EMPTY MAP
+      // ==========================================
+
+      if (
+        selectedMonitorRouteId
+      ) {
+
+        clearMonitorRoute();
 
       }
 
@@ -2472,38 +2628,35 @@ function bindMonitorRouteInteraction() {
   );
 
 
+  // ==============================================
+  // ROUTE HOVER
+  // ==============================================
+
   monitorMap.on(
     "mousemove",
     event => {
 
       const layers = [];
 
-
       if (
         monitorMap.getLayer(
           "monitor-selected-route-line"
         )
       ) {
-
         layers.push(
           "monitor-selected-route-line"
         );
-
       }
-
 
       if (
         monitorMap.getLayer(
           "monitor-all-routes-line"
         )
       ) {
-
         layers.push(
           "monitor-all-routes-line"
         );
-
       }
-
 
       if (
         layers.length === 0
@@ -2516,7 +2669,6 @@ function bindMonitorRouteInteraction() {
         return;
       }
 
-
       const features =
         monitorMap.queryRenderedFeatures(
           event.point,
@@ -2524,7 +2676,6 @@ function bindMonitorRouteInteraction() {
             layers
           }
         );
-
 
       monitorMap
         .getCanvas()
@@ -2541,9 +2692,7 @@ function bindMonitorRouteInteraction() {
     "mouseleave",
     () => {
 
-      if (
-        monitorMap
-      ) {
+      if (monitorMap) {
 
         monitorMap
           .getCanvas()

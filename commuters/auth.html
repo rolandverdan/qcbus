@@ -30,6 +30,15 @@
             }
         }
     </script>
+
+    <script>
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const isAndroid = /Android/i.test(navigator.userAgent);
+
+        if (isAndroid && !isStandalone) {
+            window.location.replace("https://qcommute-88bf5.web.app/");
+        }
+    </script>
 </head>
 <body class="bg-gray-50 font-sans antialiased">
 

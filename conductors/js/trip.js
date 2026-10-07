@@ -9,7 +9,120 @@ import {
   endTripRepo,
 } from "../../shared/js/repositories/trips.repo.js";
 
+import {
+  listenToTripDropoffRequestsRepo,
+} from "../../shared/js/repositories/dropoffs.repo.js";
+
+import {
+  updateBusLocationRepo,
+} from "../../shared/js/repositories/buses.repo.js";
+
+import { getNearestStop } from "../../shared/js/eta.js";
+
 let tripTimerInterval = null;
+let unsubscribeDropoffRequests = null;
+let busLocationWatchId = null;
+let lastBusLocationWriteAt = 0;
+
+function setLiveMapAvailable(isAvailable) {
+  window.__liveMapAvailable = isAvailable;
+  window.setLiveMapAvailability?.(isAvailable);
+}
+
+function updateNearestStop(latitude, longitude) {
+  const nearestStop = getNearestStop(
+    { lat: latitude, lng: longitude },
+    AppState.routeStops
+  );
+
+  if (nearestStop?.id !== AppState.currentAlightStopId) {
+    window.setNearestAlightStop?.(nearestStop?.id || null);
+  }
+}
+
+function startBusLocationTracking() {
+  if (busLocationWatchId !== null) return;
+
+  if (!navigator.geolocation || !AppState.bus.documentId) {
+    showToast("Live ETA needs location access", "warn");
+    return;
+  }
+
+  busLocationWatchId = navigator.geolocation.watchPosition(
+    async (position) => {
+      const { latitude, longitude, speed } = position.coords;
+      const now = Date.now();
+      const speedKmh = Number.isFinite(speed) && speed >= 0
+        ? speed * 3.6
+        : 0;
+
+      AppState.bus.lat = latitude;
+      AppState.bus.lng = longitude;
+      AppState.bus.speedKmh = speedKmh;
+      AppState.bus.locationUpdatedAt = now;
+      updateNearestStop(latitude, longitude);
+      window.updateConductorEta?.();
+      window.updateFloatingLiveMap?.();
+
+      if (now - lastBusLocationWriteAt < 10000) return;
+      lastBusLocationWriteAt = now;
+
+      try {
+        await updateBusLocationRepo(AppState.bus.documentId, {
+          lat: latitude,
+          lng: longitude,
+          speedKmh,
+        });
+      } catch (error) {
+        console.error("Bus location update failed:", error);
+      }
+    },
+    (error) => {
+      console.error("Bus location tracking failed:", error);
+      showToast("Allow location access to share live ETA", "warn");
+      stopBusLocationTracking();
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 15000,
+    }
+  );
+}
+
+function stopBusLocationTracking() {
+  if (busLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(busLocationWatchId);
+  }
+
+  busLocationWatchId = null;
+}
+
+function listenToDropoffRequests(tripId) {
+  if (unsubscribeDropoffRequests) {
+    unsubscribeDropoffRequests();
+    unsubscribeDropoffRequests = null;
+  }
+
+  AppState.dropoffRequests = [];
+  AppState.currentAlightStopId = null;
+  if (!tripId) return;
+
+  unsubscribeDropoffRequests = listenToTripDropoffRequestsRepo(
+    tripId,
+    (requests) => {
+      AppState.dropoffRequests = requests;
+
+      if (["trip", "counter"].includes(AppState.currentPage)) {
+        const content = document.getElementById("content");
+        if (content) {
+          content.innerHTML = window.Pages[AppState.currentPage]();
+        }
+      }
+    },
+    (error) => console.error("Drop-off count listener failed:", error)
+  );
+}
 
 // ---------- Start Trip ----------
 async function startTrip() {
@@ -48,6 +161,9 @@ async function startTrip() {
       endedAt: null,
       tripId: trip.id,
     };
+    listenToDropoffRequests(trip.id);
+    startBusLocationTracking();
+    setLiveMapAvailable(true);
 
     AppState.occupancy = {
       onboard: 0,
@@ -97,6 +213,9 @@ async function endTrip() {
 
     AppState.trip.active = false;
     AppState.trip.endedAt = Date.now();
+    listenToDropoffRequests(null);
+    stopBusLocationTracking();
+    setLiveMapAvailable(false);
 
     addHistory(
       'trip',
@@ -210,6 +329,9 @@ async function restoreActiveTrip() {
       endedAt: null,
       tripId: trip.id,
     };
+    listenToDropoffRequests(trip.id);
+    startBusLocationTracking();
+    setLiveMapAvailable(true);
 
     AppState.occupancy = {
       onboard: Number(trip.onboard) || 0,

@@ -210,7 +210,11 @@ async function logout() {
 
   try {
     await signOutUser();
+<<<<<<< HEAD
     window.location.href = '../commuters/auth.html';
+=======
+     window.location.href = '../commuters/auth.html';
+>>>>>>> 1b5336d2a85c34c7d3626d6f6cc02fbbdc4bc266
   } catch (error) {
     console.error('Logout failed:', error);
     showToast('Logout failed', 'error');

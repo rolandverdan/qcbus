@@ -7,6 +7,125 @@ body {
   overscroll-behavior-y: none;
 }
 
+.live-map-fab {
+  position: fixed;
+  z-index: 75;
+  right: max(1rem, calc((100vw - 28rem) / 2 + 1rem));
+  bottom: 5.5rem;
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 0;
+  border-radius: 9999px;
+  background: #115272;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(13, 59, 84, 0.3);
+}
+
+.live-map-fab svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.live-map-panel {
+  position: fixed;
+  z-index: 74;
+  right: max(1rem, calc((100vw - 28rem) / 2 + 1rem));
+  bottom: 9.75rem;
+  display: flex;
+  width: min(23rem, calc(100vw - 2rem));
+  height: min(25rem, calc(100dvh - 13rem));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dbe5eb;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(13, 59, 84, 0.25);
+}
+
+.live-map-panel.hidden,
+.live-map-fab.hidden {
+  display: none;
+}
+
+.live-map-panel-header {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #e5edf1;
+}
+
+.live-map-panel-header h2 {
+  margin: 0;
+  color: #0d3b54;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.live-map-panel-header p {
+  margin: 0.15rem 0 0;
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.live-map-panel-header button {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 9999px;
+  background: #f1f5f7;
+  color: #334155;
+  font-size: 1.4rem;
+}
+
+.live-map-canvas {
+  min-height: 0;
+  flex: 1;
+}
+
+.live-map-stop-marker {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #115272;
+  color: #fff;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.35);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.live-map-stop-marker.is-nearest {
+  background: #ce1126;
+  transform: scale(1.15);
+}
+
+.live-map-bus-marker {
+  display: grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 2px 9px rgba(15, 23, 42, 0.4);
+}
+
+.live-map-bus-marker svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
 /* Slide in animation */
 @keyframes slideIn {
   from { opacity: 0; transform: translateY(10px); }

@@ -7,6 +7,7 @@ import {
   addDoc,
   getDocs,
   getDoc,
+  deleteDoc,
   doc,
   updateDoc,
   query,
@@ -37,10 +38,14 @@ export async function createReport(reportData) {
     category: reportData.category || "other",
     description: reportData.description || "",
 
-    // Filled in later when authentication is connected
+    // User who submitted the report
     reporterId: reportData.reporterId || null,
 
     status: "pending",
+
+    // Admin review information
+    reviewedBy: null,
+    reviewedAt: null,
 
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -67,11 +72,13 @@ export async function getReports() {
     orderBy("createdAt", "desc")
   );
 
-  const snapshot = await getDocs(reportsQuery);
+  const snapshot = await getDocs(
+    reportsQuery
+  );
 
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
+  return snapshot.docs.map((reportDoc) => ({
+    id: reportDoc.id,
+    ...reportDoc.data(),
   }));
 }
 
@@ -90,7 +97,9 @@ export async function getReportById(reportId) {
     reportId
   );
 
-  const snapshot = await getDoc(reportRef);
+  const snapshot = await getDoc(
+    reportRef
+  );
 
   if (!snapshot.exists()) {
     return null;
@@ -135,6 +144,70 @@ export async function updateReportStatus(
     status,
     updatedAt: serverTimestamp(),
   });
+
+  return true;
+}
+
+// ==================================================
+// UPDATE REPORT STATUS — ADMIN
+// ==================================================
+
+export async function updateReportStatusByAdmin(
+  reportId,
+  status,
+  adminId
+) {
+  if (!reportId) {
+    throw new Error("Report ID is required.");
+  }
+
+  if (!adminId) {
+    throw new Error("Admin ID is required.");
+  }
+
+  const validStatuses = [
+    "pending",
+    "reviewing",
+    "resolved",
+    "dismissed",
+  ];
+
+  if (!validStatuses.includes(status)) {
+    throw new Error("Invalid report status.");
+  }
+
+  const reportRef = doc(
+    db,
+    "reports",
+    reportId
+  );
+
+  await updateDoc(reportRef, {
+    status,
+    reviewedBy: adminId,
+    reviewedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  return true;
+}
+
+// ==================================================
+// DELETE REPORT
+// ==================================================
+
+export async function deleteReport(reportId) {
+  if (!reportId) {
+    throw new Error("Report ID is required.");
+  }
+
+  const reportRef = doc(
+    db,
+    "reports",
+    reportId
+  );
+
+  await deleteDoc(reportRef);
 
   return true;
 }
