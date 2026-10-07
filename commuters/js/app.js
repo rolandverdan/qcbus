@@ -289,10 +289,17 @@ function getInitials(name) {
 }
 
 
+function isRouteSaved(routeId) {
+  return Array.isArray(AppState.user.savedRoutes)
+    ? AppState.user.savedRoutes.includes(routeId)
+    : false;
+}
+
 
 // ==================================================
 // SAVED ROUTES
 // ==================================================
+
 async function toggleSavedRoute(routeId) {
   const route = getRouteById(routeId);
 
@@ -411,10 +418,6 @@ function showSavedRouteToast(message, isError = false) {
   }, 2500);
 }
 
-
-const savedRoutes = AppState.user.savedRoutes
-  .map((routeId) => getRouteById(routeId))
-  .filter(Boolean);
 
 // ==================================================
 // REBUILD BUS DATA
@@ -625,7 +628,7 @@ function selectDropoffTrip(tripId) {
         AppState.dropoff.stopId = request?.stopId || null;
         AppState.dropoff.stopName = request?.stopName || "";
         updateCommuterDropoffEta();
-          window.evaluateDropoffAlerts?.();
+        window.evaluateDropoffAlerts?.();
       },
       (error) => console.error("Drop-off listener failed:", error)
     );
@@ -659,7 +662,7 @@ async function confirmDropoffStop(tripId, stop) {
     AppState.dropoff.stopName = stopName;
     updateCommuterDropoffEta();
     showSavedRouteToast(`Drop-off set for ${stopName}`);
-      window.evaluateDropoffAlerts?.();
+    window.evaluateDropoffAlerts?.();
     return true;
   } catch (error) {
     console.error("Failed to save drop-off:", error);
@@ -669,13 +672,11 @@ async function confirmDropoffStop(tripId, stop) {
 }
 
 
+// ==================================================
+// EDIT PROFILE
+// ==================================================
 
-
-  // ==================================================
-  // EDIT PROFILE
-  // ==================================================
-
-  function openEditProfile() {
+function openEditProfile() {
   const existingModal =
     document.getElementById("editProfileModal");
 
@@ -867,6 +868,33 @@ async function handleEditProfileSubmit(event) {
     );
   }
 }
+
+
+// ==================================================
+// ABOUT MODAL
+// ==================================================
+
+function openAboutModal() {
+  const modal = document.getElementById("aboutModal");
+  if (!modal) return;
+
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeAboutModal() {
+  const modal = document.getElementById("aboutModal");
+  if (!modal) return;
+
+  modal.classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+// Close on Escape
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAboutModal();
+});
+
 
 // ==================================================
 // PAGE TEMPLATES
@@ -1214,93 +1242,96 @@ const Pages = {
         </div>
 
       </div>
-<!-- Saved Routes -->
 
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <!-- Saved Routes -->
 
-  <div class="flex items-center justify-between mb-3">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
-    <h3 class="font-semibold text-gray-800">
-      Your Saved Routes
-    </h3>
+        <div class="flex items-center justify-between mb-3">
 
-    <button
-      onclick="navigateTo('routes')"
-      class="text-xs text-qc-blue font-medium hover:underline"
-    >
-      Manage
-    </button>
+          <h3 class="font-semibold text-gray-800">
+            Your Saved Routes
+          </h3>
 
-  </div>
+          <button
+            onclick="navigateTo('routes')"
+            class="text-xs text-qc-blue font-medium hover:underline"
+          >
+            Manage
+          </button>
 
-  <div class="space-y-2">
+        </div>
 
-    ${
-      AppState.user.savedRoutes.length
-        ? AppState.user.savedRoutes
-            .map((routeId) => {
+        <div class="space-y-2">
 
-              const route = getRouteById(routeId);
+          ${
+            AppState.user.savedRoutes.length
+              ? AppState.user.savedRoutes
+                  .map((routeId) => {
 
-              if (!route) {
-                return `
-                  <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                    <div class="min-w-0">
-                      <p class="text-sm font-semibold text-gray-700">Saved route unavailable</p>
-                      <p class="mt-0.5 text-xs text-gray-500">This route may have been removed.</p>
-                    </div>
-                    <button onclick="toggleSavedRoute('${escapeHtml(routeId)}')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-qc-red hover:bg-red-50" aria-label="Remove unavailable saved route">Remove</button>
-                  </div>
-                `;
-              }
+                    const route = getRouteById(routeId);
 
-              return `
-                <button
-                  onclick="openSavedRoute('${escapeHtml(routeId)}')"
-                  class="w-full flex items-center justify-between p-3 bg-blue-50 rounded-xl text-left hover:bg-blue-100 transition"
-                >
+                    if (!route) {
+                      return `
+                        <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                          <div class="min-w-0">
+                            <p class="text-sm font-semibold text-gray-700">Saved route unavailable</p>
+                            <p class="mt-0.5 text-xs text-gray-500">This route may have been removed.</p>
+                          </div>
+                          <button onclick="toggleSavedRoute('${escapeHtml(routeId)}')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-qc-red hover:bg-red-50" aria-label="Remove unavailable saved route">Remove</button>
+                        </div>
+                      `;
+                    }
 
-                  <div class="min-w-0">
+                    return `
+                      <button
+                        onclick="openSavedRoute('${escapeHtml(routeId)}')"
+                        class="w-full flex items-center justify-between p-3 bg-blue-50 rounded-xl text-left hover:bg-blue-100 transition"
+                      >
 
-                    <p class="text-sm font-semibold text-qc-blue">
-                      ${escapeHtml(route.name || "Saved route")}
-                    </p>
+                        <div class="min-w-0">
 
-                    <p class="text-xs text-gray-500 mt-0.5 truncate">
-                      ${escapeHtml(route.description || "View route and stops on the map")}
-                    </p>
+                          <p class="text-sm font-semibold text-qc-blue">
+                            ${escapeHtml(route.name || "Saved route")}
+                          </p>
 
-                  </div>
+                          <p class="text-xs text-gray-500 mt-0.5 truncate">
+                            ${escapeHtml(route.description || "View route and stops on the map")}
+                          </p>
 
-                  <span class="text-blue-400 ml-3">
-                    →
-                  </span>
+                        </div>
 
-                </button>
-              `;
-            })
-            .join("")
-        : `
-          <div class="text-center py-4">
+                        <span class="text-blue-400 ml-3">
+                          →
+                        </span>
 
-            <p class="text-xs text-gray-400">
-              No saved routes yet.
-            </p>
+                      </button>
+                    `;
+                  })
+                  .join("")
+              : `
+                <div class="text-center py-4">
 
-            <button
-              onclick="navigateTo('routes')"
-              class="mt-2 text-xs font-medium text-qc-blue hover:underline"
-            >
-              Browse routes
-            </button>
+                  <p class="text-xs text-gray-400">
+                    No saved routes yet.
+                  </p>
 
-          </div>
-        `
-    }
+                  <button
+                    onclick="navigateTo('routes')"
+                    class="mt-2 text-xs font-medium text-qc-blue hover:underline"
+                  >
+                    Browse routes
+                  </button>
 
-  </div>
+                </div>
+              `
+          }
 
-</div>
+        </div>
+
+      </div>
+
+    </div>
   `,
 
 
@@ -1372,13 +1403,7 @@ const Pages = {
                         </div>
 
 
-<<<<<<< HEAD
-=======
                         <div class="flex items-center gap-2 flex-shrink-0">
-
-                        <span class="text-sm font-semibold text-qc-blue">
-                          ${formatFare(route.fare)}
-                        </span>
 
                         <button
                           onclick="toggleSavedRoute('${escapeHtml(route.id)}')"
@@ -1416,7 +1441,6 @@ const Pages = {
 
                       </div>
 
->>>>>>> 1b5336d2a85c34c7d3626d6f6cc02fbbdc4bc266
                       </div>
 
 
@@ -1768,15 +1792,10 @@ const Pages = {
   `,
 
 
-  
   // ==================================================
   // REPORT AN ISSUE
   // ==================================================
 
-
-
-
-  
   report: () => `
     <div class="space-y-4 slide-in">
 
@@ -2093,6 +2112,7 @@ const Pages = {
 
 
         <button
+          onclick="openAboutModal()"
           class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition"
         >
 
@@ -2165,11 +2185,11 @@ const Pages = {
 
 
         <button
-  onclick="openEditProfile()"
-  class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
->
-  Edit Profile
-</button>
+          onclick="openEditProfile()"
+          class="mt-3 px-4 py-1.5 bg-blue-50 text-qc-blue rounded-full text-xs font-medium hover:bg-blue-100 transition"
+        >
+          Edit Profile
+        </button>
 
       </div>
 
@@ -2554,42 +2574,41 @@ async function handleReportSubmit(event) {
     "cursor-not-allowed"
   );
 
-// ------------------------------------------
-// get user profile
-// ------------------------------------------
+  // ------------------------------------------
+  // get user profile
+  // ------------------------------------------
 
-const user = auth.currentUser;
+  const currentUser = auth.currentUser;
 
-if (!user) {
-  showReportToast(
-    "You must be logged in to submit a report.",
-    "error"
-  );
+  if (!currentUser) {
+    showReportToast(
+      "You must be logged in to submit a report.",
+      "error"
+    );
 
-  return;
-}
+    return;
+  }
 
-const userProfile =
-  await getUserProfile(user.uid);
+  const userProfile =
+    await getUserProfile(currentUser.uid);
 
-if (!userProfile) {
-  showReportToast(
-    "Unable to load your user profile.",
-    "error"
-  );
+  if (!userProfile) {
+    showReportToast(
+      "Unable to load your user profile.",
+      "error"
+    );
 
-  return;
-}
+    return;
+  }
 
-report.reporterId = user.uid;
-report.reporterName =
-  userProfile.name ||
-  user.email ||
-  "Unknown";
+  report.reporterId = currentUser.uid;
+  report.reporterName =
+    userProfile.name ||
+    currentUser.email ||
+    "Unknown";
 
 
 
-  
   try {
 
     // ------------------------------------------
@@ -2625,38 +2644,15 @@ report.reporterName =
     );
 
     showReportToast(
-  "Your report has been submitted successfully.",
-  "success"
-);
+      "Your report has been submitted successfully.",
+      "success"
+    );
 
-      // ------------------------------------------
-      // RESTORE BUTTON
-      // ------------------------------------------
+    // ------------------------------------------
+    // RESTORE BUTTON
+    // ------------------------------------------
 
-      setTimeout(() => {
-
-        submitButton.disabled = false;
-
-        submitButton.textContent =
-          originalText;
-
-        submitButton.classList.remove(
-          "bg-green-500"
-        );
-
-        submitButton.classList.add(
-          "bg-qc-blue",
-          "hover:bg-qc-blue-accent"
-        );
-
-      }, 1800);
-
-    } catch (error) {
-
-      console.error(
-        "Failed to submit report:",
-        error
-      );
+    setTimeout(() => {
 
       submitButton.disabled = false;
 
@@ -2664,47 +2660,70 @@ report.reporterName =
         originalText;
 
       submitButton.classList.remove(
-        "opacity-70",
-        "cursor-not-allowed"
+        "bg-green-500"
       );
 
-      showReportToast(
-        "Failed to submit report. Please try again.",
-        "error"
+      submitButton.classList.add(
+        "bg-qc-blue",
+        "hover:bg-qc-blue-accent"
       );
-    }
+
+    }, 1800);
+
+  } catch (error) {
+
+    console.error(
+      "Failed to submit report:",
+      error
+    );
+
+    submitButton.disabled = false;
+
+    submitButton.textContent =
+      originalText;
+
+    submitButton.classList.remove(
+      "opacity-70",
+      "cursor-not-allowed"
+    );
+
+    showReportToast(
+      "Failed to submit report. Please try again.",
+      "error"
+    );
   }
+}
 
 
-  function showReportToast(message, type) {
+function showReportToast(message, type) {
 
-    const bg =
-      type === "success"
-        ? "bg-green-600"
-        : "bg-qc-red";
+  const bg =
+    type === "success"
+      ? "bg-green-600"
+      : "bg-qc-red";
 
-    const toast =
-      document.createElement("div");
+  const toast =
+    document.createElement("div");
 
-    toast.className =
-      `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white ${bg} z-[110] transition-all duration-300`;
+  toast.className =
+    `fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-medium shadow-lg text-white ${bg} z-[110] transition-all duration-300`;
 
-    toast.textContent = message;
+  toast.textContent = message;
 
-    document.body.appendChild(toast);
+  document.body.appendChild(toast);
 
-    setTimeout(() => {
+  setTimeout(() => {
 
-      toast.style.opacity = "0";
+    toast.style.opacity = "0";
 
-      setTimeout(() => toast.remove(), 300);
+    setTimeout(() => toast.remove(), 300);
 
-    }, 2400);
+  }, 2400);
 
-  }
+}
 
 // ==================================================
-// REPORT FORM SUBMIT DELEGATION
+// FORM SUBMIT DELEGATION
 // ==================================================
 
 document.addEventListener("submit", event => {
@@ -3127,12 +3146,6 @@ async function initApp() {
           ...AppState.settings,
           ...JSON.parse(saved),
         };
-        function isRouteSaved(routeId) {
-  return Array.isArray(AppState.user.savedRoutes)
-    ? AppState.user.savedRoutes.includes(routeId)
-    : false;
-}
-
 
         document.body.classList.toggle(
           "dark-mode",
@@ -3258,11 +3271,6 @@ async function initApp() {
     }
 
 
- 
-
-  // ==================================================
-  // HEADER NOTIFICATION
-  // ==================================================
     // ==============================================
     // INITIAL PAGE
     // ==============================================
@@ -3279,6 +3287,7 @@ async function initApp() {
       "routes",
       "map",
       "notifications",
+      "report",
       "settings",
       "account",
     ];
@@ -3306,14 +3315,6 @@ async function initApp() {
       "serviceWorker" in navigator
     ) {
 
-  const validPages = [
-    "home",
-    "map",
-    "notifications",
-    "report",
-    "settings",
-    "account"
-  ];
       navigator.serviceWorker
         .register("./sw.js")
         .then(
@@ -3377,48 +3378,36 @@ if (
 // GLOBAL EXPOSURE
 // ==================================================
 
+window.toggleSavedRoute = toggleSavedRoute;
 
-  window.toggleSavedRoute =
-  toggleSavedRoute;
+window.openSavedRoute = openSavedRoute;
 
-window.openSavedRoute =
-  openSavedRoute;
+window.navigateTo = navigateTo;
 
-window.navigateTo =
-  navigateTo;
+window.toggleSetting = toggleSetting;
 
-window.toggleSetting =
-  toggleSetting;
+window.markAllRead = markAllRead;
 
-window.markAllRead =
-  markAllRead;
+window.logout = logout;
 
-window.logout =
-  logout;
+window.listenToBuses = listenToBuses;
 
-window.listenToBuses =
-  listenToBuses;
+window.listenToActiveTrips = listenToActiveTrips;
 
-window.listenToActiveTrips =
-  listenToActiveTrips;
+window.stopAllListeners = stopAllListeners;
 
-window.stopAllListeners =
-  stopAllListeners;
+window.selectDropoffTrip = selectDropoffTrip;
 
-window.selectDropoffTrip =
-  selectDropoffTrip;
+window.confirmDropoffStop = confirmDropoffStop;
 
-window.confirmDropoffStop =
-  confirmDropoffStop;
+window.openEditProfile = openEditProfile;
 
-  window.openEditProfile =
-  openEditProfile;
+window.refreshCurrentPage = refreshCurrentPage;
 
-  window.refreshCurrentPage =
-    refreshCurrentPage;
+window.closeEditProfile = closeEditProfile;
 
-window.closeEditProfile =
-  closeEditProfile;
+window.openAboutModal = openAboutModal;
 
-window.AppState =
-  AppState;
+window.closeAboutModal = closeAboutModal;
+
+window.AppState = AppState;
