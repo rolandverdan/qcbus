@@ -140,8 +140,27 @@ async function openBusModal(id = null) {
   const routes = await Store.getRoutes();
   const staff = await Store.getStaff();
 
-  const drivers = staff.filter(s => s.role === 'driver');
-  const conductors = staff.filter(s => s.role === 'conductor');
+  const assignedDriverIds = new Set(
+    buses
+      .filter(otherBus => otherBus.id !== bus?.id && otherBus.driverId)
+      .map(otherBus => otherBus.driverId)
+  );
+  const assignedConductorIds = new Set(
+    buses
+      .filter(otherBus => otherBus.id !== bus?.id && otherBus.conductorId)
+      .map(otherBus => otherBus.conductorId)
+  );
+
+  const drivers = staff.filter(
+    member =>
+      member.role === 'driver' &&
+      (!assignedDriverIds.has(member.id) || member.id === bus?.driverId)
+  );
+  const conductors = staff.filter(
+    member =>
+      member.role === 'conductor' &&
+      (!assignedConductorIds.has(member.id) || member.id === bus?.conductorId)
+  );
 
   const isEdit = !!bus;
 
@@ -326,6 +345,7 @@ async function openBusModal(id = null) {
 
     try {
       const staff = await Store.getStaff();
+      const currentBuses = await Store.getBuses();
 
       // Validate driver
       if (data.driverId) {
@@ -335,6 +355,18 @@ async function openBusModal(id = null) {
 
         if (!driver || driver.role !== 'driver') {
           showToast('Invalid driver assignment', 'error');
+          return;
+        }
+
+        if (
+          currentBuses.some(
+            otherBus =>
+              otherBus.id !== id &&
+              otherBus.driverId === data.driverId
+          ) &&
+          data.driverId !== bus?.driverId
+        ) {
+          showToast('This driver is already assigned to another bus', 'error');
           return;
         }
       }
@@ -355,6 +387,18 @@ async function openBusModal(id = null) {
             'This conductor has no linked login',
             'error'
           );
+          return;
+        }
+
+        if (
+          currentBuses.some(
+            otherBus =>
+              otherBus.id !== id &&
+              otherBus.conductorId === data.conductorId
+          ) &&
+          data.conductorId !== bus?.conductorId
+        ) {
+          showToast('This conductor is already assigned to another bus', 'error');
           return;
         }
       }

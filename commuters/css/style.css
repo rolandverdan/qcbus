@@ -13,6 +13,10 @@ body {
   border: none;
 }
 
+.custom-bus-marker {
+  cursor: pointer;
+}
+
 #mapContainer {
   z-index: 1;
 }

@@ -1,11 +1,20 @@
 // ==================================================
-// ADMIN — REPORTS PAGE (FRONT-END ONLY)
-// Data is loaded from Firestore later; empty for now
+// ADMIN — REPORTS PAGE
 // ==================================================
 
 import {
   auth,
 } from "../../shared/js/firebase.js";
+
+import {
+  getReports,
+  updateReportStatusByAdmin,
+  deleteReport,
+} from "../../shared/js/repositories/reports.repo.js";
+
+import {
+  getUserProfile,
+} from "../../shared/js/repositories/users.repo.js";
 
 let allReports = [];
 let activeFilter = "all";
@@ -57,7 +66,9 @@ async function loadReports() {
       })
     );
 
-    window.navigateTo("reports");
+    if (window.AppState?.currentPage === "reports") {
+      window.navigateTo("reports");
+    }
 
   } catch (error) {
     console.error(

@@ -1836,15 +1836,6 @@ function resetMapView() {
 function updateBusMarkers() {
   if (!map) return;
 
-
-  busMarkers.forEach(
-    marker =>
-      marker.remove()
-  );
-
-  busMarkers = [];
-
-
   if (
     !window.AppState ||
     !Array.isArray(
@@ -1859,252 +1850,171 @@ function updateBusMarkers() {
     selectedRouteId
       ? AppState.buses.filter(
           bus =>
-            bus.routeId ===
-            selectedRouteId
+            bus.tripActive === true &&
+            bus.routeId === selectedRouteId
         )
-      : AppState.buses;
-
-
-  buses.forEach(
-    bus => {
-
-      const coordinates =
-        getBusCoordinates(
-          bus
+      : AppState.buses.filter(
+          bus => bus.tripActive === true
         );
 
-
-      if (!coordinates) {
-        return;
-      }
-
-
-      const displayId =
-        bus.code ||
-        bus.id ||
-        "BUS";
-
-
-      const shortId =
-        displayId.includes("-")
-          ? displayId
-              .split("-")
-              .pop()
-          : displayId;
-
-
-      const route =
-        escapeHtml(
-          bus.route ||
-          "No route assigned"
-        );
-
-
-      const status =
-        escapeHtml(
-          bus.status ||
-          "Idle"
-        );
-
-
-      const routeColor =
-        bus.routeColor ||
-        getRouteColor(
-          getRouteById(
-            bus.routeId
-          )
-        );
-
-
-      const markerElement =
-        document.createElement(
-          "div"
-        );
-
-
-      markerElement.className =
-        "custom-bus-marker";
-
-
-      markerElement.addEventListener(
-        "click",
-        event => {
-          event.stopPropagation();
-        }
-      );
-
-
-      markerElement.addEventListener(
-        "mousedown",
-        event => {
-          event.stopPropagation();
-        }
-      );
-
-
-      markerElement.innerHTML = `
-        <div class="relative">
-
-          <div
-            class="
-              w-10
-              h-10
-              rounded-lg
-              shadow-lg
-              flex
-              items-center
-              justify-center
-              text-white
-              text-xs
-              font-bold
-              border-2
-              border-white
-            "
-            style="
-              background:${escapeHtml(
-                routeColor
-              )};
-            "
-          >
-            ${escapeHtml(
-              shortId
-            )}
-          </div>
-
-
-          <div
-            class="
-              absolute
-              -bottom-1
-              left-1/2
-              transform
-              -translate-x-1/2
-              w-2
-              h-2
-              rotate-45
-            "
-            style="
-              background:${escapeHtml(
-                routeColor
-              )};
-            "
-          ></div>
-
-        </div>
-      `;
-
-
-      const passengerInfo =
-        bus.tripActive
-          ? `
-            <div
-              style="
-                margin-top:8px;
-                font-size:12px;
-                color:#555;
-              "
-            >
-              Passengers:
-              <strong>
-                ${Number(bus.onboard) || 0}/${Number(bus.capacity) || 0}
-              </strong>
-            </div>
-          `
-          : `
-            <div
-              style="
-                margin-top:8px;
-                font-size:12px;
-                color:#888;
-              "
-            >
-              No active trip
-            </div>
-          `;
-
-
-      const statusColor =
-        bus.tripActive
-          ? "#16a34a"
-          : "#6b7280";
-
-
-      const popup =
-        new maplibregl.Popup({
-          offset: 28,
-          closeButton: true,
-          closeOnClick: true,
-        })
-          .setHTML(`
-            <div
-              style="
-                min-width:190px;
-              "
-            >
-
-              <div
-                style="
-                  font-weight:700;
-                  font-size:14px;
-                  margin-bottom:4px;
-                "
-              >
-                ${escapeHtml(
-                  displayId
-                )}
-              </div>
-
-
-              <div
-                style="
-                  font-size:12px;
-                  color:#6b7280;
-                  margin-bottom:6px;
-                "
-              >
-                ${route}
-              </div>
-
-
-              <div
-                style="
-                  font-size:12px;
-                  color:${statusColor};
-                  font-weight:600;
-                "
-              >
-                ● ${status}
-              </div>
-
-
-              ${passengerInfo}
-
-            </div>
-          `);
-
-
-      const marker =
-        new maplibregl.Marker({
-          element:
-            markerElement,
-
-          anchor:
-            "bottom",
-        })
-          .setLngLat(
-            coordinates
-          )
-          .setPopup(
-            popup
-          )
-          .addTo(map);
-
-
-      busMarkers.push(
-        marker
-      );
-    }
+  const busesWithCoordinates = buses.flatMap(bus => {
+    const coordinates = getBusCoordinates(bus);
+    return coordinates ? [{ bus, coordinates }] : [];
+  });
+  const visibleBusIds = new Set(
+    busesWithCoordinates.map(({ bus }) => bus.id)
   );
+
+  busMarkers = busMarkers.filter(({ busId, marker, popup }) => {
+    if (visibleBusIds.has(busId)) return true;
+    popup.remove();
+    marker.remove();
+    return false;
+  });
+
+  const getPopupContent = bus => {
+    const displayId = bus.code || bus.id || "BUS";
+    const capacity = Number(bus.capacity) || 0;
+    const passengers = Number(bus.onboard) || 0;
+    const availableSeats = Math.max(capacity - passengers, 0);
+    const speed = Number(bus.speedKmh);
+    const locationDate = bus.locationUpdatedAt?.toDate
+      ? bus.locationUpdatedAt.toDate()
+      : bus.locationUpdatedAt instanceof Date
+        ? bus.locationUpdatedAt
+        : bus.locationUpdatedAt
+          ? new Date(bus.locationUpdatedAt)
+          : null;
+    const locationUpdated = locationDate && Number.isFinite(locationDate.getTime())
+      ? locationDate.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "Unavailable";
+
+    return `
+      <div style="min-width:190px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">
+          ${escapeHtml(displayId)}
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">
+          ${escapeHtml(bus.route || "No route assigned")}
+        </div>
+        <div style="font-size:12px;color:#16a34a;font-weight:600">
+          ● ${escapeHtml(bus.status || "On Trip")}
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#555">
+          Passengers: <strong>${passengers}/${capacity}</strong>
+        </div>
+        <div style="margin-top:4px;font-size:12px;color:#555">
+          Available seats: <strong>${availableSeats}</strong>
+        </div>
+        <div style="margin-top:4px;font-size:12px;color:#555">
+          Speed: <strong>${Number.isFinite(speed) ? `${speed} km/h` : "Unavailable"}</strong>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:#888">
+          Location updated: ${escapeHtml(locationUpdated)}
+        </div>
+      </div>
+    `;
+  };
+
+  const getMarkerContent = bus => {
+    const displayId = bus.code || bus.id || "BUS";
+    const shortId = displayId.includes("-")
+      ? displayId.split("-").pop()
+      : displayId;
+    const routeColor =
+      bus.routeColor ||
+      getRouteColor(getRouteById(bus.routeId));
+
+    return `
+      <div class="relative">
+        <div
+          class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-white text-xs font-bold border-2 border-white"
+          style="background:${escapeHtml(routeColor)}"
+        >
+          ${escapeHtml(shortId)}
+        </div>
+        <div
+          class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 rotate-45"
+          style="background:${escapeHtml(routeColor)}"
+        ></div>
+      </div>
+    `;
+  };
+
+  busesWithCoordinates.forEach(({ bus, coordinates }) => {
+    const existing = busMarkers.find(entry => entry.busId === bus.id);
+
+    if (existing) {
+      existing.marker.setLngLat(coordinates);
+      const markerElement = existing.marker.getElement();
+      markerElement.innerHTML = getMarkerContent(bus);
+      markerElement.setAttribute(
+        "aria-label",
+        `Show details for ${bus.code || bus.id || "bus"}`
+      );
+      existing.popup.setHTML(getPopupContent(bus));
+      if (existing.popup.isOpen()) {
+        existing.popup.setLngLat(coordinates);
+      }
+      return;
+    }
+
+    const markerElement = document.createElement("div");
+    markerElement.className = "custom-bus-marker";
+    markerElement.setAttribute("role", "button");
+    markerElement.setAttribute("tabindex", "0");
+    markerElement.setAttribute(
+      "aria-label",
+      `Show details for ${bus.code || bus.id || "bus"}`
+    );
+    markerElement.innerHTML = getMarkerContent(bus);
+    const popup = new maplibregl.Popup({
+      offset: 28,
+      closeButton: true,
+      closeOnClick: true,
+    }).setHTML(getPopupContent(bus));
+
+    let marker;
+    const openPopup = event => {
+      event.stopPropagation();
+      if (popup.isOpen()) {
+        popup.remove();
+      } else {
+        popup.setLngLat(marker.getLngLat()).addTo(map);
+      }
+    };
+    markerElement.addEventListener("click", openPopup);
+    markerElement.addEventListener("mousedown", event => {
+      event.stopPropagation();
+    });
+    markerElement.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPopup(event);
+      }
+    });
+
+    marker = new maplibregl.Marker({
+      element: markerElement,
+      anchor: "bottom",
+    })
+      .setLngLat(coordinates)
+      .addTo(map);
+    popup.on("close", () => {
+      markerElement.setAttribute("aria-expanded", "false");
+    });
+    markerElement.addEventListener("click", () => {
+      markerElement.setAttribute(
+        "aria-expanded",
+        String(popup.isOpen())
+      );
+    });
+
+    busMarkers.push({ busId: bus.id, marker, popup });
+  });
 }
 
 
@@ -2135,10 +2045,12 @@ function updateBusLegend() {
     selectedRouteId
       ? AppState.buses.filter(
           bus =>
-            bus.routeId ===
-            selectedRouteId
+            bus.tripActive === true &&
+            bus.routeId === selectedRouteId
         )
-      : AppState.buses;
+      : AppState.buses.filter(
+          bus => bus.tripActive === true
+        );
 
 
   if (
@@ -2155,7 +2067,7 @@ function updateBusLegend() {
         ${
           selectedRouteId
             ? "No buses currently on this route."
-            : "No buses available."
+            : "No buses currently on an active trip."
         }
       </p>
     `;
@@ -2403,8 +2315,10 @@ function destroyMap() {
   }
 
   busMarkers.forEach(
-    marker =>
+    ({ marker, popup }) => {
+      popup.remove();
       marker.remove()
+    }
   );
 
   busMarkers = [];

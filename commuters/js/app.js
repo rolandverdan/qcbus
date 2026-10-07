@@ -169,8 +169,12 @@ function getActiveTripForBus(busId, busCode) {
   return (
     AppState.activeTrips.find(
       (trip) =>
-        trip.busId === busId ||
-        trip.busCode === busCode
+        trip.status === "active" &&
+        [trip.busId, trip.busCode].some(
+          tripBusId =>
+            tripBusId &&
+            (tripBusId === busId || tripBusId === busCode)
+        )
     ) || null
   );
 }
@@ -1614,7 +1618,7 @@ const Pages = {
           </h3>
 
           <span class="text-xs text-gray-400">
-            ${AppState.buses.length} total
+            ${AppState.buses.filter((bus) => bus.tripActive).length} total
           </span>
 
         </div>
@@ -1626,8 +1630,9 @@ const Pages = {
         >
 
           ${
-            AppState.buses.length
+            AppState.buses.some((bus) => bus.tripActive)
               ? AppState.buses
+                  .filter((bus) => bus.tripActive)
                   .map(
                     (bus) => `
                       <div class="flex-shrink-0 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
@@ -1660,7 +1665,7 @@ const Pages = {
                   .join("")
               : `
                 <p class="text-xs text-gray-400">
-                  No buses available.
+                  No buses currently on an active trip.
                 </p>
               `
           }
@@ -2283,6 +2288,13 @@ function navigateTo(page, updateHash = true, options = {}) {
     return;
   }
 
+  if (page === "map" && AppState.currentPage === "map") {
+    if (typeof window.initMap === "function") {
+      window.initMap();
+    }
+    return;
+  }
+
   if (
     AppState.currentPage === "map" &&
     page !== "map"
@@ -2401,7 +2413,10 @@ function navigateTo(page, updateHash = true, options = {}) {
   // ==================================================
 
   if (updateHash) {
-    window.location.hash = page;
+    const nextHash = `#${page}`;
+    if (window.location.hash !== nextHash) {
+      window.history.pushState({ page }, "", nextHash);
+    }
   }
 }
 
@@ -3239,6 +3254,29 @@ async function initApp() {
 
       window.__commuterNavigationBound =
         true;
+    }
+
+    if (!window.__commuterHistoryBound) {
+      window.addEventListener("popstate", () => {
+        const page = window.location.hash.replace("#", "");
+        const validPages = [
+          "home",
+          "routes",
+          "map",
+          "notifications",
+          "report",
+          "settings",
+          "account",
+        ];
+
+        navigateTo(
+          validPages.includes(page) ? page : "home",
+          false,
+          { scrollToTop: false }
+        );
+      });
+
+      window.__commuterHistoryBound = true;
     }
 
 

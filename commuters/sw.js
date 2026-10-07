@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-commuter-v5';
+const CACHE_NAME = 'qc-commuter-v7';
 const urlsToCache = [
   './',
   './index.html',

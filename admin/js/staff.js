@@ -800,6 +800,34 @@ document
     );
   });
 
+  const staffForm = document.getElementById('staffForm');
+
+  staffForm.addEventListener('input', () => {
+    staffForm.dataset.dirty = 'true';
+  });
+
+  staffForm.addEventListener('change', () => {
+    staffForm.dataset.dirty = 'true';
+  });
+
+  if (!window.__staffFormUnloadGuard) {
+    window.addEventListener('beforeunload', event => {
+      const activeForm = document.getElementById('staffForm');
+      const modal = document.getElementById('modal');
+
+      if (
+        activeForm?.dataset.dirty === 'true' &&
+        modal &&
+        !modal.classList.contains('hidden')
+      ) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    });
+
+    window.__staffFormUnloadGuard = true;
+  }
+
 
   // ==================================================
   // SUBMIT
