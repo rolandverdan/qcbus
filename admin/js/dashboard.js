@@ -258,14 +258,6 @@ Pages.dashboard = async function () {
         </div>
       </div>
 
-      <!-- Logout -->
-      <button
-        onclick="logout()"
-        class="w-full py-3 bg-white border border-red-100 text-qc-red text-sm font-semibold rounded-2xl hover:bg-red-50 transition"
-      >
-        Log Out
-      </button>
-
     </div>
   `;
 };

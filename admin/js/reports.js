@@ -1,71 +1,10 @@
 // ==================================================
 // ADMIN — REPORTS PAGE (FRONT-END ONLY)
-// Hardcoded data — no Firestore connection yet
+// Data is loaded from Firestore later; empty for now
 // ==================================================
 
-// ---------- Hardcoded sample reports ----------
-let allReports = [
-  {
-    id: 'rep-001',
-    busRoute: 'QC-1234 · R1 · QC Hall – Cubao',
-    role: 'driver',
-    category: 'reckless',
-    description: 'Driver was speeding along Commonwealth Ave and nearly hit a motorcycle near Batasan.',
-    anonymous: false,
-    reporterName: 'Maria Santos',
-    reporterEmail: 'maria@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 15),      // 15 min ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-002',
-    busRoute: 'QC-5678 · R5 · QC Hall – Mindanao Ave',
-    role: 'conductor',
-    category: 'overcharging',
-    description: 'Conductor charged me ₱25 even though the Q City Bus is free. He insisted it was a "special" trip.',
-    anonymous: true,
-    reporterName: null,
-    reporterEmail: null,
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),  // 2 hrs ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-003',
-    busRoute: 'QC-9012 · R3 · Welcome Rotonda – Aurora',
-    role: 'passenger',
-    category: 'smoking',
-    description: 'Fellow passenger was vaping inside the bus and refused to stop when asked.',
-    anonymous: false,
-    reporterName: 'Jose Rivera',
-    reporterEmail: 'jose@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 5),  // 5 hrs ago
-    status: 'resolved',
-  },
-  {
-    id: 'rep-004',
-    busRoute: 'QC-3344 · R6 · QC Hall – Gilmore',
-    role: 'driver',
-    category: 'refused',
-    description: 'Driver skipped the stop at Tomas Morato even though there were passengers waiting.',
-    anonymous: false,
-    reporterName: 'Ana Cruz',
-    reporterEmail: 'ana@example.com',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    status: 'pending',
-  },
-  {
-    id: 'rep-005',
-    busRoute: 'QC-7788 · R2 · QC Hall – Litex',
-    role: 'conductor',
-    category: 'rude',
-    description: 'Conductor was shouting at an elderly passenger who was slow to find her fare card.',
-    anonymous: true,
-    reporterName: null,
-    reporterEmail: null,
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 30), // ~1.25 days ago
-    status: 'reviewing',
-  },
-];
+// ---------- Reports data (empty until connected) ----------
+let allReports = [];
 
 let activeFilter = 'all';
 
@@ -224,7 +163,6 @@ function renderReportCard(r) {
 function formatCategory(cat) {
   const map = {
     'rude': 'Rude behavior',
-    'overcharging': 'Overcharging / fare issue',
     'reckless': 'Reckless driving',
     'refused': 'Refused to stop / pick up',
     'not-wearing-id': 'Not wearing ID / uniform',

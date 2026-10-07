@@ -176,17 +176,6 @@ function getRouteLabel(route) {
 }
 
 
-function formatFare(fare) {
-  const amount = getNumber(fare, 0);
-
-  if (!amount) {
-    return "Fare not set";
-  }
-
-  return `₱${amount.toFixed(2)}`;
-}
-
-
 function getStatusLabel(bus) {
   if (bus.tripActive) {
     return "On Trip";
@@ -298,9 +287,6 @@ function rebuildBuses() {
       description:
         route?.description ||
         "",
-
-      fare:
-        getNumber(route?.fare, 0),
 
       lat:
         rawBus.lat,
@@ -800,7 +786,7 @@ const Pages = {
         </h2>
 
         <p class="text-xs text-gray-500 mt-1">
-          Routes, stops, fares, and available buses.
+          Routes, stops, and available buses.
         </p>
 
       </div>
@@ -852,10 +838,6 @@ const Pages = {
 
                         </div>
 
-
-                        <span class="text-sm font-semibold text-qc-blue flex-shrink-0">
-                          ${formatFare(route.fare)}
-                        </span>
 
                       </div>
 

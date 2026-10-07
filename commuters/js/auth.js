@@ -1,4 +1,3 @@
-
 console.log("AUTH.JS LOADED");
 
 import {
@@ -92,10 +91,10 @@ function switchTab(tab) {
   if (tab === "signup") {
     indicator.style.transform = "translateX(100%)";
 
-    tabSignup.classList.add("text-qc-blue");
+    tabSignup.classList.add("text-qc-blue-accent");
     tabSignup.classList.remove("text-gray-500");
 
-    tabLogin.classList.remove("text-qc-blue");
+    tabLogin.classList.remove("text-qc-blue-accent");
     tabLogin.classList.add("text-gray-500");
 
     loginForm.classList.add("hidden");
@@ -109,7 +108,7 @@ function switchTab(tab) {
       Already have an account?
       <button
         onclick="switchTab('login')"
-        class="text-qc-blue font-semibold hover:underline"
+        class="text-qc-blue-accent font-semibold hover:underline"
       >
         Sign in
       </button>
@@ -117,10 +116,10 @@ function switchTab(tab) {
   } else {
     indicator.style.transform = "translateX(0)";
 
-    tabLogin.classList.add("text-qc-blue");
+    tabLogin.classList.add("text-qc-blue-accent");
     tabLogin.classList.remove("text-gray-500");
 
-    tabSignup.classList.remove("text-qc-blue");
+    tabSignup.classList.remove("text-qc-blue-accent");
     tabSignup.classList.add("text-gray-500");
 
     signupForm.classList.add("hidden");
@@ -134,7 +133,7 @@ function switchTab(tab) {
       Don't have an account?
       <button
         onclick="switchTab('signup')"
-        class="text-qc-blue font-semibold hover:underline"
+        class="text-qc-blue-accent font-semibold hover:underline"
       >
         Sign up
       </button>
@@ -439,8 +438,185 @@ listenForAuth((user) => {
   }
 });
 
+// ==================================================
+// LEGAL MODAL — TERMS OF SERVICE / PRIVACY POLICY
+// ==================================================
 
+const LEGAL_CONTENT = {
 
+  terms: {
+    title: "Terms of Service",
+
+    body: `
+      <p class="text-xs text-gray-500">
+        Last updated: <span class="font-medium">January 2026</span>
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">1. Acceptance of Terms</h4>
+      <p>
+        By creating an account and using QCommute ("the App"), you agree to
+        these Terms of Service. If you do not agree, please do not use the App.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">2. About the Service</h4>
+      <p>
+        QCommute is a commuter companion application for tracking Quezon City
+        buses in real time. The App is provided as-is and may be updated,
+        suspended, or modified at any time.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">3. User Responsibilities</h4>
+      <p>You agree to:</p>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>Provide accurate account information.</li>
+        <li>Keep your login credentials secure.</li>
+        <li>Use the App only for lawful, personal purposes.</li>
+        <li>Report issues truthfully — false reports may lead to account suspension.</li>
+      </ul>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">4. Prohibited Use</h4>
+      <p>
+        You must not misuse the App, attempt to access other users' accounts,
+        or interfere with the service's operation. Any abuse may result in
+        permanent removal from the platform.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">5. Location Data</h4>
+      <p>
+        The App may request access to your device's location to display your
+        position on the map. This data is used only within the App and is not
+        shared with third parties without your consent.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">6. Disclaimers</h4>
+      <p>
+        Bus arrival times and live locations are provided for convenience only
+        and may be inaccurate due to traffic, network conditions, or other
+        factors. QCommute is not liable for missed buses or delays.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">7. Changes to Terms</h4>
+      <p>
+        We may update these terms from time to time. Continued use of the App
+        after changes are posted means you accept the new terms.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">8. Contact</h4>
+      <p>
+        For questions about these Terms, contact the Quezon City Government
+        through the official QC E-Services portal.
+      </p>
+    `,
+  },
+
+  privacy: {
+    title: "Privacy Policy",
+
+    body: `
+      <p class="text-xs text-gray-500">
+        Last updated: <span class="font-medium">January 2026</span>
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">1. Information We Collect</h4>
+      <p>When you create a QCommute account, we collect:</p>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>Your name and email address.</li>
+        <li>Your mobile number (optional for account recovery).</li>
+        <li>Your approximate location (only while using the map).</li>
+      </ul>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">2. How We Use Your Information</h4>
+      <p>Your information is used to:</p>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>Authenticate you and keep your session secure.</li>
+        <li>Show your position on the live map.</li>
+        <li>Deliver notifications about bus arrivals and routes.</li>
+        <li>Process reports you submit about drivers or conductors.</li>
+      </ul>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">3. Data Storage</h4>
+      <p>
+        Account data is stored securely using Firebase (Google Cloud).
+        Passwords are encrypted. We do not sell or share your personal data
+        with third parties for advertising purposes.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">4. Location Data</h4>
+      <p>
+        Location access is optional and only requested while viewing the live
+        map. Location data is not stored permanently and is not shared with
+        other users.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">5. Reports You Submit</h4>
+      <p>
+        Reports you submit about drivers, conductors, or passengers are stored
+        and reviewed by QC Bus administrators. You may choose to submit reports
+        anonymously, in which case your name and email are not recorded with
+        the report.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">6. Your Rights</h4>
+      <p>
+        You may request to view, correct, or delete your account data at any
+        time by contacting the Quezon City Government through QC E-Services.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">7. Cookies &amp; Storage</h4>
+      <p>
+        The App uses local storage on your device to remember your preferences
+        (such as dark mode and notification settings). No tracking cookies are
+        used.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">8. Changes to This Policy</h4>
+      <p>
+        We may update this Privacy Policy periodically. Any significant changes
+        will be reflected with an updated "Last updated" date at the top.
+      </p>
+
+      <h4 class="font-semibold text-gray-800 mt-4 mb-1">9. Contact</h4>
+      <p>
+        For privacy concerns, please reach out through the official
+        <a href="https://qceservices.quezoncity.gov.ph" target="_blank"
+           class="text-qc-blue-accent font-medium hover:underline">
+          QC E-Services portal
+        </a>.
+      </p>
+    `,
+  },
+};
+
+function openLegalModal(type) {
+  const modal = qs("#legalModal");
+  const title = qs("#legalTitle");
+  const body  = qs("#legalBody");
+
+  if (!modal || !title || !body) return;
+
+  const content = LEGAL_CONTENT[type];
+  if (!content) return;
+
+  title.textContent = content.title;
+  body.innerHTML = content.body;
+
+  modal.classList.remove("hidden");
+  body.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+}
+
+function closeLegalModal() {
+  const modal = qs("#legalModal");
+  if (!modal) return;
+
+  modal.classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+// Close on Escape
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeLegalModal();
+});
 
 // ==================================================
 // INIT
@@ -455,7 +631,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-
 // ==================================================
 // GLOBALS FOR HTML onclick
 // ==================================================
@@ -463,3 +638,5 @@ document.addEventListener("DOMContentLoaded", () => {
 window.switchTab = switchTab;
 window.socialLogin = socialLogin;
 window.showForgotPassword = showForgotPassword;
+window.openLegalModal = openLegalModal;
+window.closeLegalModal = closeLegalModal;

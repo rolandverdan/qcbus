@@ -29,12 +29,16 @@ async function navigateTo(page) {
   document.getElementById('content').innerHTML =
     Pages[page] ? await Pages[page]() : '';
 
+  // Update sidebar nav buttons (horizontal: icon left + text right)
   document.querySelectorAll('.nav-btn').forEach(btn => {
     const active = btn.dataset.page === page;
 
-    btn.className = `nav-btn flex flex-col items-center justify-center gap-1 text-xs transition ${
-      active ? 'text-qc-blue-accent' : 'text-gray-400'
-    }`;
+    const base =
+      'nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left';
+
+    btn.className = active
+      ? `${base} bg-white/10 text-white`
+      : `${base} text-white/70 hover:bg-white/10 hover:text-white`;
   });
 
   const meta = {
@@ -206,7 +210,7 @@ async function logout() {
 
   try {
     await signOutUser();
-    window.location.href = 'auth.html';
+    window.location.href = '../commuters/auth.html';
   } catch (error) {
     console.error('Logout failed:', error);
     showToast('Logout failed', 'error');

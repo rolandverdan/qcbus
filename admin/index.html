@@ -21,20 +21,20 @@
             theme: {
                 extend: {
                     colors: {
-                        // Quezon City official palette (matches QC E-Services)
-                        'qc-blue': '#0D3B54',          // darker navy — gradient start
-                        'qc-blue-accent': '#115272',   // QC E-Services accent — gradient end
-                        'qc-red': '#CE1126',           // official QC/PH red
-                        'qc-yellow': '#FCD116',        // official QC/PH yellow
-                        // Semantic accents (kept for status badges)
+                        'qc-blue': '#0D3B54',
+                        'qc-blue-accent': '#115272',
+                        'qc-red': '#CE1126',
+                        'qc-yellow': '#FCD116',
                         'qc-green': '#16a34a',
-                        // Legacy aliases — keep existing classes working
                         'qc-purple': '#115272',
                         'qc-purple-dark': '#0D3B54',
                     },
                     fontFamily: {
                         sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
-                    }
+                    },
+                    screens: {
+                        'xs': '420px',
+                    },
                 }
             }
         }
@@ -48,20 +48,11 @@
         class="fixed inset-0 z-[9999] flex items-center justify-center bg-white opacity-100 transition-opacity duration-500"
     >
         <div class="flex flex-col items-center">
-
             <div class="mb-6 animate-pulse">
-                <img
-                    src="/images/qclogo2.png"
-                    alt="QCommute"
-                    class="h-20 w-20 object-contain"
-                />
+                <img src="/images/qclogo2.png" alt="QCommute" class="h-16 w-16 sm:h-20 sm:w-20 object-contain" />
             </div>
-
-            <h1 class="text-xl font-bold tracking-tight text-qc-blue">
-                QCommute
-            </h1>
-
-            <p class="mt-2 text-sm text-gray-500">
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-qc-blue">QCommute</h1>
+            <p class="mt-2 text-xs sm:text-sm text-gray-500">
                 Loading
                 <span class="inline-flex ml-1">
                     <span class="animate-bounce [animation-delay:0ms]">.</span>
@@ -69,82 +60,188 @@
                     <span class="animate-bounce [animation-delay:300ms]">.</span>
                 </span>
             </p>
-
         </div>
     </div>
 
-    <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen relative shadow-xl">
+    <!-- ================================================== -->
+    <!-- MAIN LAYOUT — SIDEBAR + CONTENT                    -->
+    <!-- ================================================== -->
+    <div class="h-screen flex overflow-hidden">
 
-        <!-- ========== HEADER ========== -->
-        <header class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md">
-            <div class="px-4 py-3 flex items-center justify-between">
-                <div class="flex items-center gap-2.5">
-                    <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
-                    <div class="leading-tight">
-                        <h1 class="font-bold text-sm" id="pageTitle">Admin Dashboard</h1>
-                        <p class="text-[10px] text-white/75 tracking-wide" id="pageSub">Quezon City · Manage everything</p>
+        <!-- ============================================== -->
+        <!-- SIDEBAR                                        -->
+        <!-- ============================================== -->
+        <aside
+            id="sidebar"
+            class="
+                fixed inset-y-0 left-0 z-[80]
+                w-72 sm:w-64 lg:w-64 xl:w-72 2xl:w-72
+                bg-gradient-to-b from-qc-blue to-qc-blue-accent
+                text-white shadow-2xl
+                transform -translate-x-full
+                lg:translate-x-0 lg:static lg:flex-shrink-0
+                transition-transform duration-300 ease-out
+                flex flex-col
+            "
+        >
+
+            <!-- Sidebar header -->
+            <div class="px-5 py-4 sm:py-5 border-b border-white/10 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 sm:w-11 sm:h-11 bg-white rounded-xl flex items-center justify-center p-1 shadow-md flex-shrink-0">
+                        <img src="../images/qclogo2.png" alt="Quezon City" class="w-full h-full object-contain" />
+                    </div>
+                    <div class="leading-tight min-w-0">
+                        <p class="font-bold text-base tracking-tight truncate">QCommute</p>
+                        <p class="text-[10px] text-white/70 uppercase tracking-widest truncate">Admin Panel</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar nav (scrollable) -->
+            <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+
+                <button data-page="dashboard"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left bg-white/10 text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                    <span class="truncate">Dashboard</span>
+                </button>
+
+                <button data-page="routes"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                    </svg>
+                    <span class="truncate">Routes</span>
+                </button>
+
+                <button data-page="buses"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    <span class="truncate">Buses</span>
+                </button>
+
+                <button data-page="staff"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <span class="truncate">Staff</span>
+                </button>
+
+                <button data-page="reports"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/>
+                    </svg>
+                    <span class="truncate">Reports</span>
+                </button>
+
+                <button data-page="monitor"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span class="truncate">Live Monitor</span>
+                </button>
+
+            </nav>
+
+            <!-- ============================================== -->
+            <!-- SIDEBAR FOOTER — Log Out + copyright           -->
+            <!-- ============================================== -->
+            <div class="flex-shrink-0 border-t border-white/10">
+
+                <!-- Log Out button — pinned to bottom of sidebar -->
+                <div class="p-3">
+                    <button onclick="logout()"
+                        class="w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-red-500/20 hover:text-red-200">
+                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                        <span class="truncate">Log Out</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MOBILE BACKDROP -->
+        <div
+            id="sidebarBackdrop"
+            class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] hidden lg:hidden"
+            onclick="closeSidebar()"
+        ></div>
+
+        <!-- ============================================== -->
+        <!-- MAIN COLUMN                                    -->
+        <!-- ============================================== -->
+        <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+
+            <!-- HEADER -->
+            <header class="bg-white border-b border-gray-200 z-40 shadow-sm flex-shrink-0">
+                <div class="px-3 sm:px-4 lg:px-6 py-3 flex items-center justify-between gap-3">
+
+                    <button
+                        onclick="openSidebar()"
+                        class="lg:hidden p-2 -ml-1 hover:bg-gray-100 rounded-lg transition flex-shrink-0"
+                        aria-label="Open menu"
+                    >
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+
+                    <div class="flex-1 min-w-0">
+                        <h1 class="font-bold text-sm sm:text-base text-gray-800 truncate" id="pageTitle">Admin Dashboard</h1>
+                        <p class="text-[10px] sm:text-xs text-gray-500 tracking-wide truncate" id="pageSub">Quezon City · Manage everything</p>
+                    </div>
+
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        <button onclick="navigateTo('monitor')" class="p-2 hover:bg-gray-100 rounded-full transition" title="Live Monitor">
+                            <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
-                <button onclick="navigateTo('monitor')" class="relative p-2 hover:bg-white/10 rounded-full transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                    </svg>
-                </button>
-            </div>
+                <div class="h-0.5 bg-gradient-to-r from-qc-yellow via-qc-red to-qc-yellow"></div>
+            </header>
 
-            <!-- Thin QC accent line -->
-            <div class="h-0.5 bg-gradient-to-r from-qc-yellow via-qc-red to-qc-yellow"></div>
-        </header>
-
-        <!-- ========== CONTENT ========== -->
-        <main id="content" class="p-4 pb-24">
-            <!-- Dynamically loaded -->
-        </main>
-
-        <!-- ========== BOTTOM NAV ========== -->
-        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 z-50">
-            <div class="grid grid-cols-5 h-16">
-                <button data-page="dashboard" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-qc-blue-accent transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-                    </svg>
-                    <span>Home</span>
-                </button>
-                <button data-page="routes" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                    </svg>
-                    <span>Routes</span>
-                </button>
-                <button data-page="buses" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                    </svg>
-                    <span>Buses</span>
-                </button>
-                <button data-page="staff" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                    </svg>
-                    <span>Staff</span>
-                </button>
-                <button data-page="reports" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/>
-                    </svg>
-                    <span>Reports</span>
-                </button>
-            </div>
-        </nav>
+            <!-- CONTENT -->
+            <main class="flex-1 w-full overflow-y-auto">
+                <div class="mx-auto w-full max-w-7xl 2xl:max-w-[1600px] px-3 sm:px-4 md:px-6 lg:px-6 xl:px-8 2xl:px-10 py-4 sm:py-5 md:py-6">
+                    <div id="content" class="w-full">
+                        <!-- Dynamically loaded -->
+                    </div>
+                </div>
+            </main>
+        </div>
     </div>
 
     <!-- ========== GENERIC MODAL ========== -->
     <div id="modal" class="fixed inset-0 z-[100] hidden">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" onclick="closeModal()"></div>
-        <div class="absolute inset-x-0 bottom-0 max-w-md mx-auto bg-white rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto slide-up">
-            <div class="sticky top-0 bg-white z-10 pt-3 pb-2 px-5 border-b border-gray-100">
-                <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3"></div>
+
+        <div class="
+            absolute inset-x-0 bottom-0
+            sm:inset-0 sm:m-auto
+            sm:max-w-lg
+            mx-auto
+            bg-white
+            rounded-t-3xl sm:rounded-2xl
+            shadow-2xl
+            max-h-[92vh] sm:max-h-[85vh]
+            overflow-y-auto
+            slide-up
+            sm:flex sm:flex-col
+        ">
+            <div class="sticky top-0 bg-white z-10 pt-3 pb-2 px-5 border-b border-gray-100 rounded-t-3xl sm:rounded-t-2xl">
+                <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                 <div class="flex items-center justify-between">
                     <h3 id="modalTitle" class="font-bold text-base text-gray-800">Title</h3>
                     <button onclick="closeModal()" class="p-1.5 hover:bg-gray-100 rounded-full transition">
@@ -161,8 +258,20 @@
     <!-- ========== CONFIRM MODAL ========== -->
     <div id="confirmModal" class="fixed inset-0 z-[110] hidden">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
-        <div class="absolute inset-x-0 bottom-0 max-w-md mx-auto bg-white rounded-t-3xl shadow-2xl p-6 slide-up">
-            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+
+        <div class="
+            absolute inset-x-0 bottom-0
+            sm:inset-0 sm:m-auto
+            sm:max-w-md
+            sm:h-fit
+            mx-auto
+            bg-white
+            rounded-t-3xl sm:rounded-2xl
+            shadow-2xl
+            p-6
+            slide-up
+        ">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4 sm:hidden"></div>
             <h3 id="confirmTitle" class="font-bold text-lg text-gray-800 mb-2">Are you sure?</h3>
             <p id="confirmMessage" class="text-sm text-gray-500 mb-5">This action cannot be undone.</p>
             <div class="grid grid-cols-2 gap-3">
@@ -185,5 +294,45 @@
     <script type="module" src="js/buses.js"></script>
     <script type="module" src="js/staff.js"></script>
     <script type="module" src="js/reports.js"></script>
+
+    <!-- ========== SIDEBAR HELPERS ========== -->
+    <script>
+        function openSidebar() {
+            const sb = document.getElementById('sidebar');
+            const bd = document.getElementById('sidebarBackdrop');
+            sb.classList.remove('-translate-x-full');
+            bd.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeSidebar() {
+            const sb = document.getElementById('sidebar');
+            const bd = document.getElementById('sidebarBackdrop');
+            sb.classList.add('-translate-x-full');
+            bd.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth >= 1024) {
+                document.getElementById('sidebarBackdrop').classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            const navBtn = e.target.closest('.nav-btn');
+            if (navBtn && window.innerWidth < 1024) {
+                closeSidebar();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeSidebar();
+        });
+
+        window.openSidebar = openSidebar;
+        window.closeSidebar = closeSidebar;
+    </script>
 </body>
 </html>

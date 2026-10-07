@@ -102,13 +102,6 @@ Pages.stops = async function (routeId) {
           <span>
             ${stops.length} stops
           </span>
-
-          <span>·</span>
-
-          <span>
-            ₱${route.fare} base fare
-          </span>
-
           ${
             route.distance
               ? `

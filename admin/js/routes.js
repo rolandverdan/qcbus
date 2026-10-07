@@ -43,7 +43,7 @@ Pages.routes = async function () {
                 </p>
 
                 <p class="text-xs text-gray-500">
-                  ${routeStops} stops · ${routeBuses} buses · Free
+                  ${routeStops} stops · ${routeBuses} buses
                 </p>
               </div>
 
@@ -208,9 +208,6 @@ async function openRouteModal(id = null) {
     e.preventDefault();
 
     const data = Object.fromEntries(new FormData(e.target));
-
-    // Q City Bus is free — force fare to 0
-    data.fare = 0;
 
     try {
 
