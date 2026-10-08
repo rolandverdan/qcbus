@@ -59,134 +59,306 @@
     </div>
 
     <!-- Status Indicator -->
-    <div class="mt-6 z-20">
+    <div class="mt-6 z-20 flex items-center gap-3">
         <div id="statusBadge" class="bg-yellow-500/80 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg">
             Loading AI Model...
         </div>
+        <button id="switchCamBtn" class="hidden bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg border border-slate-700 transition active:scale-95">
+            🔄 Switch Cam
+        </button>
     </div>
 
     <script type="module">
+        let activeStream = null;
+        let currentCameraIndex = 0;
+        let availableCameras = [];
+        let globalModel = null;
+
         initScanner();
 
-        async function initScanner() {
+        async function initScanner(preferredDeviceId = null) {
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             const countDisplay = document.getElementById('passengerCount');
             const statusBadge = document.getElementById('statusBadge');
+            const switchBtn = document.getElementById('switchCamBtn');
             
             let passengerCount = 0;
             let trackedEntities = {}; 
             let entityIdCounter = 0;
 
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" } 
+                if (window.tf) {
+                    try {
+                        await tf.setBackend('webgl');
+                        tf.env().set('WEBGL_PACK', true);
+                        try { tf.env().set('WEBGL_FORCE_F16_TEXTURES', true); } catch (e) {}
+                    } catch (e) {
+                        console.warn("TF WebGL note:", e);
+                    }
+                }
+
+                // Enumerate cameras
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    availableCameras = devices.filter(d => d.kind === 'videoinput');
+                    if (switchBtn) {
+                        if (availableCameras.length > 1) {
+                            switchBtn.classList.remove('hidden');
+                            switchBtn.onclick = () => switchScannerCamera();
+                        } else {
+                            switchBtn.classList.add('hidden');
+                        }
+                    }
+                } catch (e) {}
+
+                const constraintOptions = [];
+                if (preferredDeviceId) {
+                    constraintOptions.push({
+                        video: {
+                            deviceId: { exact: preferredDeviceId },
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        }
+                    });
+                    constraintOptions.push({ video: { deviceId: { exact: preferredDeviceId } } });
+                } else {
+                    constraintOptions.push({
+                        video: { 
+                            facingMode: { ideal: "environment" },
+                            width: { ideal: 480, max: 640 },
+                            height: { ideal: 480, max: 640 },
+                            frameRate: { ideal: 30, max: 30 }
+                        } 
+                    });
+                    constraintOptions.push({ video: { facingMode: { ideal: "environment" } } });
+                    if (availableCameras.length > 0 && availableCameras[currentCameraIndex]) {
+                        constraintOptions.push({
+                            video: {
+                                deviceId: { ideal: availableCameras[currentCameraIndex].deviceId },
+                                width: { ideal: 640 },
+                                height: { ideal: 480 }
+                            }
+                        });
+                    }
+                    constraintOptions.push({ video: { width: { ideal: 640 }, height: { ideal: 480 } } });
+                    constraintOptions.push({ video: true });
+                }
+
+                let stream = null;
+                for (const c of constraintOptions) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(c);
+                        if (stream) break;
+                    } catch (e) {}
+                }
+
+                if (!stream) throw new Error("Camera unavailable");
+
+                if (activeStream) {
+                    activeStream.getTracks().forEach(t => t.stop());
+                }
+                activeStream = stream;
+
+                video.muted = true;
+                video.defaultMuted = true;
+                video.playsInline = true;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('muted', '');
+                video.srcObject = activeStream;
+
+                await new Promise((resolve) => {
+                    if (video.readyState >= 2 && video.videoWidth > 0) {
+                        resolve();
+                    } else {
+                        let done = false;
+                        const onReady = () => {
+                            if (!done) {
+                                done = true;
+                                video.removeEventListener('loadeddata', onReady);
+                                video.removeEventListener('loadedmetadata', onReady);
+                                resolve();
+                            }
+                        };
+                        video.addEventListener('loadeddata', onReady);
+                        video.addEventListener('loadedmetadata', onReady);
+                        setTimeout(onReady, 800);
+                    }
                 });
-                video.srcObject = stream;
+
+                try {
+                    await video.play();
+                } catch (e) {}
+
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+
+                if (!globalModel) {
+                    globalModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+                }
+                statusBadge.textContent = "Scanner Active";
+                statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
+                
+                runScanner(video, globalModel);
+
+                // Auto-detect completely black frame & auto-switch if another camera is connected
+                setTimeout(() => {
+                    if (video.readyState >= 2 && availableCameras.length > 1) {
+                        try {
+                            const testCanvas = document.createElement('canvas');
+                            testCanvas.width = 16;
+                            testCanvas.height = 16;
+                            const testCtx = testCanvas.getContext('2d', { willReadFrequently: true });
+                            testCtx.drawImage(video, 0, 0, 16, 16);
+                            const data = testCtx.getImageData(0, 0, 16, 16).data;
+                            let sum = 0;
+                            for (let i = 0; i < data.length; i += 4) {
+                                sum += data[i] + data[i+1] + data[i+2];
+                            }
+                            if (sum === 0) {
+                                console.warn("Camera frame is 100% black; auto-switching to next camera...");
+                                switchScannerCamera();
+                            }
+                        } catch (e) {}
+                    }
+                }, 1200);
             } catch (err) {
                 statusBadge.textContent = "Camera Error";
                 statusBadge.className = "bg-red-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
                 return;
             }
 
-            video.onloadedmetadata = async () => {
-                // THE FIX: Lock the canvas resolution to the exact raw camera resolution
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+            function runScanner(video, model) {
+                const offscreen = document.createElement('canvas');
+                offscreen.width = 300;
+                offscreen.height = 300;
+                const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
 
-                const model = await cocoSsd.load();
-                statusBadge.textContent = "Scanner Active";
-                statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
-                
-                detectFrame(video, model);
-            };
+                let isDetecting = false;
 
-            function detectFrame(video, model) {
-                model.detect(video).then(predictions => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // 60 FPS Render loop for line and tracker boxes
+                function render() {
+                    // Directly paint video to canvas (fixes black video in Chrome on PC)
+                    if (video.readyState >= 2) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    } else {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
                     
-                    // Draw Vertical Line in the exact center of the raw video
                     const lineX = canvas.width / 2;
                     ctx.beginPath();
                     ctx.moveTo(lineX, 0); 
                     ctx.lineTo(lineX, canvas.height); 
-                    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)"; 
-                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.85)"; 
+                    ctx.lineWidth = 4; 
                     ctx.stroke();
 
-                    // Shape and confidence filters
-                    const people = predictions.filter(p => {
-                        const isPerson = p.class === 'person';
-                        const isConfident = p.score > 0.35; 
-                        const isHumanShape = p.bbox[3] > (p.bbox[2] * 0.8); 
-                        return isPerson && isConfident && isHumanShape;
-                    });
+                    const now = Date.now();
+                    for (const entity of Object.values(trackedEntities)) {
+                        if (entity.box && now - entity.lastSeen < 600) {
+                            ctx.strokeStyle = entity.counted ? "#10B981" : "#38BDF8";
+                            ctx.lineWidth = 3;
+                            ctx.strokeRect(entity.box.x, entity.box.y, entity.box.w, entity.box.h);
 
-                    let currentFrameEntities = {};
+                            ctx.beginPath();
+                            ctx.arc(entity.x, entity.y, 6, 0, 2 * Math.PI);
+                            ctx.fillStyle = entity.counted ? "#10B981" : "#38BDF8";
+                            ctx.fill();
+                        }
+                    }
 
-                    people.forEach(person => {
-                        const [x, y, width, height] = person.bbox;
-                        const centerY = y + (height / 2);
-                        const centerX = x + (width / 2);
+                    requestAnimationFrame(render);
+                }
+                requestAnimationFrame(render);
 
-                        // Draw perfect hit box
-                        ctx.strokeStyle = "#00FF00";
-                        ctx.lineWidth = 4;
-                        ctx.strokeRect(x, y, width, height);
-                        ctx.fillStyle = "#00FF00";
-                        ctx.font = "bold 24px Arial";
-                        ctx.fillText(`${Math.round(person.score * 100)}%`, x, y > 30 ? y - 10 : 30);
-                        
-                        ctx.beginPath();
-                        ctx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
-                        ctx.fill();
+                // Throttled AI loop: runs every ~90ms, keeping camera video at 60 FPS
+                async function detectLoop() {
+                    while (true) {
+                        if (!isDetecting && video.readyState >= 2) {
+                            isDetecting = true;
+                            try {
+                                offCtx.drawImage(video, 0, 0, 300, 300);
+                                const predictions = await model.detect(offscreen, 3, 0.38);
 
-                        let matchedId = null;
-                        let minDistance = canvas.width * 0.3; // Responsive tracking distance
+                                const scaleX = canvas.width / 300;
+                                const scaleY = canvas.height / 300;
+                                const lineX = canvas.width / 2;
+                                const now = Date.now();
 
-                        for (const [id, data] of Object.entries(trackedEntities)) {
-                            const dist = Math.hypot(centerX - data.x, centerY - data.y);
-                            if (dist < minDistance) {
-                                minDistance = dist;
-                                matchedId = id;
+                                const people = predictions.filter(p => {
+                                    return p.class === 'person' && p.bbox[3] > (p.bbox[2] * 0.7);
+                                });
+
+                                let currentFrameEntities = {};
+
+                                for (const person of people) {
+                                    const [bx, by, bw, bh] = person.bbox;
+                                    const x = bx * scaleX;
+                                    const y = by * scaleY;
+                                    const w = bw * scaleX;
+                                    const h = bh * scaleY;
+                                    const centerX = x + (w / 2);
+                                    const centerY = y + (h / 2);
+
+                                    let matchedId = null;
+                                    let minDistance = canvas.width * 0.35;
+
+                                    for (const [id, data] of Object.entries(trackedEntities)) {
+                                        const dist = Math.hypot(centerX - data.x, centerY - data.y);
+                                        if (dist < minDistance) {
+                                            minDistance = dist;
+                                            matchedId = id;
+                                        }
+                                    }
+
+                                    if (!matchedId) {
+                                        matchedId = String(entityIdCounter++);
+                                        trackedEntities[matchedId] = { x: centerX, y: centerY, counted: false, lastSeen: now, box: { x, y, w, h } };
+                                    }
+                                    
+                                    const wasCounted = trackedEntities[matchedId].counted;
+                                    currentFrameEntities[matchedId] = { x: centerX, y: centerY, counted: wasCounted, lastSeen: now, box: { x, y, w, h } };
+
+                                    const prevX = trackedEntities[matchedId].x;
+                                    
+                                    if (!wasCounted) {
+                                        if (prevX < lineX && centerX >= lineX) {
+                                            passengerCount++;
+                                            currentFrameEntities[matchedId].counted = true;
+                                            flashScreen('rgba(16, 185, 129, 0.3)');
+                                        }
+                                        else if (prevX > lineX && centerX <= lineX) {
+                                            if (passengerCount > 0) passengerCount--;
+                                            currentFrameEntities[matchedId].counted = true;
+                                            flashScreen('rgba(239, 68, 68, 0.3)');
+                                        }
+                                    }
+
+                                    if (Math.abs(centerX - lineX) > (canvas.width * 0.18)) {
+                                        currentFrameEntities[matchedId].counted = false;
+                                    }
+                                }
+
+                                for (const [id, entity] of Object.entries(trackedEntities)) {
+                                    if (!currentFrameEntities[id] && now - entity.lastSeen < 500) {
+                                        currentFrameEntities[id] = entity;
+                                    }
+                                }
+
+                                trackedEntities = currentFrameEntities;
+                                countDisplay.innerText = passengerCount;
+                            } catch (err) {
+                                console.error("Detection error:", err);
+                            } finally {
+                                isDetecting = false;
                             }
                         }
 
-                        if (!matchedId) {
-                            matchedId = entityIdCounter++;
-                            trackedEntities[matchedId] = { x: centerX, y: centerY, counted: false };
-                        }
-                        
-                        currentFrameEntities[matchedId] = { x: centerX, y: centerY, counted: trackedEntities[matchedId].counted };
-
-                        const prevX = trackedEntities[matchedId].x;
-                        
-                        // Crossing Math
-                        if (!currentFrameEntities[matchedId].counted) {
-                            if (prevX < lineX && centerX >= lineX) {
-                                passengerCount++;
-                                currentFrameEntities[matchedId].counted = true;
-                                flashScreen('rgba(16, 185, 129, 0.3)'); // Green flash
-                            }
-                            else if (prevX > lineX && centerX <= lineX) {
-                                if (passengerCount > 0) passengerCount--;
-                                currentFrameEntities[matchedId].counted = true;
-                                flashScreen('rgba(239, 68, 68, 0.3)'); // Red flash
-                            }
-                        }
-
-                        // Reset when moving far enough away from the line
-                        if (Math.abs(centerX - lineX) > (canvas.width * 0.15)) {
-                            currentFrameEntities[matchedId].counted = false;
-                        }
-                    });
-
-                    trackedEntities = currentFrameEntities;
-                    countDisplay.innerText = passengerCount;
-
-                    requestAnimationFrame(() => detectFrame(video, model));
-                });
+                        await new Promise(r => setTimeout(r, 90));
+                    }
+                }
+                detectLoop();
             }
 
             function flashScreen(color) {
@@ -205,6 +377,16 @@
                 }, 50);
             }
         }
+
+        async function switchScannerCamera() {
+            if (availableCameras.length <= 1) return;
+            currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+            const nextCam = availableCameras[currentCameraIndex];
+            if (nextCam) {
+                initScanner(nextCam.deviceId);
+            }
+        }
+        window.switchScannerCamera = switchScannerCamera;
     </script>
 </body>
 </html>

@@ -138,6 +138,33 @@ function updateConductorEta() {
   if (etaElement) etaElement.innerHTML = renderConductorEta();
 }
 
+function formatTripDuration(startedAt) {
+  if (!startedAt) return "00:00:00";
+  const startTime = typeof startedAt === "number" ? startedAt : new Date(startedAt).getTime();
+  if (!startTime || isNaN(startTime)) return "00:00:00";
+  const ms = Math.max(0, Date.now() - startTime);
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
+function addHistory(kind, label) {
+  const item = {
+    kind,
+    label,
+    time: Date.now(),
+  };
+  if (!Array.isArray(AppState.history)) {
+    AppState.history = [];
+  }
+  AppState.history.unshift(item);
+  if (AppState.history.length > 50) {
+    AppState.history.length = 50;
+  }
+  return item;
+}
+
 const Pages = {
 
   // ---------- TRIP PAGE ----------
@@ -173,7 +200,7 @@ const Pages = {
             </div>
             <div>
               <p class="text-xs opacity-75">Duration</p>
-              <p class="font-semibold" id="tripDuration">00:00:00</p>
+              <p class="font-semibold" id="tripDuration">${formatTripDuration(t.startedAt)}</p>
             </div>
           </div>
         ` : `
@@ -257,7 +284,55 @@ const Pages = {
     </div>
     `;
   },
+// ---------- SCANNER PAGE ----------
+  scanner: () => {
+    if (!AppState.trip.active) {
+      return `
+        <div class="slide-in flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <span class="text-3xl">📸</span>
+          </div>
+          <h3 class="font-semibold text-gray-800 mb-1">No active trip</h3>
+          <p class="text-sm text-gray-500 mb-4 max-w-[240px]">Start a trip first to use the AI Scanner.</p>
+          <button onclick="navigateTo('trip')" class="px-6 py-2.5 bg-qc-blue-accent text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-200">
+            Go to Trip
+          </button>
+        </div>
+      `;
+    }
 
+    return `
+    <div class="space-y-4 slide-in flex flex-col items-center mt-2">
+        
+        <div class="bg-white w-full rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+            <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Passengers Onboard</p>
+            <p id="scannerCount" class="text-4xl font-bold text-qc-blue-accent">${AppState.occupancy.onboard}</p>
+        </div>
+
+        <div class="relative w-full max-w-sm aspect-[3/4] bg-black rounded-2xl overflow-hidden shadow-xl flex items-center justify-center border-4 border-slate-800">
+            
+            <div id="scannerOverlay" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+                <button onclick="startAICamera()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition active:scale-95">
+                    📸 Start Camera
+                </button>
+                <p class="text-slate-400 mt-4 text-xs">Mount phone before starting</p>
+            </div>
+
+            <video id="aiVideo" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
+            <canvas id="aiCanvas" class="absolute inset-0 w-full h-full object-cover hidden z-10"></canvas>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <div id="aiStatus" class="bg-slate-800 text-slate-300 px-5 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700">
+                Camera Off
+            </div>
+            <button id="switchCamBtn" onclick="switchAICamera()" class="hidden bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700 transition active:scale-95" title="Switch Camera">
+                🔄 Switch Camera
+            </button>
+        </div>
+    </div>
+    `;
+  },
   // ---------- COUNTER PAGE ----------
   counter: () => {
     if (!AppState.trip.active) {
@@ -543,6 +618,7 @@ function renderActivityList() {
 // NAVIGATION
 // ==================================================
 async function navigateTo(page) {
+  if (window.stopAICamera) window.stopAICamera();
   AppState.currentPage = page;
   document.getElementById('content').innerHTML =
     Pages[page] ? await Pages[page]() : '';
@@ -556,6 +632,7 @@ async function navigateTo(page) {
 
   const titles = {
     trip: 'Conductor Dashboard',
+    scanner: 'AI Passenger Scanner',
     counter: 'Passenger Counter',
     alerts: 'Activity Log',
     account: 'My Account',
@@ -570,6 +647,10 @@ async function navigateTo(page) {
   };
   const subEl = document.getElementById('tripStatus');
   if (subEl) subEl.textContent = subTitles[page] || 'Quezon City';
+
+  if (page === 'trip' && AppState.trip.active) {
+    if (window.startTripTimer) window.startTripTimer();
+  }
 
   if (page === 'counter') startCounterTimer();
   else stopCounterTimer();
@@ -728,6 +809,9 @@ async function initApp() {
   try {
     await loadConductorData();
     await restoreActiveTrip();
+    if (window.initActiveTripListener) {
+      window.initActiveTripListener();
+    }
     await navigateTo('trip');
   } catch (error) {
     console.error('Conductor data load failed:', error);
@@ -761,6 +845,8 @@ window.loadPercent = loadPercent;
 window.loadColor = loadColor;
 window.loadBarColor = loadBarColor;
 window.renderActivityList = renderActivityList;
+window.addHistory = addHistory;
+window.formatTripDuration = formatTripDuration;
 window.setNearestAlightStop = (stopId) => {
   AppState.currentAlightStopId = stopId || null;
   updateConductorEta();

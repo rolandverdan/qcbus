@@ -3,6 +3,18 @@
 // ==================================================
 let sosCooldown = false;
 
+function recordHistory(kind, label) {
+  if (typeof window.addHistory === "function") {
+    return window.addHistory(kind, label);
+  }
+  const item = { kind, label, time: Date.now() };
+  if (!Array.isArray(window.AppState?.history)) {
+    if (window.AppState) window.AppState.history = [];
+  }
+  window.AppState?.history?.unshift(item);
+  return item;
+}
+
 function openSOS() {
   document.getElementById('sosModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -30,7 +42,7 @@ function triggerSOS(type) {
     type,
   };
 
-  addHistory('sos', `SOS · ${labels[type] || type}`);
+  recordHistory('sos', `SOS · ${labels[type] || type}`);
 
   // 2. Broadcast to backend (frontend simulation)
   broadcastSOS(type, labels[type]);
@@ -82,7 +94,7 @@ function dismissSOS() {
   const overlay = document.getElementById('sosActive');
   if (overlay) overlay.remove();
   AppState.sos.active = false;
-  addHistory('sos', 'SOS cleared');
+  recordHistory('sos', 'SOS cleared');
   showToast('SOS cleared', 'info');
 }
 

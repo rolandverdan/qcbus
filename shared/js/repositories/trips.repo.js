@@ -7,6 +7,7 @@ import {
   query,
   where,
   serverTimestamp,
+  onSnapshot,
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../firebase.js";
@@ -22,25 +23,113 @@ export async function getTripsRepo() {
   }));
 }
 
-export async function getActiveTripRepo(conductorId) {
-  const q = query(
-    tripsCollection,
-    where("conductorId", "==", conductorId),
-    where("status", "==", "active")
-  );
+export async function getActiveTripRepo(conductorId, busId = null) {
+  if (conductorId) {
+    const q = query(
+      tripsCollection,
+      where("conductorId", "==", conductorId),
+      where("status", "==", "active")
+    );
 
-  const snapshot = await getDocs(q);
+    const snapshot = await getDocs(q);
 
-  if (snapshot.empty) {
-    return null;
+    if (!snapshot.empty) {
+      const tripDoc = snapshot.docs[0];
+      return {
+        id: tripDoc.id,
+        ...tripDoc.data(),
+      };
+    }
   }
 
-  const tripDoc = snapshot.docs[0];
+  if (busId) {
+    const qBus = query(
+      tripsCollection,
+      where("busId", "==", busId),
+      where("status", "==", "active")
+    );
+    const busSnap = await getDocs(qBus);
+    if (!busSnap.empty) {
+      const tripDoc = busSnap.docs[0];
+      return {
+        id: tripDoc.id,
+        ...tripDoc.data(),
+      };
+    }
+  }
 
-  return {
-    id: tripDoc.id,
-    ...tripDoc.data(),
-  };
+  return null;
+}
+
+export function listenToActiveTripRepo(conductorId, callback, busId = null) {
+  if (!conductorId && !busId) return () => {};
+
+  if (conductorId) {
+    const q = query(
+      tripsCollection,
+      where("conductorId", "==", conductorId),
+      where("status", "==", "active")
+    );
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const tripDoc = snapshot.docs[0];
+          callback({
+            id: tripDoc.id,
+            ...tripDoc.data(),
+          });
+        } else if (busId) {
+          const qBus = query(
+            tripsCollection,
+            where("busId", "==", busId),
+            where("status", "==", "active")
+          );
+          getDocs(qBus)
+            .then((busSnap) => {
+              if (!busSnap.empty) {
+                callback({
+                  id: busSnap.docs[0].id,
+                  ...busSnap.docs[0].data(),
+                });
+              } else {
+                callback(null);
+              }
+            })
+            .catch(() => callback(null));
+        } else {
+          callback(null);
+        }
+      },
+      (error) => {
+        console.error("listenToActiveTripRepo error:", error);
+      }
+    );
+  }
+
+  const qBus = query(
+    tripsCollection,
+    where("busId", "==", busId),
+    where("status", "==", "active")
+  );
+  return onSnapshot(
+    qBus,
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const tripDoc = snapshot.docs[0];
+        callback({
+          id: tripDoc.id,
+          ...tripDoc.data(),
+        });
+      } else {
+        callback(null);
+      }
+    },
+    (error) => {
+      console.error("listenToActiveTripRepo bus query error:", error);
+    }
+  );
 }
 
 export async function addTripRepo(data) {
@@ -113,4 +202,21 @@ export async function endTripRepo(id, data = {}) {
     endedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+export function listenToTripOccupancyRepo(tripId, callback) {
+  if (!tripId) return () => {};
+  const tripRef = doc(db, "trips", tripId); 
+  
+  return onSnapshot(
+    tripRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        callback({ id: snapshot.id, ...snapshot.data() });
+      }
+    },
+    (error) => {
+      console.error("listenToTripOccupancyRepo error:", error);
+    }
+  );
 }

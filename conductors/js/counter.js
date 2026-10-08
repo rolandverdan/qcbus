@@ -7,6 +7,18 @@ import {
 
 let counterRefreshInterval = null;
 
+function recordHistory(kind, label) {
+  if (typeof window.addHistory === "function") {
+    return window.addHistory(kind, label);
+  }
+  const item = { kind, label, time: Date.now() };
+  if (!Array.isArray(window.AppState?.history)) {
+    if (window.AppState) window.AppState.history = [];
+  }
+  window.AppState?.history?.unshift(item);
+  return item;
+}
+
 async function addPassenger(direction, amount = 1) {
   if (!AppState.trip.active) {
     showToast('Start a trip first', 'warn');
@@ -28,7 +40,7 @@ async function addPassenger(direction, amount = 1) {
     occ.onboard += added;
     occ.totalIn += added;
 
-    addHistory(
+    recordHistory(
       'in',
       `+${added} boarded (${occ.onboard}/${occ.capacity})`
     );
@@ -41,7 +53,7 @@ async function addPassenger(direction, amount = 1) {
     occ.onboard -= removed;
     occ.totalOut += removed;
 
-    addHistory(
+    recordHistory(
       'out',
       `−${removed} alighted (${occ.onboard}/${occ.capacity})`
     );
@@ -60,20 +72,17 @@ async function addPassenger(direction, amount = 1) {
     }
   }
 
-  // Save to Firestore
-  if (window.saveTripOccupancy) {
-    await window.saveTripOccupancy();
-  }
-
-  // Broadcast to commuter
+  // Save to Firestore & Broadcast
   if (window.broadcastOccupancy) {
-    window.broadcastOccupancy();
+    await window.broadcastOccupancy();
+  } else if (window.saveTripOccupancy) {
+    await window.saveTripOccupancy();
   }
 
   // Refresh counter view
   if (AppState.currentPage === 'counter') {
     softRefreshCounter();
-  } else {
+  } else if (AppState.currentPage !== 'scanner') {
     navigateTo('counter');
   }
 
@@ -104,16 +113,13 @@ async function resetCounter() {
   AppState.occupancy.totalIn = 0;
   AppState.occupancy.totalOut = 0;
 
-  addHistory('trip', 'Counter reset');
+  recordHistory('trip', 'Counter reset');
 
   // Save reset to Firestore
-  if (window.saveTripOccupancy) {
-    await window.saveTripOccupancy();
-  }
-
-  // Broadcast to commuter
   if (window.broadcastOccupancy) {
-    window.broadcastOccupancy();
+    await window.broadcastOccupancy();
+  } else if (window.saveTripOccupancy) {
+    await window.saveTripOccupancy();
   }
 
   softRefreshCounter();
@@ -122,21 +128,28 @@ async function resetCounter() {
 }
 
 
-// Update just the numbers
+// Update numbers across all views
 function softRefreshCounter() {
   const big = document.getElementById('bigCount');
-
   if (big) {
     big.textContent = AppState.occupancy.onboard;
   }
 
-  const content = document.getElementById('content');
+  const scannerCount = document.getElementById('scannerCount');
+  if (scannerCount) {
+    scannerCount.textContent = AppState.occupancy.onboard;
+  }
 
-  if (
-    content &&
-    AppState.currentPage === 'counter'
-  ) {
-    content.innerHTML = Pages.counter();
+  const content = document.getElementById('content');
+  if (content && window.Pages) {
+    if (AppState.currentPage === 'counter') {
+      content.innerHTML = Pages.counter();
+    } else if (AppState.currentPage === 'trip') {
+      content.innerHTML = Pages.trip();
+      if (AppState.trip.active && window.startTripTimer) {
+        window.startTripTimer();
+      }
+    }
   }
 }
 
