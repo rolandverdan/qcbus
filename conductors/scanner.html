@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Passenger Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+    <style>
+        body { margin: 0; background-color: #0f172a; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        
+        /* The contained window for the camera */
+        .scanner-window {
+            position: relative;
+            width: 90vw;
+            max-width: 450px;
+            aspect-ratio: 3/4; /* Makes it a vertical rectangle */
+            background-color: #000;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 4px solid #334155;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            margin-top: 2rem;
+        }
+
+        /* Both video and canvas scale together perfectly */
+        #video, #canvas { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+        }
+        #canvas { z-index: 10; }
+    </style>
+</head>
+<body class="font-sans antialiased">
+
+    <!-- Top UI -->
+    <div class="w-full max-w-md p-4 flex justify-between items-center z-20 mt-4">
+        <button onclick="window.location.href='/'" class="bg-slate-800 text-white p-3 rounded-full hover:bg-slate-700 transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        </button>
+        
+        <div class="bg-slate-800 rounded-2xl px-6 py-2 text-center border border-slate-700 shadow-lg">
+            <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Passengers</p>
+            <p id="passengerCount" class="text-3xl font-extrabold text-white">0</p>
+        </div>
+    </div>
+
+    <!-- The Scanner Box -->
+    <div class="scanner-window">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- Status Indicator -->
+    <div class="mt-6 z-20">
+        <div id="statusBadge" class="bg-yellow-500/80 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg">
+            Loading AI Model...
+        </div>
+    </div>
+
+    <script type="module">
+        initScanner();
+
+        async function initScanner() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const countDisplay = document.getElementById('passengerCount');
+            const statusBadge = document.getElementById('statusBadge');
+            
+            let passengerCount = 0;
+            let trackedEntities = {}; 
+            let entityIdCounter = 0;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                statusBadge.textContent = "Camera Error";
+                statusBadge.className = "bg-red-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
+                return;
+            }
+
+            video.onloadedmetadata = async () => {
+                // THE FIX: Lock the canvas resolution to the exact raw camera resolution
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                const model = await cocoSsd.load();
+                statusBadge.textContent = "Scanner Active";
+                statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
+                
+                detectFrame(video, model);
+            };
+
+            function detectFrame(video, model) {
+                model.detect(video).then(predictions => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Draw Vertical Line in the exact center of the raw video
+                    const lineX = canvas.width / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(lineX, 0); 
+                    ctx.lineTo(lineX, canvas.height); 
+                    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)"; 
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+
+                    // Shape and confidence filters
+                    const people = predictions.filter(p => {
+                        const isPerson = p.class === 'person';
+                        const isConfident = p.score > 0.35; 
+                        const isHumanShape = p.bbox[3] > (p.bbox[2] * 0.8); 
+                        return isPerson && isConfident && isHumanShape;
+                    });
+
+                    let currentFrameEntities = {};
+
+                    people.forEach(person => {
+                        const [x, y, width, height] = person.bbox;
+                        const centerY = y + (height / 2);
+                        const centerX = x + (width / 2);
+
+                        // Draw perfect hit box
+                        ctx.strokeStyle = "#00FF00";
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(x, y, width, height);
+                        ctx.fillStyle = "#00FF00";
+                        ctx.font = "bold 24px Arial";
+                        ctx.fillText(`${Math.round(person.score * 100)}%`, x, y > 30 ? y - 10 : 30);
+                        
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
+                        ctx.fill();
+
+                        let matchedId = null;
+                        let minDistance = canvas.width * 0.3; // Responsive tracking distance
+
+                        for (const [id, data] of Object.entries(trackedEntities)) {
+                            const dist = Math.hypot(centerX - data.x, centerY - data.y);
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                matchedId = id;
+                            }
+                        }
+
+                        if (!matchedId) {
+                            matchedId = entityIdCounter++;
+                            trackedEntities[matchedId] = { x: centerX, y: centerY, counted: false };
+                        }
+                        
+                        currentFrameEntities[matchedId] = { x: centerX, y: centerY, counted: trackedEntities[matchedId].counted };
+
+                        const prevX = trackedEntities[matchedId].x;
+                        
+                        // Crossing Math
+                        if (!currentFrameEntities[matchedId].counted) {
+                            if (prevX < lineX && centerX >= lineX) {
+                                passengerCount++;
+                                currentFrameEntities[matchedId].counted = true;
+                                flashScreen('rgba(16, 185, 129, 0.3)'); // Green flash
+                            }
+                            else if (prevX > lineX && centerX <= lineX) {
+                                if (passengerCount > 0) passengerCount--;
+                                currentFrameEntities[matchedId].counted = true;
+                                flashScreen('rgba(239, 68, 68, 0.3)'); // Red flash
+                            }
+                        }
+
+                        // Reset when moving far enough away from the line
+                        if (Math.abs(centerX - lineX) > (canvas.width * 0.15)) {
+                            currentFrameEntities[matchedId].counted = false;
+                        }
+                    });
+
+                    trackedEntities = currentFrameEntities;
+                    countDisplay.innerText = passengerCount;
+
+                    requestAnimationFrame(() => detectFrame(video, model));
+                });
+            }
+
+            function flashScreen(color) {
+                const flash = document.createElement('div');
+                flash.style.position = 'absolute';
+                flash.style.inset = '0';
+                flash.style.backgroundColor = color;
+                flash.style.zIndex = '15';
+                flash.style.pointerEvents = 'none';
+                flash.style.transition = 'opacity 0.2s';
+                document.querySelector('.scanner-window').appendChild(flash);
+                
+                setTimeout(() => {
+                    flash.style.opacity = '0';
+                    setTimeout(() => flash.remove(), 200);
+                }, 50);
+            }
+        }
+    </script>
+</body>
+</html>
