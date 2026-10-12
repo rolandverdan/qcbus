@@ -23,6 +23,21 @@ export async function getTripsRepo() {
   }));
 }
 
+export function listenToTripsRepo(onChange, onError) {
+  return onSnapshot(
+    tripsCollection,
+    (snapshot) => {
+      onChange(
+        snapshot.docs.map((tripDoc) => ({
+          id: tripDoc.id,
+          ...tripDoc.data(),
+        }))
+      );
+    },
+    onError
+  );
+}
+
 export async function getActiveTripRepo(conductorId, busId = null) {
   if (conductorId) {
     const q = query(

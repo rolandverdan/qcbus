@@ -17,6 +17,10 @@ const AppState = {
 // NAVIGATION
 // ==================================================
 async function navigateTo(page) {
+  if (AppState.currentPage === 'tripLogs' && page !== 'tripLogs') {
+    window.stopTripLogsListener?.();
+  }
+
   AppState.currentPage = page;
 
   // Stop map if leaving a map page
@@ -70,6 +74,10 @@ async function navigateTo(page) {
       title: 'Reports',
       sub: 'Quezon City · Commuter submissions'
     },
+    tripLogs: {
+      title: 'Trip Logs',
+      sub: 'Quezon City · Trip history & passenger counts'
+    },
   };
 
   document.getElementById('pageTitle').textContent =
@@ -90,6 +98,10 @@ async function navigateTo(page) {
 
   if (page === 'monitor') {
     await initMonitorPage();
+  }
+
+  if (page === 'tripLogs') {
+    await window.initTripLogsPage();
   }
 
   if (page === 'routes') {

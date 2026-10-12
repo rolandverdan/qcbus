@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-admin-v1';
+const CACHE_NAME = 'qc-admin-v3';
 const urlsToCache = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const urlsToCache = [
   './js/stops.js',
   './js/buses.js',
   './js/staff.js',
+  './js/trips.js',
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
