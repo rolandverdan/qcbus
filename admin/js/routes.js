@@ -350,9 +350,16 @@ async function navigateToStops(routeId) {
   document.getElementById('content').innerHTML =
     await Pages.stops(routeId);
 
+  // Sidebar-compatible nav button styling
   document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.className =
-      'nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition';
+    const active = btn.dataset.page === 'routes';
+
+    const base =
+      'nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left';
+
+    btn.className = active
+      ? `${base} bg-white/10 text-white`
+      : `${base} text-white/70 hover:bg-white/10 hover:text-white`;
   });
 
   const route = await routeById(routeId);

@@ -195,8 +195,11 @@ function renderReportCard(r) {
         </p>
 
         <!-- Bus/route -->
-        <p class="text-xs text-gray-500 mb-2">
-          🚌 ${escapeHtml(r.busRoute || 'Unknown bus')}
+        <p class="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+          </svg>
+          <span>${escapeHtml(r.busRoute || 'Unknown bus')}</span>
         </p>
 
         <!-- Description -->
@@ -205,11 +208,16 @@ function renderReportCard(r) {
         </p>
 
         <!-- Reporter -->
-        <p class="text-[11px] text-gray-400 mb-3">
-            👤 ${escapeHtml(r.reporterName || "Unknown")}
+        <p class="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3">
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          <span>
+            ${escapeHtml(r.reporterName || "Unknown")}
             ${r.reporterEmail
-            ? ` · ${escapeHtml(r.reporterEmail)}`
-            : ""}
+              ? ` · ${escapeHtml(r.reporterEmail)}`
+              : ""}
+          </span>
         </p>
 
         <!-- Actions -->
@@ -226,8 +234,12 @@ function renderReportCard(r) {
             </button>
           `}
           <button onclick="confirmDeleteReport('${r.id}')"
-            class="px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
-            🗑️
+            class="px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition flex items-center justify-center"
+            title="Delete report"
+            aria-label="Delete report">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
           </button>
         </div>
 
@@ -269,7 +281,7 @@ function setReportFilter(key) {
 }
 
 // ==================================================
-// ACTIONS (local only — no Firestore yet)
+// ACTIONS
 // ==================================================
 async function markReportResolved(id) {
   try {
@@ -306,6 +318,7 @@ async function markReportResolved(id) {
     );
   }
 }
+
 async function markReportPending(id) {
   try {
     if (!auth.currentUser) {
@@ -341,6 +354,7 @@ async function markReportPending(id) {
     );
   }
 }
+
 async function confirmDeleteReport(id) {
   const ok = await window.confirmAction(
     "Delete Report?",
@@ -382,5 +396,5 @@ window.confirmDeleteReport = confirmDeleteReport;
 window.setReportFilter = setReportFilter;
 window.markReportResolved = markReportResolved;
 window.markReportPending = markReportPending;
-window.confirmDeleteReport = confirmDeleteReport;
+
 loadReports();

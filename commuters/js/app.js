@@ -1091,11 +1091,20 @@ const Pages = {
 
                       <div class="flex items-center gap-3 min-w-0">
 
-                        <div
-                          class="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"
+                                                <div
+                          class="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center border-2 border-white overflow-hidden"
                           style="background:${escapeHtml(bus.routeColor)}"
                         >
-                          ${escapeHtml(bus.code || "BUS")}
+                          <img
+                            src="../images/bus (2).png"
+                            alt="Bus"
+                            style="
+                              width: 25px;
+                              height: 25px;
+                              object-fit: contain;
+                              filter: brightness(0) invert(1);
+                            "
+                          />
                         </div>
 
                         <div class="min-w-0">

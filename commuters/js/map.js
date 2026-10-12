@@ -1919,11 +1919,7 @@ function updateBusMarkers() {
     `;
   };
 
-  const getMarkerContent = bus => {
-    const displayId = bus.code || bus.id || "BUS";
-    const shortId = displayId.includes("-")
-      ? displayId.split("-").pop()
-      : displayId;
+    const getMarkerContent = bus => {
     const routeColor =
       bus.routeColor ||
       getRouteColor(getRouteById(bus.routeId));
@@ -1931,10 +1927,19 @@ function updateBusMarkers() {
     return `
       <div class="relative">
         <div
-          class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-white text-xs font-bold border-2 border-white"
+          class="w-11 h-11 rounded-lg shadow-lg flex items-center justify-center border-2 border-white overflow-hidden"
           style="background:${escapeHtml(routeColor)}"
         >
-          ${escapeHtml(shortId)}
+          <img
+            src="../images/bus (2).png"
+            alt="Bus"
+            style="
+              width: 26px;
+              height: 26px;
+              object-fit: contain;
+              filter: brightness(0) invert(1);
+            "
+          />
         </div>
         <div
           class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 rotate-45"
