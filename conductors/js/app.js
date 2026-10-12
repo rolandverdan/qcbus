@@ -330,6 +330,60 @@ const Pages = {
                 🔄 Switch Camera
             </button>
         </div>
+
+        <!-- Scanner Line Adjustment Controls -->
+        <div class="w-full max-w-sm bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">Detection Line</span>
+                <!-- Quick Orientation Presets -->
+                <div class="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold gap-1">
+                    <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900">
+                        Vertical (|)
+                    </button>
+                    <button type="button" id="btnLineHoriz" onclick="setScannerLineOrientation('horizontal')" class="px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900">
+                        Horizontal (—)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Angle Adjustment Slider Bar -->
+            <div class="space-y-1">
+                <div class="flex justify-between items-center text-xs text-gray-500">
+                    <span>Line Angle</span>
+                    <span id="lineAngleLabel" class="font-bold text-qc-blue-accent">90° (Vertical)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-400 font-medium">0°</span>
+                    <input type="range" id="lineAngleSlider" min="0" max="180" value="90" step="1" 
+                           oninput="onScannerAngleChange(this.value)"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-qc-blue-accent">
+                    <span class="text-[10px] text-gray-400 font-medium">180°</span>
+                </div>
+            </div>
+
+            <!-- Position Adjustment Slider Bar -->
+            <div class="space-y-1">
+                <div class="flex justify-between items-center text-xs text-gray-500">
+                    <span>Line Position</span>
+                    <span id="lineOffsetLabel" class="font-bold text-qc-blue-accent">Center</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-400 font-medium">-50%</span>
+                    <input type="range" id="lineOffsetSlider" min="-50" max="50" value="0" step="1" 
+                           oninput="onScannerOffsetChange(this.value)"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-qc-blue-accent">
+                    <span class="text-[10px] text-gray-400 font-medium">+50%</span>
+                </div>
+            </div>
+            
+            <!-- Invert Direction Button -->
+            <div class="pt-2 flex items-center justify-between border-t border-gray-100 text-xs">
+                <span class="text-gray-500">Boarding Direction:</span>
+                <button type="button" id="btnInvertDir" onclick="toggleScannerDirection()" class="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-lg border border-gray-200 transition text-[11px] flex items-center gap-1 active:scale-95">
+                    <span id="directionLabel">Normal</span> ⇄
+                </button>
+            </div>
+        </div>
     </div>
     `;
   },
@@ -650,6 +704,10 @@ async function navigateTo(page) {
 
   if (page === 'trip' && AppState.trip.active) {
     if (window.startTripTimer) window.startTripTimer();
+  }
+
+  if (page === 'scanner') {
+    if (window.initScannerControlsUI) window.initScannerControlsUI();
   }
 
   if (page === 'counter') startCounterTimer();

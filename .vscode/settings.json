@@ -1,3 +1,4 @@
 {
-  "liveServer.settings.file": "/commuters/auth.html"
+  "liveServer.settings.file": "/commuters/auth.html",
+  "liveServer.settings.port": 5501
 }

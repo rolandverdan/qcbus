@@ -8,13 +8,129 @@ let isModelLoading = false;
 let currentCameraIndex = 0;
 let availableCameras = [];
 
-// Pre-configure TensorFlow WebGL backend for maximum mobile performance
+// ==================================================
+// LINE ORIENTATION & ANGLE CONFIGURATION
+// ==================================================
+let scannerConfig = {
+    angle: parseInt(localStorage.getItem('qc_scanner_line_angle') || '90', 10), // 0 to 180 degrees
+    offset: parseInt(localStorage.getItem('qc_scanner_line_offset') || '0', 10), // -50 to 50%
+    inverted: localStorage.getItem('qc_scanner_inverted') === 'true'
+};
+
+function getLineGeometry(width, height) {
+    const rad = (scannerConfig.angle * Math.PI) / 180;
+    const cx = width / 2;
+    const cy = height / 2;
+    
+    // Normal direction vector pointing in "IN" direction
+    // angle = 90 (vertical): points right (+1, 0)
+    // angle = 0 (horizontal): points down (0, +1)
+    const inDirX = Math.sin(rad);
+    const inDirY = Math.cos(rad);
+    
+    // Line segment direction vector (perpendicular to normal)
+    const lineDirX = Math.cos(rad);
+    const lineDirY = -Math.sin(rad);
+    
+    // Center point shifted by user offset percentage along normal
+    const offsetPx = (scannerConfig.offset / 100) * Math.min(width, height);
+    const x0 = cx + offsetPx * inDirX;
+    const y0 = cy + offsetPx * inDirY;
+    
+    // Line endpoints across canvas
+    const L = Math.hypot(width, height) + 120;
+    const x1 = x0 - L * lineDirX;
+    const y1 = y0 - L * lineDirY;
+    const x2 = x0 + L * lineDirX;
+    const y2 = y0 + L * lineDirY;
+    
+    return { x0, y0, inDirX, inDirY, lineDirX, lineDirY, x1, y1, x2, y2 };
+}
+
+function getLineSignedDistance(px, py, geom) {
+    let d = (px - geom.x0) * geom.inDirX + (py - geom.y0) * geom.inDirY;
+    return scannerConfig.inverted ? -d : d;
+}
+
+function updateScannerControlsUI() {
+    const angleSlider = document.getElementById('lineAngleSlider');
+    const offsetSlider = document.getElementById('lineOffsetSlider');
+    const angleLabel = document.getElementById('lineAngleLabel');
+    const offsetLabel = document.getElementById('lineOffsetLabel');
+    const dirLabel = document.getElementById('directionLabel');
+    const btnVert = document.getElementById('btnLineVert');
+    const btnHoriz = document.getElementById('btnLineHoriz');
+
+    if (angleSlider) angleSlider.value = scannerConfig.angle;
+    if (offsetSlider) offsetSlider.value = scannerConfig.offset;
+
+    if (angleLabel) {
+        let text = `${scannerConfig.angle}°`;
+        if (scannerConfig.angle === 90) text += ' (Vertical)';
+        else if (scannerConfig.angle === 0 || scannerConfig.angle === 180) text += ' (Horizontal)';
+        angleLabel.textContent = text;
+    }
+
+    if (offsetLabel) {
+        offsetLabel.textContent = scannerConfig.offset === 0 
+            ? 'Center' 
+            : `${scannerConfig.offset > 0 ? '+' : ''}${scannerConfig.offset}%`;
+    }
+
+    if (dirLabel) {
+        dirLabel.textContent = scannerConfig.inverted ? 'Inverted' : 'Normal';
+    }
+
+    if (btnVert && btnHoriz) {
+        if (scannerConfig.angle === 90) {
+            btnVert.className = 'px-2.5 py-1 rounded-lg transition bg-qc-blue-accent text-white shadow-sm';
+            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+        } else if (scannerConfig.angle === 0 || scannerConfig.angle === 180) {
+            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition bg-qc-blue-accent text-white shadow-sm';
+            btnVert.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+        } else {
+            btnVert.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+        }
+    }
+}
+
+window.initScannerControlsUI = updateScannerControlsUI;
+
+window.setScannerLineOrientation = function(orientation) {
+    if (orientation === 'vertical') {
+        window.onScannerAngleChange(90);
+    } else if (orientation === 'horizontal') {
+        window.onScannerAngleChange(0);
+    }
+};
+
+window.onScannerAngleChange = function(val) {
+    scannerConfig.angle = parseInt(val, 10);
+    localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+    updateScannerControlsUI();
+};
+
+window.onScannerOffsetChange = function(val) {
+    scannerConfig.offset = parseInt(val, 10);
+    localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
+    updateScannerControlsUI();
+};
+
+window.toggleScannerDirection = function() {
+    scannerConfig.inverted = !scannerConfig.inverted;
+    localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+    updateScannerControlsUI();
+};
+
+// Pre-configure TensorFlow WebGL backend for maximum mobile performance & zero stutter
 async function configureTf() {
     if (window.tf) {
         try {
             await tf.setBackend('webgl');
-            tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
             tf.env().set('WEBGL_PACK', true);
+            tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0); // Immediately delete textures to prevent GC stutter
+            tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
             tf.env().set('WEBGL_VERSION', 2);
         } catch (e) {
             console.warn("TF WebGL optimization note:", e);
@@ -182,8 +298,13 @@ async function startAICamera(preferredDeviceId = null) {
         console.warn("video.play() warning:", err);
     }
 
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    // Performance enhancement: clamp canvas resolution to max 640px to eliminate lag
+    const maxDim = 640;
+    const vWidth = video.videoWidth || 640;
+    const vHeight = video.videoHeight || 480;
+    const scale = Math.min(1, maxDim / Math.max(vWidth, vHeight));
+    canvas.width = Math.round(vWidth * scale);
+    canvas.height = Math.round(vHeight * scale);
     
     if (!tfModel) {
         await configureTf();
@@ -233,14 +354,15 @@ function runDetection(video, model, ctx, canvas) {
     let isDetecting = false;
     let flashEffect = null;
 
-    // 1. Offscreen 300x300 canvas: MobileNet SSD's native resolution
-    // Pre-downscaling with native 2D hardware blit eliminates 70% of GPU texture overhead!
+    // 1. Offscreen 256x256 canvas: power-of-2 hardware scaling eliminates GPU texture overhead
+    const AI_SIZE = 256;
     const offscreen = document.createElement('canvas');
-    offscreen.width = 300;
-    offscreen.height = 300;
+    offscreen.width = AI_SIZE;
+    offscreen.height = AI_SIZE;
     const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+    offCtx.imageSmoothingEnabled = false;
 
-    // 2. Smooth 60 FPS Render Loop: renders live video, red line, and tracking overlays smoothly
+    // 2. Smooth 60 FPS Render Loop: renders live video, red line at user angle, and tracking overlays smoothly
     function renderLoop() {
         if (!aiRunning) return;
 
@@ -251,15 +373,44 @@ function runDetection(video, model, ctx, canvas) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
-        const lineX = canvas.width / 2;
+        const geom = getLineGeometry(canvas.width, canvas.height);
 
-        // Draw vibrant center red line
+        // Draw detection line at adjusted angle and offset
         ctx.beginPath();
-        ctx.moveTo(lineX, 0);
-        ctx.lineTo(lineX, canvas.height);
-        ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+        ctx.moveTo(geom.x1, geom.y1);
+        ctx.lineTo(geom.x2, geom.y2);
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.9)";
         ctx.lineWidth = 4;
         ctx.stroke();
+
+        // Direction indicator badges (IN and OUT pills)
+        const tagDist = 28;
+        const inDirX = scannerConfig.inverted ? -geom.inDirX : geom.inDirX;
+        const inDirY = scannerConfig.inverted ? -geom.inDirY : geom.inDirY;
+        const inTagX = geom.x0 + inDirX * tagDist;
+        const inTagY = geom.y0 + inDirY * tagDist;
+        const outTagX = geom.x0 - inDirX * tagDist;
+        const outTagY = geom.y0 - inDirY * tagDist;
+
+        ctx.font = "bold 11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Green IN indicator pill
+        ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+        ctx.beginPath();
+        ctx.arc(inTagX, inTagY, 12, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText("IN", inTagX, inTagY);
+
+        // Red OUT indicator pill
+        ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
+        ctx.beginPath();
+        ctx.arc(outTagX, outTagY, 12, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText("OUT", outTagX, outTagY);
 
         const now = Date.now();
 
@@ -296,21 +447,18 @@ function runDetection(video, model, ctx, canvas) {
         };
     }
 
-    // 3. Controlled AI Detection Loop: runs every ~90ms so CPU/GPU never get pegged at 100%
+    // 3. Cooperative AI Detection Loop: yields smoothly to preserve 60 FPS video render
     async function detectLoop() {
         while (aiRunning && aiStream) {
             if (!isDetecting && video.readyState >= 2) {
                 isDetecting = true;
                 try {
-                    // Fast hardware-accelerated downsample to 300x300
-                    offCtx.drawImage(video, 0, 0, 300, 300);
-
-                    // Infer on tiny 300x300 frame with max 3 boxes
+                    offCtx.drawImage(video, 0, 0, AI_SIZE, AI_SIZE);
                     const predictions = await model.detect(offscreen, 3, 0.38);
 
-                    const scaleX = canvas.width / 300;
-                    const scaleY = canvas.height / 300;
-                    const lineX = canvas.width / 2;
+                    const scaleX = canvas.width / AI_SIZE;
+                    const scaleY = canvas.height / AI_SIZE;
+                    const geom = getLineGeometry(canvas.width, canvas.height);
                     const now = Date.now();
 
                     const people = predictions.filter(
@@ -350,7 +498,8 @@ function runDetection(video, model, ctx, canvas) {
                             };
                         }
 
-                        const prevX = trackedEntities[matchedId].x;
+                        const prevDist = getLineSignedDistance(trackedEntities[matchedId].x, trackedEntities[matchedId].y, geom);
+                        const currDist = getLineSignedDistance(centerX, centerY, geom);
                         const wasCounted = trackedEntities[matchedId].counted;
 
                         currentFrameEntities[matchedId] = {
@@ -361,16 +510,16 @@ function runDetection(video, model, ctx, canvas) {
                             box: { x, y, w, h }
                         };
 
-                        // Line crossing math
+                        // Line crossing math with arbitrary angle!
                         if (!wasCounted) {
-                            if (prevX < lineX && centerX >= lineX) {
+                            if (prevDist < 0 && currDist >= 0) {
                                 currentFrameEntities[matchedId].counted = true;
                                 triggerFlash(true);
                                 if (window.addPassenger) {
                                     window.addPassenger('in');
                                     updateLocalDisplay();
                                 }
-                            } else if (prevX > lineX && centerX <= lineX) {
+                            } else if (prevDist > 0 && currDist <= 0) {
                                 currentFrameEntities[matchedId].counted = true;
                                 triggerFlash(false);
                                 if (window.addPassenger) {
@@ -381,7 +530,8 @@ function runDetection(video, model, ctx, canvas) {
                         }
 
                         // Reset count eligibility when moving away from the line
-                        if (Math.abs(centerX - lineX) > (canvas.width * 0.18)) {
+                        const resetThreshold = Math.min(canvas.width, canvas.height) * 0.18;
+                        if (Math.abs(currDist) > resetThreshold) {
                             currentFrameEntities[matchedId].counted = false;
                         }
                     }
@@ -402,8 +552,9 @@ function runDetection(video, model, ctx, canvas) {
                 }
             }
 
-            // Yield thread for 90ms so the camera video & UI stay at 60 FPS
-            await new Promise(r => setTimeout(r, 90));
+            // Yield thread cooperatively so camera video & UI stay silky smooth at 60 FPS
+            await new Promise(r => requestAnimationFrame(r));
+            await new Promise(r => setTimeout(r, 60));
         }
     }
 

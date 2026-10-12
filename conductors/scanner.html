@@ -59,7 +59,7 @@
     </div>
 
     <!-- Status Indicator -->
-    <div class="mt-6 z-20 flex items-center gap-3">
+    <div class="mt-4 z-20 flex items-center gap-3">
         <div id="statusBadge" class="bg-yellow-500/80 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg">
             Loading AI Model...
         </div>
@@ -68,15 +68,176 @@
         </button>
     </div>
 
+    <!-- Scanner Line Adjustment Controls -->
+    <div class="w-full max-w-sm bg-slate-800/90 text-white rounded-2xl border border-slate-700 shadow-xl p-4 mt-3 mb-6 space-y-3 z-20">
+        <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Detection Line</span>
+            <!-- Quick Orientation Presets -->
+            <div class="flex items-center bg-slate-900 p-1 rounded-xl text-xs font-semibold gap-1">
+                <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white">
+                    Vertical (|)
+                </button>
+                <button type="button" id="btnLineHoriz" onclick="setScannerLineOrientation('horizontal')" class="px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white">
+                    Horizontal (—)
+                </button>
+            </div>
+        </div>
+
+        <!-- Angle Adjustment Slider Bar -->
+        <div class="space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+                <span>Line Angle</span>
+                <span id="lineAngleLabel" class="font-bold text-emerald-400">90° (Vertical)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] text-slate-400 font-medium">0°</span>
+                <input type="range" id="lineAngleSlider" min="0" max="180" value="90" step="1" 
+                       oninput="onScannerAngleChange(this.value)"
+                       class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                <span class="text-[10px] text-slate-400 font-medium">180°</span>
+            </div>
+        </div>
+
+        <!-- Position Adjustment Slider Bar -->
+        <div class="space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+                <span>Line Position</span>
+                <span id="lineOffsetLabel" class="font-bold text-emerald-400">Center</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] text-slate-400 font-medium">-50%</span>
+                <input type="range" id="lineOffsetSlider" min="-50" max="50" value="0" step="1" 
+                       oninput="onScannerOffsetChange(this.value)"
+                       class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                <span class="text-[10px] text-slate-400 font-medium">+50%</span>
+            </div>
+        </div>
+        
+        <!-- Invert Direction Button -->
+        <div class="pt-2 flex items-center justify-between border-t border-slate-700 text-xs">
+            <span class="text-slate-400">Boarding Direction:</span>
+            <button type="button" id="btnInvertDir" onclick="toggleScannerDirection()" class="px-2.5 py-1 bg-slate-900 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg border border-slate-700 transition text-[11px] flex items-center gap-1 active:scale-95">
+                <span id="directionLabel">Normal</span> ⇄
+            </button>
+        </div>
+    </div>
+
     <script type="module">
         let activeStream = null;
         let currentCameraIndex = 0;
         let availableCameras = [];
         let globalModel = null;
 
+        let scannerConfig = {
+            angle: parseInt(localStorage.getItem('qc_scanner_line_angle') || '90', 10),
+            offset: parseInt(localStorage.getItem('qc_scanner_line_offset') || '0', 10),
+            inverted: localStorage.getItem('qc_scanner_inverted') === 'true'
+        };
+
+        function getLineGeometry(width, height) {
+            const rad = (scannerConfig.angle * Math.PI) / 180;
+            const cx = width / 2;
+            const cy = height / 2;
+            
+            const inDirX = Math.sin(rad);
+            const inDirY = Math.cos(rad);
+            const lineDirX = Math.cos(rad);
+            const lineDirY = -Math.sin(rad);
+            
+            const offsetPx = (scannerConfig.offset / 100) * Math.min(width, height);
+            const x0 = cx + offsetPx * inDirX;
+            const y0 = cy + offsetPx * inDirY;
+            
+            const L = Math.hypot(width, height) + 120;
+            const x1 = x0 - L * lineDirX;
+            const y1 = y0 - L * lineDirY;
+            const x2 = x0 + L * lineDirX;
+            const y2 = y0 + L * lineDirY;
+            
+            return { x0, y0, inDirX, inDirY, lineDirX, lineDirY, x1, y1, x2, y2 };
+        }
+
+        function getLineSignedDistance(px, py, geom) {
+            let d = (px - geom.x0) * geom.inDirX + (py - geom.y0) * geom.inDirY;
+            return scannerConfig.inverted ? -d : d;
+        }
+
+        function updateScannerControlsUI() {
+            const angleSlider = document.getElementById('lineAngleSlider');
+            const offsetSlider = document.getElementById('lineOffsetSlider');
+            const angleLabel = document.getElementById('lineAngleLabel');
+            const offsetLabel = document.getElementById('lineOffsetLabel');
+            const dirLabel = document.getElementById('directionLabel');
+            const btnVert = document.getElementById('btnLineVert');
+            const btnHoriz = document.getElementById('btnLineHoriz');
+
+            if (angleSlider) angleSlider.value = scannerConfig.angle;
+            if (offsetSlider) offsetSlider.value = scannerConfig.offset;
+
+            if (angleLabel) {
+                let text = `${scannerConfig.angle}°`;
+                if (scannerConfig.angle === 90) text += ' (Vertical)';
+                else if (scannerConfig.angle === 0 || scannerConfig.angle === 180) text += ' (Horizontal)';
+                angleLabel.textContent = text;
+            }
+
+            if (offsetLabel) {
+                offsetLabel.textContent = scannerConfig.offset === 0 
+                    ? 'Center' 
+                    : `${scannerConfig.offset > 0 ? '+' : ''}${scannerConfig.offset}%`;
+            }
+
+            if (dirLabel) {
+                dirLabel.textContent = scannerConfig.inverted ? 'Inverted' : 'Normal';
+            }
+
+            if (btnVert && btnHoriz) {
+                if (scannerConfig.angle === 90) {
+                    btnVert.className = 'px-2.5 py-1 rounded-lg transition bg-emerald-600 text-white shadow-sm';
+                    btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white';
+                } else if (scannerConfig.angle === 0 || scannerConfig.angle === 180) {
+                    btnHoriz.className = 'px-2.5 py-1 rounded-lg transition bg-emerald-600 text-white shadow-sm';
+                    btnVert.className = 'px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white';
+                } else {
+                    btnVert.className = 'px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white';
+                    btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white';
+                }
+            }
+        }
+
+        window.setScannerLineOrientation = function(orientation) {
+            if (orientation === 'vertical') {
+                window.onScannerAngleChange(90);
+            } else if (orientation === 'horizontal') {
+                window.onScannerAngleChange(0);
+            }
+        };
+
+        window.onScannerAngleChange = function(val) {
+            scannerConfig.angle = parseInt(val, 10);
+            localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+            updateScannerControlsUI();
+        };
+
+        window.onScannerOffsetChange = function(val) {
+            scannerConfig.offset = parseInt(val, 10);
+            localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
+            updateScannerControlsUI();
+        };
+
+        window.toggleScannerDirection = function() {
+            scannerConfig.inverted = !scannerConfig.inverted;
+            localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+            updateScannerControlsUI();
+        };
+
+        let scannerSessionId = 0;
+
         initScanner();
 
         async function initScanner(preferredDeviceId = null) {
+            const currentSession = ++scannerSessionId;
+            updateScannerControlsUI();
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
@@ -93,7 +254,9 @@
                     try {
                         await tf.setBackend('webgl');
                         tf.env().set('WEBGL_PACK', true);
-                        try { tf.env().set('WEBGL_FORCE_F16_TEXTURES', true); } catch (e) {}
+                        tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0); // Immediately delete intermediate textures to prevent GC stutter
+                        tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+                        tf.env().set('WEBGL_VERSION', 2);
                     } catch (e) {
                         console.warn("TF WebGL note:", e);
                     }
@@ -191,8 +354,13 @@
                     await video.play();
                 } catch (e) {}
 
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
+                // Performance enhancement: clamp canvas resolution to max 640px to eliminate lag
+                const maxDim = 640;
+                const vWidth = video.videoWidth || 640;
+                const vHeight = video.videoHeight || 480;
+                const scale = Math.min(1, maxDim / Math.max(vWidth, vHeight));
+                canvas.width = Math.round(vWidth * scale);
+                canvas.height = Math.round(vHeight * scale);
 
                 if (!globalModel) {
                     globalModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
@@ -200,7 +368,7 @@
                 statusBadge.textContent = "Scanner Active";
                 statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg";
                 
-                runScanner(video, globalModel);
+                runScanner(video, globalModel, currentSession);
 
                 // Auto-detect completely black frame & auto-switch if another camera is connected
                 setTimeout(() => {
@@ -229,16 +397,20 @@
                 return;
             }
 
-            function runScanner(video, model) {
+            function runScanner(video, model, sessionId) {
+                const AI_SIZE = 256;
                 const offscreen = document.createElement('canvas');
-                offscreen.width = 300;
-                offscreen.height = 300;
+                offscreen.width = AI_SIZE;
+                offscreen.height = AI_SIZE;
                 const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+                offCtx.imageSmoothingEnabled = false;
 
                 let isDetecting = false;
 
                 // 60 FPS Render loop for line and tracker boxes
                 function render() {
+                    if (sessionId !== scannerSessionId) return;
+
                     // Directly paint video to canvas (fixes black video in Chrome on PC)
                     if (video.readyState >= 2) {
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -246,13 +418,44 @@
                         ctx.clearRect(0, 0, canvas.width, canvas.height);
                     }
                     
-                    const lineX = canvas.width / 2;
+                    const geom = getLineGeometry(canvas.width, canvas.height);
+
+                    // Draw detection line at adjusted angle and offset
                     ctx.beginPath();
-                    ctx.moveTo(lineX, 0); 
-                    ctx.lineTo(lineX, canvas.height); 
-                    ctx.strokeStyle = "rgba(239, 68, 68, 0.85)"; 
-                    ctx.lineWidth = 4; 
+                    ctx.moveTo(geom.x1, geom.y1);
+                    ctx.lineTo(geom.x2, geom.y2);
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.9)";
+                    ctx.lineWidth = 4;
                     ctx.stroke();
+
+                    // Direction indicator badges (IN and OUT pills)
+                    const tagDist = 28;
+                    const inDirX = scannerConfig.inverted ? -geom.inDirX : geom.inDirX;
+                    const inDirY = scannerConfig.inverted ? -geom.inDirY : geom.inDirY;
+                    const inTagX = geom.x0 + inDirX * tagDist;
+                    const inTagY = geom.y0 + inDirY * tagDist;
+                    const outTagX = geom.x0 - inDirX * tagDist;
+                    const outTagY = geom.y0 - inDirY * tagDist;
+
+                    ctx.font = "bold 11px system-ui, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+
+                    // Green IN indicator pill
+                    ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+                    ctx.beginPath();
+                    ctx.arc(inTagX, inTagY, 12, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillText("IN", inTagX, inTagY);
+
+                    // Red OUT indicator pill
+                    ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
+                    ctx.beginPath();
+                    ctx.arc(outTagX, outTagY, 12, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillText("OUT", outTagX, outTagY);
 
                     const now = Date.now();
                     for (const entity of Object.values(trackedEntities)) {
@@ -272,18 +475,18 @@
                 }
                 requestAnimationFrame(render);
 
-                // Throttled AI loop: runs every ~90ms, keeping camera video at 60 FPS
+                // Cooperative AI detection loop: yields smoothly to keep camera video at 60 FPS
                 async function detectLoop() {
-                    while (true) {
+                    while (sessionId === scannerSessionId) {
                         if (!isDetecting && video.readyState >= 2) {
                             isDetecting = true;
                             try {
-                                offCtx.drawImage(video, 0, 0, 300, 300);
+                                offCtx.drawImage(video, 0, 0, AI_SIZE, AI_SIZE);
                                 const predictions = await model.detect(offscreen, 3, 0.38);
 
-                                const scaleX = canvas.width / 300;
-                                const scaleY = canvas.height / 300;
-                                const lineX = canvas.width / 2;
+                                const scaleX = canvas.width / AI_SIZE;
+                                const scaleY = canvas.height / AI_SIZE;
+                                const geom = getLineGeometry(canvas.width, canvas.height);
                                 const now = Date.now();
 
                                 const people = predictions.filter(p => {
@@ -317,25 +520,28 @@
                                         trackedEntities[matchedId] = { x: centerX, y: centerY, counted: false, lastSeen: now, box: { x, y, w, h } };
                                     }
                                     
+                                    const prevDist = getLineSignedDistance(trackedEntities[matchedId].x, trackedEntities[matchedId].y, geom);
+                                    const currDist = getLineSignedDistance(centerX, centerY, geom);
                                     const wasCounted = trackedEntities[matchedId].counted;
+
                                     currentFrameEntities[matchedId] = { x: centerX, y: centerY, counted: wasCounted, lastSeen: now, box: { x, y, w, h } };
 
-                                    const prevX = trackedEntities[matchedId].x;
-                                    
+                                    // Line crossing math with arbitrary angle!
                                     if (!wasCounted) {
-                                        if (prevX < lineX && centerX >= lineX) {
+                                        if (prevDist < 0 && currDist >= 0) {
                                             passengerCount++;
                                             currentFrameEntities[matchedId].counted = true;
                                             flashScreen('rgba(16, 185, 129, 0.3)');
-                                        }
-                                        else if (prevX > lineX && centerX <= lineX) {
+                                        } else if (prevDist > 0 && currDist <= 0) {
                                             if (passengerCount > 0) passengerCount--;
                                             currentFrameEntities[matchedId].counted = true;
                                             flashScreen('rgba(239, 68, 68, 0.3)');
                                         }
                                     }
 
-                                    if (Math.abs(centerX - lineX) > (canvas.width * 0.18)) {
+                                    // Reset count eligibility when moving away from the line
+                                    const resetThreshold = Math.min(canvas.width, canvas.height) * 0.18;
+                                    if (Math.abs(currDist) > resetThreshold) {
                                         currentFrameEntities[matchedId].counted = false;
                                     }
                                 }
@@ -355,7 +561,9 @@
                             }
                         }
 
-                        await new Promise(r => setTimeout(r, 90));
+                        // Yield thread cooperatively so camera video & UI stay silky smooth at 60 FPS
+                        await new Promise(r => requestAnimationFrame(r));
+                        await new Promise(r => setTimeout(r, 60));
                     }
                 }
                 detectLoop();
