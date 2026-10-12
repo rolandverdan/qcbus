@@ -1,4 +1,9 @@
 import * as maplibregl from "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.mjs";
+import {
+  DROPOFF_BUS_RADIUS_METERS,
+  getDistanceKm,
+  getEta,
+} from "../../shared/js/eta.js";
 
 // ==================================================
 // MAPLIBRE CSS
@@ -39,6 +44,10 @@ let busMarkers = [];
 let stopMarkers = [];
 let userMarker = null;
 let activeStopPopup = null;
+let userLocationWatchId = null;
+let displayedUserLocation = null;
+let hasUserMovedMap = false;
+let hasCenteredOnUser = false;
 
 let selectedRouteId = null;
 let pendingSelectedRouteId = null;
@@ -269,6 +278,17 @@ function initMap() {
     "bottom-right"
   );
 
+  const markMapAsUserMoved = () => {
+    hasUserMovedMap = true;
+  };
+
+  map.on("dragstart", markMapAsUserMoved);
+  map.on("wheel", markMapAsUserMoved);
+  map.on("zoomstart", markMapAsUserMoved);
+  map.on("rotatestart", markMapAsUserMoved);
+  map.on("pitchstart", markMapAsUserMoved);
+  map.on("touchstart", markMapAsUserMoved);
+
 
   map.on("load", () => {
     if (!map) return;
@@ -415,6 +435,7 @@ function createRoutePicker() {
     );
 
   if (existing) {
+    mapContainer.insertAdjacentElement("afterend", existing);
     updateRoutePicker();
     return;
   }
@@ -427,7 +448,7 @@ function createRoutePicker() {
     "routePicker";
 
   wrapper.className =
-    "mb-3";
+    "mt-3 mb-3";
 
 
   wrapper.innerHTML = `
@@ -550,10 +571,7 @@ function createRoutePicker() {
   `;
 
 
-  mapContainer.parentNode.insertBefore(
-    wrapper,
-    mapContainer
-  );
+  mapContainer.insertAdjacentElement("afterend", wrapper);
 
 
   const searchInput =
@@ -820,7 +838,6 @@ function selectRoute(routeId) {
 
   // Same route stays selected
   if (selectedRouteId === routeId) {
-    fitMapToRoute(route);
     return;
   }
 
@@ -833,8 +850,6 @@ function selectRoute(routeId) {
   updateRouteLayers();
   updateBusMarkers();
   updateBusLegend();
-
-  fitMapToRoute(route);
 }
 
 
@@ -851,8 +866,6 @@ function clearSelectedRoute() {
   updateRouteLayers();
   updateBusMarkers();
   updateBusLegend();
-
-  resetMapView();
 }
 
 
@@ -1584,12 +1597,25 @@ function updateStopMarkers() {
         const trips = (AppState.activeTrips || []).filter(
           trip => trip.status === "active" && trip.routeId === selectedRouteId
         );
-        const selectedTripId = trips.some(
+        const eligibleTrips = trips.filter(
+          trip => window.isCommuterNearTripBus?.(trip)
+        );
+        const tripEtas = trips.map(trip => {
+          const bus = (AppState.buses || []).find(
+            activeBus => activeBus.tripId === trip.id
+          );
+
+          return {
+            busName: bus?.code || trip.busCode || trip.busId || "Bus",
+            eta: getEta(bus, stop),
+          };
+        });
+        const selectedTripId = eligibleTrips.some(
           trip => trip.id === AppState.dropoff?.tripId
         )
           ? AppState.dropoff.tripId
-          : trips.length === 1
-            ? trips[0].id
+          : eligibleTrips.length === 1
+            ? eligibleTrips[0].id
             : "";
 
         const renderStopPopup = () => `
@@ -1604,20 +1630,35 @@ function updateStopMarkers() {
               </div>
             </div>
             ${stopPlace ? `<div style="border-top:1px solid #e5e7eb; padding-top:8px; font-size:12px; color:#4b5563;">${escapeHtml(stopPlace)}</div>` : ""}
-            ${trips.length > 1 ? `
+            ${tripEtas.length ? `
+              <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:8px;">
+                <div style="font-size:11px; font-weight:600; color:#4b5563; margin-bottom:4px;">Bus arrival estimates</div>
+                ${tripEtas.map(({ busName, eta }) => `
+                  <div style="display:flex; justify-content:space-between; gap:10px; font-size:11px; color:#4b5563; margin-top:3px;">
+                    <span>${escapeHtml(busName)}</span>
+                    <span style="font-weight:600; text-align:right;">${escapeHtml(eta.label)}</span>
+                  </div>
+                `).join("")}
+              </div>
+            ` : ""}
+            ${eligibleTrips.length > 1 ? `
               <label style="display:block; margin-top:10px; font-size:11px; color:#4b5563;">
                 Bus you are riding
                 <select id="dropoffTripSelect" style="display:block; width:100%; margin-top:4px; padding:7px; border:1px solid #d1d5db; border-radius:6px; background:#fff;">
                   <option value="">Select an active bus</option>
-                  ${trips.map(trip => `
+                  ${eligibleTrips.map(trip => `
                     <option value="${escapeHtml(trip.id)}" ${trip.id === selectedTripId ? "selected" : ""}>
                       ${escapeHtml(trip.busCode || trip.busId || "Bus")}
                     </option>
                   `).join("")}
                 </select>
               </label>
-            ` : trips.length === 1 ? `
-              <div style="margin-top:10px; font-size:11px; color:#4b5563;">Active bus: ${escapeHtml(trips[0].busCode || trips[0].busId || "Bus")}</div>
+            ` : eligibleTrips.length === 1 ? `
+              <div style="margin-top:10px; font-size:11px; color:#4b5563;">Active bus: ${escapeHtml(eligibleTrips[0].busCode || eligibleTrips[0].busId || "Bus")}</div>
+            ` : trips.length ? `
+              <div style="margin-top:10px; font-size:11px; color:#b91c1c;">
+                ${AppState.userLocation ? `Get within ${DROPOFF_BUS_RADIUS_METERS} m of an active bus on this route to choose a stop.` : "Waiting for your location. Allow location access to choose a stop near your bus."}
+              </div>
             ` : `
               <div style="margin-top:10px; font-size:11px; color:#b91c1c;">No active bus is running on this route.</div>
             `}
@@ -1642,12 +1683,16 @@ function updateStopMarkers() {
         if (tripSelect) {
           tripSelect.addEventListener("change", () => {
             if (confirmButton) {
-              confirmButton.disabled = !tripSelect.value;
-              confirmButton.style.background = tripSelect.value ? "#115272" : "#9ca3af";
-              confirmButton.style.cursor = tripSelect.value ? "pointer" : "not-allowed";
+              const selectedTrip = eligibleTrips.find(
+                trip => trip.id === tripSelect.value
+              );
+              const canConfirm = Boolean(selectedTrip);
+              confirmButton.disabled = !canConfirm;
+              confirmButton.style.background = canConfirm ? "#115272" : "#9ca3af";
+              confirmButton.style.cursor = canConfirm ? "pointer" : "not-allowed";
             }
 
-            if (tripSelect.value) {
+            if (eligibleTrips.some(trip => trip.id === tripSelect.value)) {
               window.selectDropoffTrip(tripSelect.value);
             }
           });
@@ -1694,138 +1739,6 @@ function updateStopMarkers() {
       );
     }
   );
-}
-
-
-// ==================================================
-// FIT MAP TO ROUTE
-// ==================================================
-
-function fitMapToRoute(route) {
-  if (!map) return;
-
-
-  const geometry =
-    parseRouteGeometry(
-      route
-    );
-
-
-  let coordinates =
-    getGeometryCoordinates(
-      geometry
-    );
-
-
-  // Fallback to stops
-
-  if (
-    coordinates.length === 0
-  ) {
-
-    coordinates =
-      getStopsForRoute(
-        route.id
-      )
-        .map(
-          stop =>
-            getStopCoordinates(
-              stop
-            )
-        )
-        .filter(Boolean);
-  }
-
-
-  if (
-    coordinates.length === 0
-  ) {
-    return;
-  }
-
-
-  const bounds =
-    new maplibregl.LngLatBounds();
-
-
-  coordinates.forEach(
-    coordinate => {
-
-      if (
-        Array.isArray(
-          coordinate
-        ) &&
-        coordinate.length >= 2
-      ) {
-
-        const lng =
-          Number(
-            coordinate[0]
-          );
-
-        const lat =
-          Number(
-            coordinate[1]
-          );
-
-
-        if (
-          Number.isFinite(lng) &&
-          Number.isFinite(lat)
-        ) {
-          bounds.extend([
-            lng,
-            lat,
-          ]);
-        }
-      }
-    }
-  );
-
-
-  if (
-    bounds.isEmpty()
-  ) {
-    return;
-  }
-
-
-  map.fitBounds(
-    bounds,
-    {
-      padding: {
-        top: 100,
-        bottom: 100,
-        left: 40,
-        right: 40,
-      },
-
-      maxZoom: 15,
-
-      duration: 800,
-    }
-  );
-}
-
-
-// ==================================================
-// RESET MAP VIEW
-// ==================================================
-
-function resetMapView() {
-  if (!map) return;
-
-
-  map.flyTo({
-    center:
-      QC_CIRCLE_CENTER,
-
-    zoom:
-      QC_CIRCLE_ZOOM,
-
-    duration:
-      800,
-  });
 }
 
 
@@ -2180,130 +2093,107 @@ function updateBusLegend() {
 // ==================================================
 
 function getUserLocation() {
-  if (
-    !navigator.geolocation
-  ) {
+  if (!navigator.geolocation) {
+    console.warn("Commuter location is unavailable in this browser.");
     return;
   }
 
-
-  navigator.geolocation.getCurrentPosition(
+  userLocationWatchId = navigator.geolocation.watchPosition(
     pos => {
-
       if (!map) return;
-
 
       const {
         latitude,
         longitude,
+        accuracy,
       } = pos.coords;
 
-
-      if (userMarker) {
-        userMarker.remove();
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180 ||
+        !Number.isFinite(accuracy) ||
+        accuracy < 0
+      ) {
+        AppState.userLocation = null;
+        return;
       }
 
+      const nextLocation = {
+        lat: latitude,
+        lng: longitude,
+      };
 
-      const userElement =
-        document.createElement(
-          "div"
-        );
+      const distanceFromDisplayedKm = displayedUserLocation
+        ? getDistanceKm(displayedUserLocation, nextLocation)
+        : null;
+      const minimumMovementMeters = Math.max(15, accuracy * 0.5);
 
+      AppState.userLocation = {
+        ...nextLocation,
+        accuracy,
+        updatedAt: Date.now(),
+      };
 
-      userElement.className =
-        "user-marker";
+      if (!userMarker) {
+        const userElement = document.createElement("div");
 
+        userElement.className = "user-marker";
 
-      userElement.addEventListener(
-        "click",
-        event => {
+        userElement.addEventListener("click", event => {
           event.stopPropagation();
-        }
-      );
+        });
 
-
-      userElement.addEventListener(
-        "mousedown",
-        event => {
+        userElement.addEventListener("mousedown", event => {
           event.stopPropagation();
-        }
-      );
+        });
 
+        userElement.innerHTML = `
+          <div class="relative">
+            <div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
+          </div>
+        `;
 
-      userElement.innerHTML = `
-        <div class="relative">
-
-          <div
-            class="
-              w-4
-              h-4
-              bg-blue-500
-              rounded-full
-              border-2
-              border-white
-              shadow-lg
-            "
-          ></div>
-
-
-          <div
-            class="
-              absolute
-              inset-0
-              w-4
-              h-4
-              bg-blue-500
-              rounded-full
-              animate-ping
-              opacity-30
-            "
-          ></div>
-
-        </div>
-      `;
-
-
-      userMarker =
-        new maplibregl.Marker({
-          element:
-            userElement,
-
-          anchor:
-            "center",
+        userMarker = new maplibregl.Marker({
+          element: userElement,
+          anchor: "center",
         })
-          .setLngLat([
-            longitude,
-            latitude,
-          ])
+          .setLngLat([longitude, latitude])
           .setPopup(
-            new maplibregl.Popup({
-              offset: 12,
-            }).setHTML(`
-              <div
-                style="
-                  font-size:12px;
-                "
-              >
-                You are here
-              </div>
+            new maplibregl.Popup({ offset: 12 }).setHTML(`
+              <div style="font-size:12px">You are here</div>
             `)
           )
           .addTo(map);
-    },
+        displayedUserLocation = nextLocation;
+      } else if (
+        distanceFromDisplayedKm === null ||
+        distanceFromDisplayedKm * 1000 >= minimumMovementMeters
+      ) {
+        userMarker.setLngLat([longitude, latitude]);
+        displayedUserLocation = nextLocation;
+      }
 
+      if (!hasCenteredOnUser) {
+        hasCenteredOnUser = true;
+        if (!hasUserMovedMap) {
+          map.easeTo({
+            center: [longitude, latitude],
+            duration: 500,
+          });
+        }
+      }
+    },
     error => {
-      console.log(
-        "Geo error:",
-        error
-      );
+      console.warn("Unable to get commuter location:", error.message);
     },
-
     {
-      enableHighAccuracy:
-        true,
-
-      timeout:
-        8000,
+      enableHighAccuracy: false,
+      maximumAge: 15000,
+      timeout: 15000,
     }
   );
 }
@@ -2314,6 +2204,18 @@ function getUserLocation() {
 // ==================================================
 
 function destroyMap() {
+  if (userLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(userLocationWatchId);
+    userLocationWatchId = null;
+  }
+
+  if (window.AppState) {
+    AppState.userLocation = null;
+  }
+  displayedUserLocation = null;
+  hasUserMovedMap = false;
+  hasCenteredOnUser = false;
+
   if (activeStopPopup) {
     activeStopPopup.remove();
     activeStopPopup = null;

@@ -12,7 +12,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
-import { getEta } from "../../shared/js/eta.js";
+import {
+  DROPOFF_BUS_RADIUS_METERS,
+  getDistanceKm,
+  getEta,
+} from "../../shared/js/eta.js";
 
 import {
   getUserProfile,
@@ -78,6 +82,7 @@ const AppState = {
   stops: [],
   buses: [],
   activeTrips: [],
+  userLocation: null,
   dropoff: {
     tripId: null,
     stopId: null,
@@ -176,6 +181,27 @@ function getActiveTripForBus(busId, busCode) {
             (tripBusId === busId || tripBusId === busCode)
         )
     ) || null
+  );
+}
+
+function isCommuterNearTripBus(trip) {
+  const location = AppState.userLocation;
+  if (
+    !trip ||
+    !location ||
+    Date.now() - location.updatedAt > 30000
+  ) {
+    return false;
+  }
+
+  const bus = AppState.buses.find(
+    (activeBus) => activeBus.tripId === trip.id
+  );
+  const distanceKm = getDistanceKm(location, bus);
+
+  return (
+    distanceKm !== null &&
+    distanceKm * 1000 <= DROPOFF_BUS_RADIUS_METERS
   );
 }
 
@@ -648,6 +674,14 @@ async function confirmDropoffStop(tripId, stop) {
 
   if (!trip || trip.routeId !== stop.routeId) {
     showSavedRouteToast("Choose an active bus on this route", true);
+    return false;
+  }
+
+  if (!isCommuterNearTripBus(trip)) {
+    showSavedRouteToast(
+      `Move within ${DROPOFF_BUS_RADIUS_METERS} meters of your bus to choose a stop`,
+      true
+    );
     return false;
   }
 
@@ -1575,37 +1609,6 @@ const Pages = {
 
   map: () => `
     <div class="space-y-3 slide-in">
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
-
-        <div class="flex items-center gap-2">
-
-          <svg
-            class="w-5 h-5 text-qc-blue"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-
-          <input
-            id="mapSearchInput"
-            type="text"
-            placeholder="Search route or destination..."
-            class="flex-1 text-sm outline-none bg-transparent"
-          />
-
-        </div>
-
-      </div>
-
 
       <div
         id="mapContainer"
@@ -3446,6 +3449,7 @@ window.stopAllListeners = stopAllListeners;
 window.selectDropoffTrip = selectDropoffTrip;
 
 window.confirmDropoffStop = confirmDropoffStop;
+window.isCommuterNearTripBus = isCommuterNearTripBus;
 
 window.openEditProfile = openEditProfile;
 

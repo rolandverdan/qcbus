@@ -1,6 +1,7 @@
 const DEFAULT_SPEED_KMH = 18;
 const ROAD_DISTANCE_FACTOR = 1.25;
 const MAX_LOCATION_AGE_MS = 120000;
+export const DROPOFF_BUS_RADIUS_METERS = 100;
 
 function coordinate(value) {
   if (value === null || value === undefined || value === "") return null;
