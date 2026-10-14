@@ -100,8 +100,19 @@ function addRouteAndStops() {
     element.textContent = String(index + 1);
     element.title = stop.name || `Stop ${index + 1}`;
 
+    const popup = new maplibregl.Popup({
+      offset: 14,
+      closeButton: false,
+      closeOnClick: true,
+    }).setHTML(`
+      <div style="font-size:13px;font-weight:700;color:#1f2937">
+        ${escapeStopName(stop.name || `Stop ${index + 1}`)}
+      </div>
+    `);
+
     const marker = new maplibregl.Marker({ element })
       .setLngLat(coordinates)
+      .setPopup(popup)
       .addTo(liveMap);
 
     return [{ id: stop.id, marker, element }];
@@ -109,6 +120,15 @@ function addRouteAndStops() {
 
   updateFloatingLiveMap();
   fitMapToRoute();
+}
+
+function escapeStopName(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function fitMapToRoute() {

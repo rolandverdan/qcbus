@@ -165,6 +165,11 @@ function clearHistory() {
   }
 
   AppState.history = [];
+  try {
+    localStorage.removeItem(`qc_conductor_activity_${AppState.conductor.id}`);
+  } catch (error) {
+    console.warn('Could not clear saved conductor activity:', error);
+  }
 
   navigateTo('alerts');
 }

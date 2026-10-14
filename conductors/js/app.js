@@ -23,6 +23,17 @@ if (!session) {
 }
 
 const { user, profile } = session;
+const ACTIVITY_STORAGE_KEY = `qc_conductor_activity_${profile.uid || user.uid}`;
+
+function loadSavedActivity() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ACTIVITY_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved.slice(0, 50) : [];
+  } catch (error) {
+    console.warn("Could not load saved conductor activity:", error);
+    return [];
+  }
+}
 
 // ==================================================
 // APP STATE — CONDUCTOR
@@ -64,7 +75,7 @@ const AppState = {
   routeStops: [],
   tripDirection: null,
   currentAlightStopId: null,
-  history: [], // events: { type: 'in'|'out', time, source }
+  history: loadSavedActivity(), // events: { type: 'in'|'out', time, source }
   sos: {
     active: false,
     lastTriggered: null,
@@ -162,6 +173,11 @@ function addHistory(kind, label) {
   AppState.history.unshift(item);
   if (AppState.history.length > 50) {
     AppState.history.length = 50;
+  }
+  try {
+    localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(AppState.history));
+  } catch (error) {
+    console.warn("Could not save conductor activity:", error);
   }
   return item;
 }
