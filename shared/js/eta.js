@@ -8,7 +8,7 @@ function coordinate(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
-
+//yes yes//
 function getLocationTimestamp(value) {
   if (value?.toMillis) return value.toMillis();
   if (typeof value === "number") return value;
