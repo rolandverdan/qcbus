@@ -25,6 +25,10 @@ body {
   z-index: 10000 !important;
 }
 
+.maplibregl-popup.bus-tooltip {
+  z-index: 10001 !important;
+}
+
 /* Dark mode */
 body.dark-mode {
   background-color: #111827;

@@ -1810,9 +1810,8 @@ function updateBusMarkers() {
         <div style="font-weight:700;font-size:14px;margin-bottom:4px">
           ${escapeHtml(displayId)}
         </div>
-        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">
-          ${escapeHtml(bus.route || "No route assigned")}
-        </div>
+        ${bus.tripActive && bus.directionLabel ? `<div style="font-size:12px;color:#115272;font-weight:700;margin-bottom:6px">Going: ${escapeHtml(bus.directionLabel)}</div>` : ""}
+        ${!bus.tripActive || !bus.directionLabel ? `<div style="font-size:12px;color:#6b7280;margin-bottom:6px">${escapeHtml(bus.route || "No route assigned")}</div>` : ""}
         <div style="font-size:12px;color:#16a34a;font-weight:600">
           ● ${escapeHtml(bus.status || "On Trip")}
         </div>
@@ -1893,6 +1892,7 @@ function updateBusMarkers() {
       offset: 28,
       closeButton: true,
       closeOnClick: true,
+      className: "bus-tooltip",
     }).setHTML(getPopupContent(bus));
 
     let marker;
@@ -1901,6 +1901,9 @@ function updateBusMarkers() {
       if (popup.isOpen()) {
         popup.remove();
       } else {
+        busMarkers.forEach(({ popup: openBusPopup }) => {
+          if (openBusPopup !== popup && openBusPopup.isOpen()) openBusPopup.remove();
+        });
         popup.setLngLat(marker.getLngLat()).addTo(map);
       }
     };
@@ -2052,6 +2055,7 @@ function updateBusLegend() {
             >
               ${route}
             </p>
+
 
 
             ${

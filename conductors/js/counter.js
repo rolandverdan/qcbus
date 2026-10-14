@@ -141,16 +141,7 @@ function softRefreshCounter() {
   }
 
   const content = document.getElementById('content');
-  if (content && window.Pages) {
-    if (AppState.currentPage === 'counter') {
-      content.innerHTML = Pages.counter();
-    } else if (AppState.currentPage === 'trip') {
-      content.innerHTML = Pages.trip();
-      if (AppState.trip.active && window.startTripTimer) {
-        window.startTripTimer();
-      }
-    }
-  }
+  if (content && window.refreshConductorPage) window.refreshConductorPage();
 }
 
 

@@ -62,6 +62,7 @@ const AppState = {
   },
   dropoffRequests: [],
   routeStops: [],
+  tripDirection: null,
   currentAlightStopId: null,
   history: [], // events: { type: 'in'|'out', time, source }
   sos: {
@@ -193,6 +194,7 @@ const Pages = {
         <p class="text-sm opacity-90">${AppState.bus.plateNumber} · Capacity ${AppState.bus.capacity}</p>
 
         ${active ? `
+          <p class="text-sm font-semibold mt-2 trip-direction-display">${escapeTripText(AppState.trip.directionLabel || `Heading to ${AppState.trip.directionTo || 'destination not set'}`)}</p>
           <div class="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 gap-3 text-sm">
             <div>
               <p class="text-xs opacity-75">Started</p>
@@ -204,7 +206,20 @@ const Pages = {
             </div>
           </div>
         ` : `
-          <p class="mt-4 text-xs opacity-80">Press Start Trip to begin counting passengers.</p>
+          <label class="block mt-4 text-xs font-semibold opacity-90" for="tripDirectionSelect">Choose which way this bus is going</label>
+          <select id="tripDirectionSelect" class="w-full mt-1 rounded-xl border border-white/30 bg-white text-gray-800 px-3 py-3 text-sm font-semibold" ${AppState.routeStops.length < 2 ? 'disabled' : ''}>
+            <option value="">Select destination</option>
+            ${AppState.routeStops.length >= 2 ? [
+              { from: AppState.routeStops[0], to: AppState.routeStops[AppState.routeStops.length - 1] },
+              { from: AppState.routeStops[AppState.routeStops.length - 1], to: AppState.routeStops[0] },
+            ].map((direction) => {
+              const value = `${direction.from.id}|${direction.to.id}`;
+              const label = `${direction.from.name} → ${direction.to.name}`;
+              return `<option value="${escapeTripText(value)}" ${AppState.tripDirection && `${AppState.tripDirection.fromId}|${AppState.tripDirection.toId}` === value ? 'selected' : ''}>${escapeTripText(label)}</option>`;
+            }).join('') : ''}
+          </select>
+          ${AppState.routeStops.length < 2 ? '<p class="mt-2 text-xs text-amber-100">This route needs at least two ordered stops before a trip can start.</p>' : ''}
+          <p class="mt-3 text-xs opacity-80">Choose the destination so commuters can see which way the bus is heading.</p>
         `}
       </div>
 
@@ -235,31 +250,31 @@ const Pages = {
         </div>
         <div class="flex items-end justify-between mb-2">
           <div>
-            <p class="text-3xl font-bold text-qc-green leading-none">${AppState.occupancy.onboard}</p>
+            <p id="tripOnboardCount" class="text-3xl font-bold text-qc-green leading-none">${AppState.occupancy.onboard}</p>
             <p class="text-xs text-gray-500 mt-1">of ${AppState.bus.capacity} seats</p>
           </div>
           <div class="text-right">
             <p class="text-xs text-gray-500">Load</p>
-            <p class="text-sm font-semibold ${loadColor()}">${loadPercent()}%</p>
+            <p id="tripLoadPercent" class="text-sm font-semibold ${loadColor()}">${loadPercent()}%</p>
           </div>
         </div>
         <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div class="h-full ${loadBarColor()} transition-all duration-500" style="width:${loadPercent()}%"></div>
+          <div id="tripOccupancyProgress" class="h-full ${loadBarColor()} transition-all duration-500" style="width:${loadPercent()}%"></div>
         </div>
       </div>
 
       <!-- Trip stats -->
       <div class="grid grid-cols-3 gap-3">
         <div class="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm">
-          <p class="text-lg font-bold text-qc-green">${AppState.occupancy.totalIn}</p>
+          <p id="tripBoardedCount" class="text-lg font-bold text-qc-green">${AppState.occupancy.totalIn}</p>
           <p class="text-[10px] text-gray-500 uppercase tracking-wide">Boarded</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm">
-          <p class="text-lg font-bold text-qc-blue-accent">${AppState.occupancy.totalOut}</p>
+          <p id="tripAlightedCount" class="text-lg font-bold text-qc-blue-accent">${AppState.occupancy.totalOut}</p>
           <p class="text-[10px] text-gray-500 uppercase tracking-wide">Alighted</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm">
-          <p class="text-lg font-bold text-gray-700">${AppState.occupancy.onboard}</p>
+          <p id="tripOnboardTotal" class="text-lg font-bold text-gray-700">${AppState.occupancy.onboard}</p>
           <p class="text-[10px] text-gray-500 uppercase tracking-wide">Onboard</p>
         </div>
       </div>
@@ -429,12 +444,12 @@ const Pages = {
         <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Passengers Onboard</p>
         <div class="flex items-baseline justify-center gap-2">
           <span id="bigCount" class="text-6xl font-bold ${isFull ? 'text-qc-red' : 'text-qc-green'} leading-none">${onboard}</span>
-          <span class="text-lg text-gray-400 font-medium">/ ${capacity}</span>
+          <span id="counterCapacity" class="text-lg text-gray-400 font-medium">/ ${capacity}</span>
         </div>
         <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-4">
-          <div class="h-full ${loadBarColor()} transition-all duration-500" style="width:${pct}%"></div>
+          <div id="counterOccupancyProgress" class="h-full ${loadBarColor()} transition-all duration-500" style="width:${pct}%"></div>
         </div>
-        <p class="text-xs ${loadColor()} font-semibold mt-2">${loadPercent()}% full ${isFull ? '· BUS FULL' : ''}</p>
+        <p id="counterLoadLabel" class="text-xs ${loadColor()} font-semibold mt-2">${loadPercent()}% full ${isFull ? '· BUS FULL' : ''}</p>
       </div>
 
       <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4">
@@ -443,10 +458,10 @@ const Pages = {
             <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">Expected remaining to alight</p>
             <p class="mt-1 text-xs text-blue-700">${expectedDropoffs ? `Across ${dropoffCounts.length} ${dropoffCounts.length === 1 ? "stop" : "stops"}` : "No passengers remaining"}</p>
           </div>
-          <span class="text-3xl font-bold leading-none text-qc-blue-accent">${expectedDropoffs}</span>
+        <span id="expectedDropoffTotal" class="text-3xl font-bold leading-none text-qc-blue-accent">${expectedDropoffs}</span>
         </div>
         ${dropoffCounts.length ? `
-          <div class="mt-3 divide-y divide-blue-100 border-t border-blue-100">
+          <div id="dropoffRequestsList" class="mt-3 divide-y divide-blue-100 border-t border-blue-100">
             ${dropoffCounts.map((stop) => `
               <div class="flex items-center justify-between gap-3 py-2.5 last:pb-0">
                 <span class="text-sm text-gray-800">${escapeTripText(stop.name)}</span>
@@ -455,7 +470,7 @@ const Pages = {
             `).join("")}
           </div>
         ` : `
-          <p class="mt-3 border-t border-blue-100 pt-3 text-xs text-blue-700">Commuter selections will appear here during this trip.</p>
+          <p id="dropoffRequestsList" class="mt-3 border-t border-blue-100 pt-3 text-xs text-blue-700">Commuter selections will appear here during this trip.</p>
         `}
       </div>
 
@@ -509,11 +524,11 @@ const Pages = {
       <div class="grid grid-cols-2 gap-3">
         <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p class="text-xs text-gray-500 mb-1">Total Boarded</p>
-          <p class="text-2xl font-bold text-qc-green">${totalIn}</p>
+          <p id="counterTotalIn" class="text-2xl font-bold text-qc-green">${totalIn}</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p class="text-xs text-gray-500 mb-1">Total Alighted</p>
-          <p class="text-2xl font-bold text-qc-blue-accent">${totalOut}</p>
+          <p id="counterTotalOut" class="text-2xl font-bold text-qc-blue-accent">${totalOut}</p>
         </div>
       </div>
 
@@ -635,6 +650,12 @@ function escapeTripText(value) {
     .replaceAll("'", "&#039;");
 }
 
+document.addEventListener("change", (event) => {
+  if (event.target?.id !== "tripDirectionSelect") return;
+  const [fromId, toId] = event.target.value.split("|");
+  AppState.tripDirection = fromId && toId ? { fromId, toId } : null;
+});
+
 // ==================================================
 // HELPERS
 // ==================================================
@@ -714,6 +735,83 @@ async function navigateTo(page) {
   else stopCounterTimer();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function refreshCurrentPage() {
+  const content = document.getElementById("content");
+  const page = AppState.currentPage;
+  if (!content || !Pages[page]) return;
+
+  if (page === "trip") {
+    const active = AppState.trip.active;
+    const direction = content.querySelector("#tripDirectionSelect");
+    if (direction && !active) return;
+
+    const heading = content.querySelector(".trip-direction-display");
+    if (heading) heading.textContent = AppState.trip.directionLabel || "";
+  }
+
+  if (page === "counter") {
+    const total = content.querySelector("#expectedDropoffTotal");
+    const counts = getDropoffCounts();
+    const requestList = content.querySelector("#dropoffRequestsList");
+    const onboard = content.querySelector("#bigCount");
+    const capacity = content.querySelector("#counterCapacity");
+    const progress = content.querySelector("#counterOccupancyProgress");
+    const loadLabel = content.querySelector("#counterLoadLabel");
+    const totalIn = content.querySelector("#counterTotalIn");
+    const totalOut = content.querySelector("#counterTotalOut");
+    const primaryBoard = content.querySelector('button[onclick="addPassenger(\'in\')"]');
+    const primaryExit = content.querySelector('button[onclick="addPassenger(\'out\')"]');
+    const isFull = AppState.occupancy.onboard >= AppState.occupancy.capacity;
+    if (onboard) {
+      onboard.textContent = AppState.occupancy.onboard;
+      onboard.classList.toggle("text-qc-red", isFull);
+      onboard.classList.toggle("text-qc-green", !isFull);
+    }
+    if (capacity) capacity.textContent = `/ ${AppState.occupancy.capacity}`;
+    if (progress) {
+      progress.style.width = `${loadPercent()}%`;
+      progress.classList.toggle("bg-qc-red", isFull);
+      progress.classList.toggle("bg-qc-green", !isFull && loadPercent() < 75);
+      progress.classList.toggle("bg-yellow-400", !isFull && loadPercent() >= 75);
+    }
+    if (loadLabel) loadLabel.textContent = `${loadPercent()}% full${isFull ? " · BUS FULL" : ""}`;
+    if (totalIn) totalIn.textContent = AppState.occupancy.totalIn;
+    if (totalOut) totalOut.textContent = AppState.occupancy.totalOut;
+    if (primaryBoard) primaryBoard.disabled = isFull;
+    if (primaryExit) primaryExit.disabled = AppState.occupancy.onboard === 0;
+    if (total) total.textContent = counts.reduce((sum, stop) => sum + stop.count, 0);
+    if (requestList) requestList.innerHTML = counts.length ? renderDropoffRequests() : "Commuter selections will appear here during this trip.";
+    updateConductorEta();
+    return;
+  }
+
+  if (page === "trip") {
+    const count = content.querySelector("#tripOnboardCount");
+    if (count) count.textContent = AppState.occupancy.onboard;
+    const boarded = content.querySelector("#tripBoardedCount");
+    if (boarded) boarded.textContent = AppState.occupancy.totalIn;
+    const alighted = content.querySelector("#tripAlightedCount");
+    if (alighted) alighted.textContent = AppState.occupancy.totalOut;
+    const onboardTotal = content.querySelector("#tripOnboardTotal");
+    if (onboardTotal) onboardTotal.textContent = AppState.occupancy.onboard;
+    const progress = content.querySelector("#tripOccupancyProgress");
+    if (progress) progress.style.width = `${loadPercent()}%`;
+    const load = content.querySelector("#tripLoadPercent");
+    if (load) load.textContent = `${loadPercent()}%`;
+    const duration = content.querySelector("#tripDuration");
+    if (duration && AppState.trip.active) duration.textContent = formatTripDuration(AppState.trip.startedAt);
+  }
+}
+
+function renderDropoffRequests() {
+  return getDropoffCounts().map((stop) => `
+    <div class="flex items-center justify-between gap-3 py-2.5 last:pb-0">
+      <span class="text-sm text-gray-800">${escapeTripText(stop.name)}</span>
+      <span class="shrink-0 text-sm font-bold text-blue-800">${stop.count} ${stop.count === 1 ? "person" : "people"}</span>
+    </div>
+  `).join("");
 }
 
 // ==================================================
@@ -899,6 +997,7 @@ window.showToast = showToast;
 window.logout = logout;
 window.AppState = AppState;
 window.Pages = Pages;
+window.refreshConductorPage = refreshCurrentPage;
 window.loadPercent = loadPercent;
 window.loadColor = loadColor;
 window.loadBarColor = loadBarColor;

@@ -137,12 +137,7 @@ function listenToDropoffRequests(tripId) {
     (requests) => {
       AppState.dropoffRequests = requests;
 
-      if (["trip", "counter"].includes(AppState.currentPage)) {
-        const content = document.getElementById("content");
-        if (content) {
-          content.innerHTML = window.Pages[AppState.currentPage]();
-        }
-      }
+      window.refreshConductorPage?.();
     },
     (error) => console.error("Drop-off count listener failed:", error)
   );
@@ -162,6 +157,15 @@ async function startTrip() {
     return;
   }
 
+  const directionValue = document.getElementById("tripDirectionSelect")?.value || "";
+  const [directionFromId, directionToId] = directionValue.split("|");
+  const directionFrom = AppState.routeStops.find((stop) => stop.id === directionFromId);
+  const directionTo = AppState.routeStops.find((stop) => stop.id === directionToId);
+  if (!directionFrom || !directionTo || directionFrom.id === directionTo.id) {
+    showToast("Choose which way the bus is going", "warn");
+    return;
+  }
+
   try {
     const trip = await addTripRepo({
       conductorId: AppState.conductor.id,
@@ -172,6 +176,11 @@ async function startTrip() {
 
       routeId: AppState.bus.routeId,
       routeName: AppState.bus.route,
+      directionFromId: directionFrom.id,
+      directionFromName: directionFrom.name,
+      directionToId: directionTo.id,
+      directionToName: directionTo.name,
+      directionLabel: `${directionFrom.name} → ${directionTo.name}`,
 
       capacity: AppState.bus.capacity,
       onboard: 0,
@@ -185,6 +194,11 @@ async function startTrip() {
       startedAt: now,
       endedAt: null,
       tripId: trip.id,
+      directionFromId: directionFrom.id,
+      directionFromName: directionFrom.name,
+      directionToId: directionTo.id,
+      directionToName: directionTo.name,
+      directionLabel: `${directionFrom.name} → ${directionTo.name}`,
     };
 
     AppState.occupancy = {
@@ -240,6 +254,7 @@ async function endTrip() {
     AppState.trip.active = false;
     AppState.trip.endedAt = Date.now();
     AppState.trip.tripId = null;
+    AppState.trip.directionTo = null;
 
     listenToDropoffRequests(null);
     if (window.stopLiveOccupancySync) window.stopLiveOccupancySync();
@@ -350,6 +365,12 @@ async function restoreActiveTrip() {
       startedAt: startedTime,
       endedAt: null,
       tripId: trip.id,
+      directionFromId: trip.directionFromId || null,
+      directionFromName: trip.directionFromName || null,
+      directionToId: trip.directionToId || null,
+      directionToName: trip.directionToName || null,
+      directionTo: trip.directionToName || null,
+      directionLabel: trip.directionLabel || "",
     };
     listenToDropoffRequests(trip.id);
     if (window.startLiveOccupancySync) window.startLiveOccupancySync(trip.id);
@@ -393,6 +414,12 @@ function initActiveTripListener() {
         AppState.trip.startedAt = startedTime;
         AppState.trip.endedAt = null;
         AppState.trip.tripId = trip.id;
+        AppState.trip.directionFromId = trip.directionFromId || null;
+        AppState.trip.directionFromName = trip.directionFromName || null;
+        AppState.trip.directionToId = trip.directionToId || null;
+        AppState.trip.directionToName = trip.directionToName || null;
+        AppState.trip.directionTo = trip.directionToName || null;
+        AppState.trip.directionLabel = trip.directionLabel || "";
 
         AppState.occupancy.onboard = Number(trip.onboard) || 0;
         AppState.occupancy.totalIn = Number(trip.totalIn) || 0;
@@ -406,13 +433,7 @@ function initActiveTripListener() {
           setLiveMapAvailable(true);
           updateTripStatus();
           startTripTimer();
-
-          if (['trip', 'counter', 'scanner'].includes(AppState.currentPage)) {
-            const content = document.getElementById('content');
-            if (content && window.Pages?.[AppState.currentPage]) {
-              content.innerHTML = window.Pages[AppState.currentPage]();
-            }
-          }
+          window.refreshConductorPage?.();
         }
       } else {
         if (AppState.trip.active) {
@@ -426,13 +447,7 @@ function initActiveTripListener() {
           setLiveMapAvailable(false);
           stopTripTimer();
           updateTripStatus();
-
-          if (['trip', 'counter', 'scanner'].includes(AppState.currentPage)) {
-            const content = document.getElementById('content');
-            if (content && window.Pages?.[AppState.currentPage]) {
-              content.innerHTML = window.Pages[AppState.currentPage]();
-            }
-          }
+          window.refreshConductorPage?.();
         }
       }
     },

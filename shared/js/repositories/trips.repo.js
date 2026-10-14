@@ -17,6 +17,7 @@ const tripsCollection = collection(db, "trips");
 export async function getTripsRepo() {
   const snapshot = await getDocs(tripsCollection);
 
+  
   return snapshot.docs.map((tripDoc) => ({
     id: tripDoc.id,
     ...tripDoc.data(),
@@ -157,6 +158,11 @@ export async function addTripRepo(data) {
 
     routeId: data.routeId || null,
     routeName: data.routeName || "",
+    directionFromId: data.directionFromId || null,
+    directionFromName: data.directionFromName || "",
+    directionToId: data.directionToId || null,
+    directionToName: data.directionToName || "",
+    directionLabel: data.directionLabel || "",
 
     status: "active",
 

@@ -41,12 +41,7 @@ function startLiveOccupancySync(tripId) {
       AppState.trip.tripId = null;
       if (window.stopTripTimer) window.stopTripTimer();
       if (window.updateTripStatus) window.updateTripStatus();
-      if (['trip', 'counter', 'scanner'].includes(AppState.currentPage)) {
-        const content = document.getElementById('content');
-        if (content && window.Pages?.[AppState.currentPage]) {
-          content.innerHTML = window.Pages[AppState.currentPage]();
-        }
-      }
+      window.refreshConductorPage?.();
       return;
     }
 
@@ -59,9 +54,8 @@ function startLiveOccupancySync(tripId) {
     }
 
     // 2. Instantly update all views (counter, trip, scanner)
-    if (window.softRefreshCounter) {
-      window.softRefreshCounter();
-    }
+    if (window.softRefreshCounter) window.softRefreshCounter();
+    window.refreshConductorPage?.();
   });
 }
 

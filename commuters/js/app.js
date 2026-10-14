@@ -479,9 +479,7 @@ function rebuildBuses() {
       routeId,
 
       route:
-        activeTrip?.routeName
-          ? activeTrip.routeName
-          : getRouteLabel(route),
+        activeTrip?.directionLabel || getRouteLabel(route),
 
       routeCode:
         route?.code ||
@@ -491,6 +489,12 @@ function rebuildBuses() {
         route?.name ||
         activeTrip?.routeName ||
         "",
+
+      directionFromId: activeTrip?.directionFromId || null,
+      directionFromName: activeTrip?.directionFromName || "",
+      directionToId: activeTrip?.directionToId || null,
+      directionToName: activeTrip?.directionToName || "",
+      directionLabel: activeTrip?.directionLabel || "",
 
       routeColor:
         route?.color ||
@@ -533,6 +537,9 @@ function rebuildBuses() {
       tripId:
         activeTrip?.id || null,
 
+      directionLabel:
+        activeTrip?.directionLabel || "",
+
       tripActive:
         Boolean(activeTrip),
 
@@ -559,6 +566,7 @@ function getHomeBusViewSignature() {
       bus.id,
       bus.code,
       bus.route,
+      bus.directionLabel,
       bus.status,
       bus.onboard,
       bus.capacity,
@@ -1653,8 +1661,8 @@ const Pages = {
                           ${escapeHtml(bus.code || bus.id)}
                         </p>
 
-                        <p class="text-xs text-gray-500">
-                          ${escapeHtml(bus.route || "No route")}
+                        <p class="text-xs font-semibold text-qc-blue-accent">
+                          ${escapeHtml(bus.directionLabel || bus.route || "No route")}
                         </p>
 
                         ${
