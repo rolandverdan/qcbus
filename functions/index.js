@@ -9,7 +9,10 @@
 
 const {setGlobalOptions} = require("firebase-functions");
 const logger = require("firebase-functions/logger");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+	onDocumentCreated,
+	onDocumentUpdated,
+} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 admin.initializeApp();
 
@@ -95,5 +98,135 @@ exports.sendCommuterInboxNotification = onDocumentCreated(
 			failureCount: response.failureCount,
 			removedExpiredTokens: invalidTokenDocuments.length,
 		});
+	}
+);
+
+async function createCommuterNotifications(userIds, notification) {
+	const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+	const db = admin.firestore();
+
+	for (let offset = 0; offset < uniqueUserIds.length; offset += 450) {
+		const batch = db.batch();
+		uniqueUserIds.slice(offset, offset + 450).forEach((userId) => {
+			const ref = db.collection("notifications").doc();
+			batch.set(ref, {
+				userId,
+				...notification,
+				read: false,
+				createdAt: admin.firestore.FieldValue.serverTimestamp(),
+			});
+		});
+		await batch.commit();
+	}
+}
+
+async function notifySavedRouteCommuters(routeId, notification) {
+	if (!routeId) return;
+	const users = await admin.firestore().collection("users").get();
+	const matchingUserIds = users.docs
+		.filter((user) => (user.data().savedRoutes || []).includes(routeId))
+		.map((user) => user.id);
+	await createCommuterNotifications(matchingUserIds, notification);
+}
+
+exports.notifyCommuterWhenReportStatusChanges = onDocumentUpdated(
+	"reports/{reportId}",
+	async (event) => {
+		const before = event.data?.before.data();
+		const after = event.data?.after.data();
+		if (!before || !after || before.status === after.status || !after.reporterId) return;
+
+		const statusMessages = {
+			reviewing: {
+				title: "Your report is being reviewed",
+				message: "The team has started reviewing your report.",
+			},
+			resolved: {
+				title: "Your report was resolved",
+				message: "The issue you reported has been marked as resolved.",
+			},
+			dismissed: {
+				title: "Your report was closed",
+				message: "The team closed your report. Open My Reports to view its status.",
+			},
+			pending: {
+				title: "Your report is open again",
+				message: "Your report has been reopened for follow-up.",
+			},
+		};
+		const content = statusMessages[after.status];
+		if (!content) return;
+
+		await createCommuterNotifications([after.reporterId], {
+			...content,
+			type: "report",
+			reportId: event.params.reportId,
+			status: after.status,
+		});
+	}
+);
+
+exports.notifyCommutersWhenTripStarts = onDocumentCreated(
+	"trips/{tripId}",
+	async (event) => {
+		const trip = event.data?.data();
+		if (!trip || trip.status !== "active" || !trip.routeId) return;
+
+		const busCode = trip.busCode || "A bus";
+		await notifySavedRouteCommuters(trip.routeId, {
+			title: "Bus service has started",
+			message: `${busCode} is now active on your saved route.`,
+			type: "bus",
+			busCode,
+			routeId: trip.routeId,
+			tripId: event.params.tripId,
+		});
+	}
+);
+
+exports.notifyCommutersAboutTripChanges = onDocumentUpdated(
+	"trips/{tripId}",
+	async (event) => {
+		const before = event.data?.before.data();
+		const after = event.data?.after.data();
+		if (!before || !after) return;
+
+		const routeId = after.routeId || before.routeId;
+		const busCode = after.busCode || before.busCode || "your bus";
+		let notification = null;
+
+		if (before.status !== after.status && after.status === "active") {
+			notification = {
+				title: "Bus service has started",
+				message: `${busCode} is now active on your saved route.`,
+				type: "bus",
+			};
+		} else if (before.status === "active" && after.status !== "active") {
+			notification = {
+				title: "Bus service has ended",
+				message: `${busCode} has ended its trip on your saved route.`,
+				type: "bus",
+			};
+		} else {
+			const capacity = Number(after.capacity) || 0;
+			const wasFull = Number(before.onboard) >= Number(before.capacity) && Number(before.capacity) > 0;
+			const isFull = capacity > 0 && Number(after.onboard) >= capacity;
+			if (!wasFull && isFull && after.status === "active") {
+				notification = {
+					title: "Bus is at capacity",
+					message: `${busCode} on your saved route is currently full.`,
+					type: "bus",
+				};
+			}
+		}
+
+		if (notification) {
+			await notifySavedRouteCommuters(routeId, {
+				...notification,
+				routeId,
+				busCode,
+				tripId: event.params.tripId,
+			});
+		}
 	}
 );

@@ -1,6 +1,5 @@
 import * as maplibregl from "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.mjs";
 import {
-  COMMUTER_NEARBY_RADIUS_METERS,
   DROPOFF_BUS_RADIUS_METERS,
   getDistanceKm,
   getEta,
@@ -47,7 +46,6 @@ let userMarker = null;
 let activeStopPopup = null;
 let userLocationWatchId = null;
 let displayedUserLocation = null;
-const COMMUTER_RADIUS_SOURCE_ID = "commuter-nearby-radius";
 let hasUserMovedMap = false;
 let hasCenteredOnUser = false;
 
@@ -84,90 +82,6 @@ function getBusCoordinates(bus) {
 
   return [lng, lat];
 }
-
-function createRadiusFeature(location) {
-  const earthRadiusMeters = 6371008.8;
-  const angularRadius = COMMUTER_NEARBY_RADIUS_METERS / earthRadiusMeters;
-  const latitude = location.lat * Math.PI / 180;
-  const longitude = location.lng * Math.PI / 180;
-  const coordinates = [];
-
-  for (let bearing = 0; bearing <= 360; bearing += 6) {
-    const bearingRadians = bearing * Math.PI / 180;
-    const destinationLatitude = Math.asin(
-      Math.sin(latitude) * Math.cos(angularRadius) +
-      Math.cos(latitude) * Math.sin(angularRadius) * Math.cos(bearingRadians)
-    );
-    const destinationLongitude = longitude + Math.atan2(
-      Math.sin(bearingRadians) * Math.sin(angularRadius) * Math.cos(latitude),
-      Math.cos(angularRadius) - Math.sin(latitude) * Math.sin(destinationLatitude)
-    );
-    coordinates.push([
-      ((destinationLongitude * 180 / Math.PI + 540) % 360) - 180,
-      destinationLatitude * 180 / Math.PI,
-    ]);
-  }
-
-  return {
-    type: "Feature",
-    properties: {},
-    geometry: { type: "Polygon", coordinates: [coordinates] },
-  };
-}
-
-function updateCommuterRadius(location) {
-  if (!map?.isStyleLoaded()) return;
-
-  const source = map.getSource(COMMUTER_RADIUS_SOURCE_ID);
-  if (source) {
-    source.setData(createRadiusFeature(location));
-    return;
-  }
-
-  map.addSource(COMMUTER_RADIUS_SOURCE_ID, {
-    type: "geojson",
-    data: createRadiusFeature(location),
-  });
-  const beforeLayer = map.getLayer("all-routes-casing")
-    ? "all-routes-casing"
-    : undefined;
-  map.addLayer({
-    id: "commuter-nearby-radius-fill",
-    type: "fill",
-    source: COMMUTER_RADIUS_SOURCE_ID,
-    paint: {
-      "fill-color": "#2563eb",
-      "fill-opacity": 0.12,
-    },
-  }, beforeLayer);
-  map.addLayer({
-    id: "commuter-nearby-radius-outline",
-    type: "line",
-    source: COMMUTER_RADIUS_SOURCE_ID,
-    paint: {
-      "line-color": "#2563eb",
-      "line-width": 2,
-      "line-opacity": 0.85,
-    },
-  }, beforeLayer);
-}
-
-function addCommuterRadiusLegend() {
-  if (!map) return;
-  map.addControl({
-    onAdd() {
-      const container = document.createElement("div");
-      container.style.cssText = "background:#fff;border-radius:8px;box-shadow:0 1px 4px #0003;padding:7px 10px;margin:10px;font:12px/1.3 sans-serif;color:#334155;";
-      container.textContent = `Blue area: ${COMMUTER_NEARBY_RADIUS_METERS} m nearby-bus radius`;
-      return container;
-    },
-    onRemove() {
-      this._container?.remove();
-      this._map = undefined;
-    },
-  }, "top-left");
-}
-
 
 // ==================================================
 // STOP COORDINATES
@@ -381,7 +295,6 @@ function initMap() {
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
-    addCommuterRadiusLegend();
     getUserLocation();
 
     if (pendingSelectedRouteId) {
@@ -921,23 +834,51 @@ function selectRoute(routeId) {
     return;
   }
 
+  if (selectedRouteId !== routeId) {
+    selectedRouteId = routeId;
+    updateRoutePicker();
+    updateRouteLayers();
+    updateBusMarkers();
+    updateBusLegend();
+  }
 
-  // Same route stays selected
-  if (selectedRouteId === routeId) {
+  centerMapOnRoute(route);
+}
+
+function centerMapOnRoute(route) {
+  if (!map || !route) return;
+  // Keep the asynchronous location callback from recentering the map on the commuter.
+  hasUserMovedMap = true;
+  hasCenteredOnUser = true;
+
+  const routeCoordinates = getGeometryCoordinates(
+    parseRouteGeometry(route)
+  );
+  const coordinates = (routeCoordinates.length
+    ? routeCoordinates
+    : getStopsByRoute(route.id).map(getStopCoordinates)
+  ).filter((coordinate) =>
+    Array.isArray(coordinate) &&
+    Number.isFinite(Number(coordinate[0])) &&
+    Number.isFinite(Number(coordinate[1])) &&
+    Math.abs(Number(coordinate[0])) <= 180 &&
+    Math.abs(Number(coordinate[1])) <= 90
+  ).map(([lng, lat]) => [Number(lng), Number(lat)]);
+
+  if (!coordinates.length) return;
+  if (coordinates.length === 1) {
+    map.flyTo({ center: coordinates[0], zoom: 15, duration: 700 });
     return;
   }
 
-
-  selectedRouteId =
-    routeId;
-
-
-  updateRoutePicker();
-  updateRouteLayers();
-  updateBusMarkers();
-  updateBusLegend();
+  const bounds = new maplibregl.LngLatBounds();
+  coordinates.forEach((coordinate) => bounds.extend(coordinate));
+  map.fitBounds(bounds, {
+    padding: { top: 65, right: 45, bottom: 75, left: 45 },
+    maxZoom: 15,
+    duration: 700,
+  });
 }
-
 
 // ==================================================
 // CLEAR SELECTED ROUTE
@@ -1877,6 +1818,7 @@ function updateBusMarkers() {
     const passengers = Number(bus.onboard) || 0;
     const availableSeats = Math.max(capacity - passengers, 0);
     const speed = Number(bus.speedKmh);
+    const nextStopEta = window.getNextStopEtaForBus?.(bus);
     const locationDate = bus.locationUpdatedAt?.toDate
       ? bus.locationUpdatedAt.toDate()
       : bus.locationUpdatedAt instanceof Date
@@ -1898,6 +1840,7 @@ function updateBusMarkers() {
         </div>
         ${bus.tripActive && bus.directionLabel ? `<div style="font-size:12px;color:#115272;font-weight:700;margin-bottom:6px">Going: ${escapeHtml(bus.directionLabel)}</div>` : ""}
         ${!bus.tripActive || !bus.directionLabel ? `<div style="font-size:12px;color:#6b7280;margin-bottom:6px">${escapeHtml(bus.route || "No route assigned")}</div>` : ""}
+        ${nextStopEta ? `<div style="font-size:12px;color:#115272;font-weight:600;margin-bottom:6px">Next stop: ${escapeHtml(nextStopEta.stop.name || "Bus stop")} · ${escapeHtml(nextStopEta.eta.label)}</div>` : ""}
         <div style="font-size:12px;color:#16a34a;font-weight:600">
           ● ${escapeHtml(bus.status || "On Trip")}
         </div>
@@ -2182,6 +2125,20 @@ function updateBusLegend() {
 // USER LOCATION
 // ==================================================
 
+function centerMapOnCommuter() {
+  if (!map) return;
+
+  const location = AppState.userLocation || AppState.nearbyLocation;
+  if (!location) return;
+
+  hasUserMovedMap = true;
+  map.easeTo({
+    center: [location.lng, location.lat],
+    zoom: Math.max(map.getZoom(), 15),
+    duration: 600,
+  });
+}
+
 function getUserLocation() {
   if (!navigator.geolocation) {
     console.warn("Commuter location is unavailable in this browser.");
@@ -2227,8 +2184,8 @@ function getUserLocation() {
         accuracy,
         updatedAt: Date.now(),
       };
-      updateCommuterRadius(nextLocation);
-
+      const centerButton = document.getElementById("centerMapButton");
+      if (centerButton) centerButton.disabled = false;
       if (!userMarker) {
         const userElement = document.createElement("div");
 
@@ -2280,6 +2237,8 @@ function getUserLocation() {
     },
     error => {
       console.warn("Unable to get commuter location:", error.message);
+      const centerButton = document.getElementById("centerMapButton");
+      if (centerButton && !AppState.nearbyLocation) centerButton.disabled = true;
     },
     {
       enableHighAccuracy: false,
@@ -2379,6 +2338,9 @@ window.updateRouteLayers =
 
 window.selectMapRoute =
   selectRoute;
+
+window.centerMapOnCommuter =
+  centerMapOnCommuter;
 
 window.destroyMap =
   destroyMap;

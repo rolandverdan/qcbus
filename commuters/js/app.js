@@ -12,9 +12,11 @@ import {
 
 import {
   collection,
+  getDocs,
   onSnapshot,
   query,
   where,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
@@ -340,6 +342,73 @@ function getNearbyBuses() {
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
+function getNextStopEtaForBus(bus) {
+  if (!bus?.tripActive || !bus.directionFromId || !bus.directionToId) return null;
+
+  const stops = getStopsByRoute(bus.routeId);
+  const fromIndex = stops.findIndex((stop) => stop.id === bus.directionFromId);
+  const toIndex = stops.findIndex((stop) => stop.id === bus.directionToId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return null;
+
+  const direction = fromIndex < toIndex ? 1 : -1;
+  const directedStops = [];
+  for (let i = fromIndex; direction > 0 ? i <= toIndex : i >= toIndex; i += direction) {
+    directedStops.push(stops[i]);
+  }
+
+  const busLatitude = Number(bus.lat);
+  const busLongitude = Number(bus.lng);
+  if (!Number.isFinite(busLatitude) || !Number.isFinite(busLongitude)) return null;
+
+  const earthRadiusMeters = 6371008.8;
+  const toPoint = (stop) => {
+    const latitude = Number(stop.lat ?? stop.latitude);
+    const longitude = Number(stop.lng ?? stop.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    const meanLatitude = (latitude + busLatitude) / 2 * Math.PI / 180;
+    return {
+      x: (longitude - busLongitude) * Math.PI / 180 * earthRadiusMeters * Math.cos(meanLatitude),
+      y: (latitude - busLatitude) * Math.PI / 180 * earthRadiusMeters,
+    };
+  };
+
+  let nearestSegmentIndex = -1;
+  let nearestDistanceSquared = Infinity;
+  for (let i = 0; i < directedStops.length - 1; i += 1) {
+    const start = toPoint(directedStops[i]);
+    const end = toPoint(directedStops[i + 1]);
+    if (!start || !end) continue;
+
+    const segmentX = end.x - start.x;
+    const segmentY = end.y - start.y;
+    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+    const progress = segmentLengthSquared
+      ? Math.max(0, Math.min(1, -(start.x * segmentX + start.y * segmentY) / segmentLengthSquared))
+      : 0;
+    const offsetX = start.x + progress * segmentX;
+    const offsetY = start.y + progress * segmentY;
+    const distanceSquared = offsetX * offsetX + offsetY * offsetY;
+
+    if (
+      distanceSquared < nearestDistanceSquared - 25 ||
+      (Math.abs(distanceSquared - nearestDistanceSquared) <= 25 && i > nearestSegmentIndex)
+    ) {
+      nearestDistanceSquared = distanceSquared;
+      nearestSegmentIndex = i;
+    }
+  }
+
+  const nextStop = nearestSegmentIndex >= 0
+    ? directedStops[nearestSegmentIndex + 1]
+    : null;
+  if (!nextStop) return null;
+
+  return {
+    stop: nextStop,
+    eta: getEta(bus, nextStop),
+  };
+}
+
 function startNearbyBusDetection() {
   if (!navigator.geolocation) {
     AppState.nearbyLocationError = "Location is not supported by this browser.";
@@ -490,6 +559,18 @@ function openSavedRoute(routeId) {
     }, 1600);
   });
 }
+
+function openSavedRouteOnMap(routeId) {
+  if (!getRouteById(routeId)) {
+    showSavedRouteToast("This saved route is no longer available", true);
+    return;
+  }
+
+  navigateTo("map");
+  window.selectMapRoute?.(routeId);
+}
+
+window.openSavedRouteOnMap = openSavedRouteOnMap;
 
 function showSavedRouteToast(message, isError = false) {
   const existingToast =
@@ -1376,6 +1457,15 @@ const Pages = {
                           ${escapeHtml(getStatusLabel(bus))}
                         </p>
 
+                        ${bus.tripActive
+                          ? (() => {
+                              const nextStopEta = getNextStopEtaForBus(bus);
+                              return nextStopEta
+                                ? `<p class="mt-1 text-xs text-gray-600">Next: ${escapeHtml(nextStopEta.stop.name || "Bus stop")} · ${escapeHtml(nextStopEta.eta.label)}</p>`
+                                : `<p class="mt-1 text-xs text-gray-400">Next stop ETA unavailable</p>`;
+                            })()
+                          : ""}
+
                         <p class="text-xs text-gray-400">
 
                           ${
@@ -1502,6 +1592,67 @@ const Pages = {
 
         </div>
 
+      </div>
+
+      <!-- Saved Routes -->
+
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-gray-800">Saved Route Status</h3>
+            <p class="mt-0.5 text-xs text-gray-500">Live buses and their next stop</p>
+          </div>
+          <button onclick="setRouteFilter('favorites')" class="text-xs font-medium text-qc-blue hover:underline">All saved</button>
+        </div>
+        <div class="space-y-2">
+          ${
+            AppState.user.savedRoutes.length
+              ? AppState.user.savedRoutes
+                  .map((routeId) => {
+                    const route = getRouteById(routeId);
+                    if (!route) return "";
+                    const activeBuses = AppState.buses
+                      .filter((bus) => bus.routeId === routeId && bus.tripActive)
+                      .sort((a, b) => {
+                        if (!AppState.nearbyLocation) return String(a.code).localeCompare(String(b.code));
+                        const distanceA = getDistanceKm(AppState.nearbyLocation, a) ?? Infinity;
+                        const distanceB = getDistanceKm(AppState.nearbyLocation, b) ?? Infinity;
+                        return distanceA - distanceB;
+                      });
+                    return `
+                      <div class="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <span class="h-3 w-3 shrink-0 rounded-full" style="background:${escapeHtml(route.color || "#1e40af")}"></span>
+                            <div class="min-w-0">
+                              <p class="truncate text-sm font-semibold text-gray-800">${escapeHtml(route.code || route.name || "Saved route")}</p>
+                              <p class="truncate text-xs text-gray-500">${escapeHtml(route.name || "")}</p>
+                            </div>
+                          </div>
+                          <button onclick="openSavedRouteOnMap('${escapeHtml(routeId)}')" class="shrink-0 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-qc-blue hover:bg-blue-100">View map</button>
+                        </div>
+                        ${
+                          activeBuses.length
+                            ? `<div class="mt-2 space-y-1.5">
+                                ${activeBuses.slice(0, 2).map((bus) => {
+                                  const next = getNextStopEtaForBus(bus);
+                                  return `<div class="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2">
+                                    <span class="text-xs font-medium text-gray-700">Bus ${escapeHtml(bus.code || bus.id)}</span>
+                                    <span class="text-right text-[11px] text-gray-500">${next ? `Next: ${escapeHtml(next.stop.name || "Stop")} · ${escapeHtml(next.eta.label)}` : "On trip · ETA unavailable"}</span>
+                                  </div>`;
+                                }).join("")}
+                                ${activeBuses.length > 2 ? `<p class="px-1 text-[11px] text-gray-500">and ${activeBuses.length - 2} more active ${activeBuses.length - 2 === 1 ? "bus" : "buses"}</p>` : ""}
+                              </div>`
+                            : '<p class="mt-2 rounded-lg bg-white px-2.5 py-2 text-xs text-gray-500">No active buses on this route right now.</p>'
+                        }
+                      </div>
+                    `;
+                  })
+                  .filter(Boolean)
+                  .join("") || '<p class="py-3 text-center text-xs text-gray-500">Save a route to see its live bus status here.</p>'
+              : '<p class="py-3 text-center text-xs text-gray-500">Save a route to see its live bus status here.</p>'
+          }
+        </div>
       </div>
 
       <!-- Saved Routes -->
@@ -1759,6 +1910,17 @@ const Pages = {
 
                       </div>
 
+                      <button
+                        type="button"
+                        onclick="openSavedRouteOnMap('${escapeHtml(route.id)}')"
+                        class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs font-semibold text-qc-blue transition hover:bg-blue-100"
+                      >
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.553 2.776A1 1 0 0022 18.882V7.118a1 1 0 00-1.447-.894L15 9m0 8V9m0 0L9 7" />
+                        </svg>
+                        View route on map
+                      </button>
+
                     </div>
 
 
@@ -1838,10 +2000,25 @@ const Pages = {
   map: () => `
     <div class="space-y-3 slide-in">
 
-      <div
-        id="mapContainer"
-        class="w-full h-[55vh] rounded-xl shadow-sm border border-gray-100 overflow-hidden"
-      ></div>
+      <div class="relative">
+        <div
+          id="mapContainer"
+          class="w-full h-[55vh] rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+        ></div>
+        <button
+          id="centerMapButton"
+          type="button"
+          onclick="centerMapOnCommuter()"
+          ${AppState.userLocation || AppState.nearbyLocation ? "" : "disabled"}
+          class="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-semibold text-qc-blue shadow-md transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Center map on my location"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          Center on me
+        </button>
+      </div>
 
 
       <div id="dropoffEtaCard" class="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
@@ -2059,6 +2236,7 @@ const Pages = {
           <label class="block text-xs font-medium text-gray-600 mb-1.5">
             Bus or Route
           </label>
+          <p class="mb-1.5 text-[11px] text-gray-400">Only buses on active trips are listed.</p>
 
           <select
             name="busRoute"
@@ -2067,7 +2245,7 @@ const Pages = {
           >
             <option value="">Select a bus or route…</option>
 
-            ${AppState.buses.map(bus => `
+            ${AppState.buses.filter(bus => bus.tripActive).map(bus => `
               <option value="${bus.code || bus.id} · ${bus.route}">
                 ${bus.code || bus.id} · ${bus.route}
               </option>
@@ -2426,6 +2604,20 @@ const Pages = {
       </div>
 
 
+      <section class="bg-white rounded-xl shadow-sm border border-gray-100 p-4" aria-labelledby="myReportsHeading">
+        <div class="flex items-center justify-between mb-3">
+          <h3 id="myReportsHeading" class="font-semibold text-gray-800">My Reports</h3>
+          <div class="flex items-center gap-2">
+            <span id="myReportsCount" class="text-xs text-gray-400">Latest 10</span>
+            <button id="clearMyReportsButton" type="button" onclick="clearMyReports()" class="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50" aria-label="Clear all your reports">Clear all</button>
+          </div>
+        </div>
+        <div id="myReportsList" class="space-y-3" aria-live="polite">
+          <p class="py-3 text-center text-xs text-gray-400">Loading your reports…</p>
+        </div>
+      </section>
+
+
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
 
         <button
@@ -2462,6 +2654,128 @@ const Pages = {
     </div>
   `,
 };
+
+function formatMyReportDate(value) {
+  const date = value?.toDate
+    ? value.toDate()
+    : value instanceof Date
+      ? value
+      : value
+        ? new Date(value)
+        : null;
+  return date && Number.isFinite(date.getTime())
+    ? date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : "Date unavailable";
+}
+
+async function loadMyReports() {
+  const list = document.getElementById("myReportsList");
+  const count = document.getElementById("myReportsCount");
+  if (!list || !count) return;
+
+  try {
+    const reportsQuery = query(
+      collection(db, "reports"),
+      where("reporterId", "==", AppState.user.uid)
+    );
+    const snapshot = await getDocs(reportsQuery);
+    if (!document.getElementById("myReportsList")) return;
+
+    const reports = snapshot.docs.map((reportDoc) => ({
+      id: reportDoc.id,
+      ...reportDoc.data(),
+    }));
+    const getCreatedAtMillis = (value) => value?.toMillis?.()
+      ?? (value instanceof Date ? value.getTime() : Date.parse(value || ""));
+    reports.sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
+    const recentReports = reports.slice(0, 10);
+    const clearButton = document.getElementById("clearMyReportsButton");
+    if (clearButton) clearButton.classList.toggle("hidden", reports.length === 0);
+    count.textContent = reports.length > 10
+      ? `Latest 10 of ${reports.length}`
+      : `${reports.length} ${reports.length === 1 ? "report" : "reports"}`;
+
+    if (!recentReports.length) {
+      list.innerHTML = '<p class="py-4 text-center text-xs text-gray-400">You have not submitted any reports yet.</p>';
+      return;
+    }
+
+    const statusStyles = {
+      pending: "bg-amber-50 text-amber-700",
+      reviewing: "bg-blue-50 text-blue-700",
+      resolved: "bg-green-50 text-green-700",
+      dismissed: "bg-gray-100 text-gray-600",
+    };
+    list.innerHTML = recentReports.map((report) => {
+      const status = String(report.status || "pending").toLowerCase();
+      const statusClass = statusStyles[status] || "bg-gray-100 text-gray-600";
+      return `
+        <article class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-gray-800">${escapeHtml(report.category || "Issue report")}</p>
+              <p class="mt-0.5 truncate text-xs text-gray-500">${escapeHtml(report.busRoute || "Unknown route")} · ${escapeHtml(formatMyReportDate(report.createdAt))}</p>
+            </div>
+            <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold capitalize ${statusClass}">${escapeHtml(status)}</span>
+          </div>
+          <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">${escapeHtml(report.description || "No description")}</p>
+        </article>
+      `;
+    }).join("");
+  } catch (error) {
+    console.error("Failed to load commuter reports:", error);
+    const currentList = document.getElementById("myReportsList");
+    if (currentList) {
+      currentList.innerHTML = `
+        <div class="py-3 text-center">
+          <p class="text-xs text-gray-500">Unable to load your reports.</p>
+          <button onclick="loadMyReports()" class="mt-2 text-xs font-semibold text-qc-blue hover:underline">Try again</button>
+        </div>
+      `;
+    }
+  }
+}
+
+async function clearMyReports() {
+  if (!AppState.user?.uid) return;
+  if (!confirm("Clear all your reports? This permanently deletes every report you submitted.")) return;
+
+  const button = document.getElementById("clearMyReportsButton");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Clearing…";
+  }
+
+  try {
+    const reportsQuery = query(
+      collection(db, "reports"),
+      where("reporterId", "==", AppState.user.uid)
+    );
+    const snapshot = await getDocs(reportsQuery);
+
+    for (let offset = 0; offset < snapshot.docs.length; offset += 450) {
+      const batch = writeBatch(db);
+      snapshot.docs.slice(offset, offset + 450).forEach((reportDoc) => {
+        batch.delete(reportDoc.ref);
+      });
+      await batch.commit();
+    }
+
+    showSavedRouteToast("Your reports have been cleared");
+    await loadMyReports();
+  } catch (error) {
+    console.error("Failed to clear commuter reports:", error);
+    showSavedRouteToast("Unable to clear your reports", true);
+  } finally {
+    const currentButton = document.getElementById("clearMyReportsButton");
+    if (currentButton) {
+      currentButton.disabled = false;
+      currentButton.textContent = "Clear all";
+    }
+  }
+}
+
+window.clearMyReports = clearMyReports;
 
 
 // ==================================================
@@ -2511,6 +2825,10 @@ function navigateTo(page, updateHash = true, options = {}) {
 
   content.innerHTML =
     Pages[page]();
+
+  if (page === "account") {
+    loadMyReports();
+  }
 
 
   // ==================================================
@@ -3667,6 +3985,8 @@ window.selectDropoffTrip = selectDropoffTrip;
 
 window.confirmDropoffStop = confirmDropoffStop;
 window.isCommuterNearTripBus = isCommuterNearTripBus;
+window.getNextStopEtaForBus = getNextStopEtaForBus;
+window.loadMyReports = loadMyReports;
 
 window.openEditProfile = openEditProfile;
 
