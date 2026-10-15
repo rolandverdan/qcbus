@@ -1,5 +1,6 @@
 import * as maplibregl from "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.mjs";
 import {
+  COMMUTER_NEARBY_RADIUS_METERS,
   DROPOFF_BUS_RADIUS_METERS,
   getDistanceKm,
   getEta,
@@ -46,6 +47,7 @@ let userMarker = null;
 let activeStopPopup = null;
 let userLocationWatchId = null;
 let displayedUserLocation = null;
+const COMMUTER_RADIUS_SOURCE_ID = "commuter-nearby-radius";
 let hasUserMovedMap = false;
 let hasCenteredOnUser = false;
 
@@ -81,6 +83,89 @@ function getBusCoordinates(bus) {
   }
 
   return [lng, lat];
+}
+
+function createRadiusFeature(location) {
+  const earthRadiusMeters = 6371008.8;
+  const angularRadius = COMMUTER_NEARBY_RADIUS_METERS / earthRadiusMeters;
+  const latitude = location.lat * Math.PI / 180;
+  const longitude = location.lng * Math.PI / 180;
+  const coordinates = [];
+
+  for (let bearing = 0; bearing <= 360; bearing += 6) {
+    const bearingRadians = bearing * Math.PI / 180;
+    const destinationLatitude = Math.asin(
+      Math.sin(latitude) * Math.cos(angularRadius) +
+      Math.cos(latitude) * Math.sin(angularRadius) * Math.cos(bearingRadians)
+    );
+    const destinationLongitude = longitude + Math.atan2(
+      Math.sin(bearingRadians) * Math.sin(angularRadius) * Math.cos(latitude),
+      Math.cos(angularRadius) - Math.sin(latitude) * Math.sin(destinationLatitude)
+    );
+    coordinates.push([
+      ((destinationLongitude * 180 / Math.PI + 540) % 360) - 180,
+      destinationLatitude * 180 / Math.PI,
+    ]);
+  }
+
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [coordinates] },
+  };
+}
+
+function updateCommuterRadius(location) {
+  if (!map?.isStyleLoaded()) return;
+
+  const source = map.getSource(COMMUTER_RADIUS_SOURCE_ID);
+  if (source) {
+    source.setData(createRadiusFeature(location));
+    return;
+  }
+
+  map.addSource(COMMUTER_RADIUS_SOURCE_ID, {
+    type: "geojson",
+    data: createRadiusFeature(location),
+  });
+  const beforeLayer = map.getLayer("all-routes-casing")
+    ? "all-routes-casing"
+    : undefined;
+  map.addLayer({
+    id: "commuter-nearby-radius-fill",
+    type: "fill",
+    source: COMMUTER_RADIUS_SOURCE_ID,
+    paint: {
+      "fill-color": "#2563eb",
+      "fill-opacity": 0.12,
+    },
+  }, beforeLayer);
+  map.addLayer({
+    id: "commuter-nearby-radius-outline",
+    type: "line",
+    source: COMMUTER_RADIUS_SOURCE_ID,
+    paint: {
+      "line-color": "#2563eb",
+      "line-width": 2,
+      "line-opacity": 0.85,
+    },
+  }, beforeLayer);
+}
+
+function addCommuterRadiusLegend() {
+  if (!map) return;
+  map.addControl({
+    onAdd() {
+      const container = document.createElement("div");
+      container.style.cssText = "background:#fff;border-radius:8px;box-shadow:0 1px 4px #0003;padding:7px 10px;margin:10px;font:12px/1.3 sans-serif;color:#334155;";
+      container.textContent = `Blue area: ${COMMUTER_NEARBY_RADIUS_METERS} m nearby-bus radius`;
+      return container;
+    },
+    onRemove() {
+      this._container?.remove();
+      this._map = undefined;
+    },
+  }, "top-left");
 }
 
 
@@ -296,6 +381,7 @@ function initMap() {
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
+    addCommuterRadiusLegend();
     getUserLocation();
 
     if (pendingSelectedRouteId) {
@@ -2141,6 +2227,7 @@ function getUserLocation() {
         accuracy,
         updatedAt: Date.now(),
       };
+      updateCommuterRadius(nextLocation);
 
       if (!userMarker) {
         const userElement = document.createElement("div");

@@ -9,10 +9,7 @@ const SettingsManager = {
   reset() {
     AppState.settings = {
       notifications: false,
-      darkMode: false,
-      language: 'en',
-      autoRefresh: true,
-      refreshInterval: 30
+      darkMode: false
     };
     localStorage.setItem('qcSettings', JSON.stringify(AppState.settings));
   }

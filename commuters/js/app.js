@@ -3,6 +3,12 @@ import {
 } from "../../shared/js/auth.js";
 
 import { auth } from "../../shared/js/firebase.js";
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  sendPasswordResetEmail,
+  updatePassword,
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 import {
   collection,
@@ -13,6 +19,7 @@ import {
 
 import { db } from "../../shared/js/firebase.js";
 import {
+  COMMUTER_NEARBY_RADIUS_METERS,
   DROPOFF_BUS_RADIUS_METERS,
   getDistanceKm,
   getEta,
@@ -57,6 +64,7 @@ const { user, profile } = session;
 
 const AppState = {
   currentPage: "home",
+  routeFilter: "all",
 
   user: {
     uid: user.uid,
@@ -73,14 +81,13 @@ const AppState = {
   settings: {
     notifications: false,
     darkMode: false,
-    language: "en",
-    autoRefresh: true,
-    refreshInterval: 30,
   },
 
   routes: [],
   stops: [],
   buses: [],
+  nearbyLocation: null,
+  nearbyLocationError: "",
   activeTrips: [],
   userLocation: null,
   dropoff: {
@@ -104,6 +111,7 @@ let unsubscribeTrips = null;
 let unsubscribeMyDropoff = null;
 
 let rawBuses = [];
+let nearbyLocationWatchId = null;
 
 
 // ==================================================
@@ -303,6 +311,81 @@ function getStatusClass(bus) {
   return "text-gray-500";
 }
 
+function getNearbyBuses() {
+  if (!AppState.nearbyLocation) return [];
+
+  return AppState.buses
+    .map((bus) => {
+      const distanceKm = getDistanceKm(AppState.nearbyLocation, bus);
+      const updatedAt = bus.locationUpdatedAt?.toMillis?.()
+        ?? (bus.locationUpdatedAt instanceof Date
+          ? bus.locationUpdatedAt.getTime()
+          : typeof bus.locationUpdatedAt === "number"
+            ? bus.locationUpdatedAt
+            : Date.parse(bus.locationUpdatedAt || ""));
+
+      if (
+        distanceKm === null ||
+        distanceKm * 1000 > COMMUTER_NEARBY_RADIUS_METERS ||
+        !Number.isFinite(updatedAt) ||
+        Date.now() - updatedAt > 120000 ||
+        updatedAt - Date.now() > 30000
+      ) {
+        return null;
+      }
+
+      return { bus, distanceKm };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+function startNearbyBusDetection() {
+  if (!navigator.geolocation) {
+    AppState.nearbyLocationError = "Location is not supported by this browser.";
+    refreshCurrentPage();
+    return;
+  }
+  if (nearbyLocationWatchId !== null) return;
+
+  AppState.nearbyLocationError = "";
+  nearbyLocationWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      AppState.nearbyLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        updatedAt: Date.now(),
+      };
+      AppState.nearbyLocationError = "";
+      if (AppState.currentPage === "home") refreshCurrentPage();
+    },
+    (error) => {
+      AppState.nearbyLocationError = error.code === error.PERMISSION_DENIED
+        ? "Location permission is blocked. Allow it in your browser settings to find nearby buses."
+        : error.code === error.POSITION_UNAVAILABLE
+          ? "Your current location is unavailable. Try again in a moment."
+          : "Could not get your location. Please try again.";
+      if (AppState.currentPage === "home") refreshCurrentPage();
+      if (error.code === error.PERMISSION_DENIED) {
+        navigator.geolocation.clearWatch(nearbyLocationWatchId);
+        nearbyLocationWatchId = null;
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+  );
+  refreshCurrentPage();
+}
+
+function stopNearbyBusDetection() {
+  if (nearbyLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(nearbyLocationWatchId);
+  }
+  nearbyLocationWatchId = null;
+  AppState.nearbyLocation = null;
+  AppState.nearbyLocationError = "";
+  if (AppState.currentPage === "home") refreshCurrentPage();
+}
+
 
 function getInitials(name) {
   const parts =
@@ -323,6 +406,17 @@ function isRouteSaved(routeId) {
   return Array.isArray(AppState.user.savedRoutes)
     ? AppState.user.savedRoutes.includes(routeId)
     : false;
+}
+
+function getFilteredRoutes() {
+  return AppState.routeFilter === "favorites"
+    ? AppState.routes.filter((route) => AppState.user.savedRoutes.includes(route.id))
+    : AppState.routes;
+}
+
+function setRouteFilter(filter) {
+  AppState.routeFilter = filter === "favorites" ? "favorites" : "all";
+  navigateTo("routes", false);
 }
 
 
@@ -571,6 +665,9 @@ function getHomeBusViewSignature() {
       bus.onboard,
       bus.capacity,
       bus.tripActive,
+      bus.lat,
+      bus.lng,
+      bus.locationUpdatedAt?.toMillis?.() || bus.locationUpdatedAt,
     ])
   );
 }
@@ -845,6 +942,100 @@ function closeEditProfile() {
   }
 }
 
+function openChangePassword() {
+  if (!auth.currentUser?.providerData.some((provider) => provider.providerId === "password")) {
+    sendPasswordResetEmail(auth, auth.currentUser?.email || AppState.user.email)
+      .then(() => showSavedRouteToast("Password setup link sent to your email"))
+      .catch((error) => {
+        console.error("Failed to send password setup email:", error);
+        showSavedRouteToast("Unable to send password setup email", true);
+      });
+    return;
+  }
+
+  document.getElementById("changePasswordModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "changePasswordModal";
+  modal.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4";
+  modal.innerHTML = `
+    <form id="changePasswordForm" class="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 shadow-xl">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-800">Change Password</h2>
+        <p class="mt-1 text-xs text-gray-500">Confirm your current password, then choose a new one.</p>
+      </div>
+      <label class="block text-xs font-medium text-gray-600">Current password
+        <input name="currentPassword" type="password" autocomplete="current-password" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-qc-blue" />
+      </label>
+      <label class="block text-xs font-medium text-gray-600">New password
+        <input name="newPassword" type="password" minlength="8" autocomplete="new-password" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-qc-blue" />
+      </label>
+      <label class="block text-xs font-medium text-gray-600">Confirm new password
+        <input name="confirmPassword" type="password" minlength="8" autocomplete="new-password" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-qc-blue" />
+      </label>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="closeChangePassword()" class="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600">Cancel</button>
+        <button type="submit" class="flex-1 rounded-xl bg-qc-blue px-4 py-2.5 text-sm font-medium text-white">Update Password</button>
+      </div>
+    </form>
+  `;
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeChangePassword();
+  });
+  document.body.appendChild(modal);
+  modal.querySelector('[name="currentPassword"]').focus();
+}
+
+function closeChangePassword() {
+  document.getElementById("changePasswordModal")?.remove();
+}
+
+async function handleChangePasswordSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const data = new FormData(form);
+  const currentPassword = data.get("currentPassword");
+  const newPassword = data.get("newPassword");
+  const confirmPassword = data.get("confirmPassword");
+  const button = form.querySelector('[type="submit"]');
+
+  if (newPassword.length < 8) {
+    showSavedRouteToast("New password must be at least 8 characters", true);
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showSavedRouteToast("New passwords do not match", true);
+    return;
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser?.email) {
+    showSavedRouteToast("Please sign in again to change your password", true);
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Updating...";
+  try {
+    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+    await updatePassword(currentUser, newPassword);
+    closeChangePassword();
+    showSavedRouteToast("Password updated successfully");
+  } catch (error) {
+    console.error("Failed to change password:", error);
+    const message = error.code === "auth/weak-password"
+      ? "Choose a stronger password"
+      : ["auth/wrong-password", "auth/invalid-credential"].includes(error.code)
+        ? "Current password is incorrect"
+        : error.code === "auth/too-many-requests"
+          ? "Too many attempts. Try again later."
+          : "Unable to update password. Please try again.";
+    showSavedRouteToast(message, true);
+    button.disabled = false;
+    button.textContent = "Update Password";
+  }
+}
+
 
 async function handleEditProfileSubmit(event) {
   event.preventDefault();
@@ -1113,20 +1304,31 @@ const Pages = {
             Nearby Buses
           </h3>
 
-          <span class="text-xs text-qc-blue font-medium flex items-center gap-1">
-            <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-            Live
+          <span class="text-xs text-qc-blue font-medium">
+            ${AppState.nearbyLocation ? `Within ${COMMUTER_NEARBY_RADIUS_METERS} m` : "Location needed"}
           </span>
 
+        </div>
+
+        <div class="mb-3 flex items-center justify-between gap-3 rounded-lg bg-blue-50 p-3">
+          <p class="text-xs text-blue-800">
+            ${AppState.nearbyLocation
+              ? "Showing buses with recent locations near you."
+              : AppState.nearbyLocationError || (nearbyLocationWatchId !== null
+                ? "Finding your location to detect nearby buses…"
+                : `Nearby detection starts automatically. Allow location access to find buses within ${COMMUTER_NEARBY_RADIUS_METERS} m.`)}
+          </p>
         </div>
 
 
         <div class="space-y-3">
 
           ${
-            AppState.buses.length
-              ? AppState.buses
-                  .map((bus) => `
+            !AppState.nearbyLocation
+              ? `<div class="py-3 text-center text-xs text-gray-400">Your location is only used to find nearby buses.</div>`
+              : getNearbyBuses().length
+                ? getNearbyBuses()
+                  .map(({ bus, distanceKm }) => `
                     <div
                       class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
@@ -1166,6 +1368,10 @@ const Pages = {
 
                       <div class="text-right ml-3 flex-shrink-0">
 
+                        <p class="text-xs font-semibold text-qc-blue">
+                          ${distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`} away
+                        </p>
+
                         <p class="text-xs font-medium ${getStatusClass(bus)}">
                           ${escapeHtml(getStatusLabel(bus))}
                         </p>
@@ -1191,11 +1397,11 @@ const Pages = {
                 <div class="py-6 text-center">
 
                   <p class="text-sm text-gray-400">
-                    No buses available right now.
+                    No buses with recent locations found within ${COMMUTER_NEARBY_RADIUS_METERS} m.
                   </p>
 
                   <p class="text-xs text-gray-300 mt-1">
-                    Live bus data will appear here.
+                    Nearby buses will appear here when they share a live location.
                   </p>
 
                 </div>
@@ -1410,9 +1616,23 @@ const Pages = {
       </div>
 
 
+      <div class="flex gap-2" role="group" aria-label="Filter routes">
+        <button
+          onclick="setRouteFilter('all')"
+          class="rounded-full px-3 py-1.5 text-xs font-medium transition ${AppState.routeFilter === "all" ? "bg-qc-blue text-white" : "bg-white text-gray-500 border border-gray-200"}"
+          aria-pressed="${AppState.routeFilter === "all"}"
+        >All routes</button>
+        <button
+          onclick="setRouteFilter('favorites')"
+          class="rounded-full px-3 py-1.5 text-xs font-medium transition ${AppState.routeFilter === "favorites" ? "bg-qc-blue text-white" : "bg-white text-gray-500 border border-gray-200"}"
+          aria-pressed="${AppState.routeFilter === "favorites"}"
+        >Favorites (${AppState.user.savedRoutes.length})</button>
+      </div>
+
+
       ${
-        AppState.routes.length
-          ? AppState.routes
+        getFilteredRoutes().length
+          ? getFilteredRoutes()
               .map((route) => {
 
                 const stops =
@@ -1596,11 +1816,11 @@ const Pages = {
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
 
               <p class="text-sm text-gray-400">
-                No routes available.
+                ${AppState.routeFilter === "favorites" ? "No favorite routes yet. Star a route to find it here." : "No routes available."}
               </p>
 
               <p class="text-xs text-gray-300 mt-1">
-                Routes created by the administrator will appear here.
+                ${AppState.routeFilter === "favorites" ? "Switch to All routes and star a route to add it here." : "Routes created by the administrator will appear here."}
               </p>
 
             </div>
@@ -2029,6 +2249,20 @@ const Pages = {
         </div>
 
 
+        <button
+          onclick="sendTestNotification()"
+          class="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition"
+        >
+          <span>
+            <span class="block text-sm font-medium text-gray-800">Send Test Notification</span>
+            <span class="mt-0.5 block text-xs text-gray-500">Check that browser alerts are working</span>
+          </span>
+          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+
         <div class="p-4 flex items-center justify-between">
 
           <div>
@@ -2064,77 +2298,10 @@ const Pages = {
         </div>
 
 
-        <div class="p-4 flex items-center justify-between">
-
-          <div>
-            <p class="text-sm font-medium text-gray-800">
-              Auto Refresh
-            </p>
-
-            <p class="text-xs text-gray-500">
-              Update bus locations automatically
-            </p>
-          </div>
-
-
-          <button
-            onclick="toggleSetting('autoRefresh')"
-            class="relative w-12 h-6 ${
-              AppState.settings.autoRefresh
-                ? "bg-qc-blue"
-                : "bg-gray-300"
-            } rounded-full transition"
-          >
-
-            <span
-              class="absolute top-0.5 ${
-                AppState.settings.autoRefresh
-                  ? "left-6"
-                  : "left-0.5"
-              } w-5 h-5 bg-white rounded-full shadow transition-all"
-            ></span>
-
-          </button>
-
-        </div>
-
       </div>
 
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
-
-        <button
-          class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition"
-        >
-
-          <span class="text-sm text-gray-700">
-            Language
-          </span>
-
-          <div class="flex items-center gap-2">
-
-            <span class="text-sm text-gray-500">
-              English
-            </span>
-
-            <svg
-              class="w-4 h-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-
-          </div>
-
-        </button>
-
 
         <button
           onclick="openAboutModal()"
@@ -2160,6 +2327,16 @@ const Pages = {
             />
           </svg>
 
+        </button>
+
+        <button
+          onclick="openChangePassword()"
+          class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition"
+        >
+          <span class="text-sm text-gray-700">Change Password</span>
+          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
         </button>
 
       </div>
@@ -2219,18 +2396,7 @@ const Pages = {
       </div>
 
 
-      <div class="grid grid-cols-3 gap-3">
-
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 text-center">
-          <p class="text-lg font-bold text-qc-blue">
-            0
-          </p>
-
-          <p class="text-xs text-gray-500">
-            Rides
-          </p>
-        </div>
-
+      <div class="grid grid-cols-2 gap-3">
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 text-center">
 
@@ -2273,6 +2439,7 @@ const Pages = {
 
 
         <button
+          onclick="openAboutModal()"
           class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
         >
           <span class="text-sm text-gray-700">
@@ -2415,6 +2582,10 @@ function navigateTo(page, updateHash = true, options = {}) {
     }, 100);
   }
 
+  if (page === "home" && nearbyLocationWatchId === null && !AppState.nearbyLocationError) {
+    startNearbyBusDetection();
+  }
+
 
   // ==================================================
   // SCROLL
@@ -2514,6 +2685,30 @@ async function toggleSetting(key) {
 
 
   navigateTo("settings");
+}
+
+async function sendTestNotification() {
+  if (!("Notification" in window)) {
+    showSavedRouteToast("This browser does not support notifications", true);
+    return;
+  }
+
+  let permission = Notification.permission;
+  if (permission === "default") {
+    const granted = await window.requestNotificationPermission?.();
+    permission = granted ? "granted" : Notification.permission;
+  }
+
+  if (permission !== "granted") {
+    showSavedRouteToast("Allow notifications in your browser settings", true);
+    return;
+  }
+
+  await window.showSystemNotification?.("QCommute Test Alert", {
+    body: "Browser notifications are working on this device.",
+    tag: "qcommute-test-notification",
+  });
+  showSavedRouteToast("Test notification sent");
 }
 
 
@@ -2780,6 +2975,12 @@ document.addEventListener("submit", (event) => {
   }
 });
 
+document.addEventListener("submit", (event) => {
+  if (event.target?.id === "changePasswordForm") {
+    handleChangePasswordSubmit(event);
+  }
+});
+
 // ==================================================
 // LOGOUT
 // ==================================================
@@ -2796,6 +2997,8 @@ async function logout() {
 
 
   try {
+
+    stopNearbyBusDetection();
 
     await window.unregisterPushNotifications?.();
 
@@ -3437,12 +3640,18 @@ if (
 // ==================================================
 
 window.toggleSavedRoute = toggleSavedRoute;
+window.setRouteFilter = setRouteFilter;
+window.openChangePassword = openChangePassword;
+window.closeChangePassword = closeChangePassword;
 
 window.openSavedRoute = openSavedRoute;
 
 window.navigateTo = navigateTo;
 
 window.toggleSetting = toggleSetting;
+window.sendTestNotification = sendTestNotification;
+window.startNearbyBusDetection = startNearbyBusDetection;
+window.stopNearbyBusDetection = stopNearbyBusDetection;
 
 window.markAllRead = markAllRead;
 
