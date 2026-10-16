@@ -707,14 +707,8 @@ const Pages = {
 
     return `
     <div class="space-y-4 slide-in">
-      <!-- Back button & Audit lock indicator -->
-      <div class="flex items-center justify-between">
-        <button onclick="navigateTo('account')" class="inline-flex items-center gap-1.5 text-xs font-semibold text-qc-blue-accent hover:underline">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-          Back to Account
-        </button>
+      <!-- Audit lock indicator -->
+      <div class="flex items-center justify-end">
         <div class="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-full">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -1245,15 +1239,38 @@ function renderActivityList() {
 async function navigateTo(page) {
   if (window.stopAICamera) window.stopAICamera();
   AppState.currentPage = page;
+  const earlyTitles = {
+    trip: 'Conductor Dashboard',
+    scanner: 'AI Passenger Scanner',
+    counter: 'Passenger Counter',
+    alerts: 'Logs',
+    account: 'Account',
+    tripHistory: 'Trip History',
+  };
+  const earlySubTitles = {
+    trip: AppState.trip.active ? 'Trip in progress' : 'Quezon City · No active trip',
+    counter: 'Quezon City · Passenger Counter',
+    alerts: 'Quezon City · Logs',
+    account: 'Quezon City · Account',
+    tripHistory: 'Quezon City · Official Trip Records',
+  };
+  document.getElementById('pageTitle').textContent = earlyTitles[page] || 'Conductor';
+  const earlySubEl = document.getElementById('tripStatus');
+  if (earlySubEl) earlySubEl.textContent = earlySubTitles[page] || 'Quezon City';
+
   document.getElementById('content').innerHTML =
     Pages[page] ? await Pages[page]() : '';
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
-    const isAccountTab = btn.dataset.page === 'account';
-    const active = btn.dataset.page === page || (page === 'tripHistory' && isAccountTab);
+    const active = btn.dataset.page === page;
     btn.className = `nav-btn flex flex-col items-center justify-center gap-1 text-xs transition ${
-      active ? 'text-qc-blue-accent' : 'text-gray-400'
+      active ? 'text-qc-blue-accent font-semibold' : 'text-gray-400'
     }`;
+    const label = btn.querySelector('span');
+    if (btn.dataset.page === 'trip') {
+      btn.classList.add('trip-nav-active');
+      label.className = active ? 'font-bold' : '';
+    }
   });
 
   const titles = {
@@ -1261,7 +1278,7 @@ async function navigateTo(page) {
     scanner: 'AI Passenger Scanner',
     counter: 'Passenger Counter',
     alerts: 'Logs',
-    account: 'My Account',
+    account: 'Account',
     tripHistory: 'Trip History',
   };
   document.getElementById('pageTitle').textContent = titles[page] || 'Conductor';

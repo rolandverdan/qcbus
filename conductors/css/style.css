@@ -148,6 +148,19 @@ body {
 /* Nav button feedback */
 .nav-btn { transition: all 0.2s ease; }
 .nav-btn:active { transform: scale(0.95); }
+.nav-btn.trip-nav-active { color: #115272; font-weight: 600; }
+.nav-btn.trip-nav-active .trip-nav-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: -1rem;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  color: #fff;
+  background: #115272;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.18);
+  outline: 4px solid #fff;
+}
+.nav-btn.trip-nav-active span { font-weight: 700; }
 
 /* Prevent text selection on tap-heavy buttons */
 button { -webkit-user-select: none; user-select: none; }
