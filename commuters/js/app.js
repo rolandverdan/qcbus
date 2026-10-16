@@ -813,6 +813,13 @@ function refreshCurrentPage({ refreshHome = true, refreshRoutes = true } = {}) {
       window.updateRouteLayers();
     }
 
+    if (
+      typeof window.updateRoutePicker ===
+      "function"
+    ) {
+      window.updateRoutePicker(document.getElementById("routeSearchInput")?.value || "");
+    }
+
     updateCommuterDropoffEta();
   }
 }
@@ -1999,6 +2006,9 @@ const Pages = {
 
   map: () => `
     <div class="space-y-3 slide-in">
+
+      <!-- Route Search Bar (Above Map) -->
+      <div id="routePicker" class="relative z-30"></div>
 
       <div class="relative">
         <div

@@ -238,10 +238,12 @@ function initMap() {
   if (!container) return;
 
 
+  createRoutePicker();
+
   if (map) {
     map.resize();
 
-    updateRoutePicker();
+    updateRoutePicker(document.getElementById("routeSearchInput")?.value || "");
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
@@ -251,9 +253,6 @@ function initMap() {
 
 
   routeLayersInitialized = false;
-
-
-  createRoutePicker();
 
 
   map = new maplibregl.Map({
@@ -427,151 +426,94 @@ function createRoutePicker() {
 
   if (!mapContainer) return;
 
+  const mapWrapper =
+    mapContainer.closest(".relative") ||
+    mapContainer;
 
-  const existing =
+  let wrapper =
     document.getElementById(
       "routePicker"
     );
 
-  if (existing) {
-    mapContainer.insertAdjacentElement("afterend", existing);
-    updateRoutePicker();
+  if (!wrapper) {
+    wrapper = document.createElement("div");
+    wrapper.id = "routePicker";
+    wrapper.className = "relative z-30 mb-2";
+    mapWrapper.insertAdjacentElement("beforebegin", wrapper);
+  } else {
+    // Ensure it is positioned above the map container
+    if (
+      wrapper.nextElementSibling !== mapWrapper &&
+      wrapper !== mapWrapper.previousElementSibling
+    ) {
+      mapWrapper.insertAdjacentElement("beforebegin", wrapper);
+    }
+  }
+
+  // If already rendered inside, don't re-inject markup
+  if (wrapper.querySelector("#routeSearchInput")) {
+    updateRoutePicker(
+      document.getElementById("routeSearchInput")?.value || ""
+    );
     return;
   }
 
-
-  const wrapper =
-    document.createElement("div");
-
-  wrapper.id =
-    "routePicker";
-
-  wrapper.className =
-    "mt-3 mb-3";
-
-
   wrapper.innerHTML = `
-    <div
-      class="
-        bg-white
-        rounded-2xl
-        border
-        border-gray-100
-        shadow-sm
-        p-3
-      "
-    >
-
-      <div
-        class="
-          flex
-          items-center
-          justify-between
-          gap-2
-          mb-3
-        "
-      >
-
-        <div>
-          <p
-            class="
-              text-sm
-              font-semibold
-              text-gray-800
-            "
-          >
-            QC Bus Routes
-          </p>
-
-          <p
-            class="
-              text-[11px]
-              text-gray-400
-              mt-0.5
-            "
-          >
-            Tap a route or its line on the map
-          </p>
-        </div>
-
-
+    <div class="relative">
+      <!-- Search Input Bar Above Map -->
+      <div class="relative flex items-center bg-white rounded-2xl border border-gray-200/90 shadow-sm focus-within:border-qc-blue focus-within:ring-2 focus-within:ring-qc-blue/10 transition">
+        <span class="absolute left-3.5 text-gray-400 text-sm pointer-events-none select-none">
+          🔍
+        </span>
+        <input
+          id="routeSearchInput"
+          type="text"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Search route (e.g. Route 1, City Hall)..."
+          class="w-full pl-10 pr-16 py-2.5 text-sm bg-transparent rounded-2xl outline-none placeholder:text-gray-400 text-gray-800"
+        />
         <button
           id="clearRouteButton"
           type="button"
-          class="
-            hidden
-            text-xs
-            font-semibold
-            text-qc-purple
-            px-2
-            py-1
-            rounded-lg
-            hover:bg-purple-50
-          "
+          class="hidden absolute right-2.5 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:text-qc-blue bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+          aria-label="Clear route search"
+        >
+          Clear
+        </button>
+      </div>
+
+      <!-- Selected Route Badge (shown when a route is active on map) -->
+      <div id="selectedRouteBadge" class="hidden mt-2 flex items-center justify-between px-3.5 py-2 bg-blue-50/90 border border-blue-200/70 rounded-xl text-xs shadow-xs">
+        <div class="flex items-center gap-2 min-w-0">
+          <span id="selectedRouteDot" class="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-white shadow-sm"></span>
+          <span class="text-gray-500 font-medium">Route:</span>
+          <span id="selectedRouteName" class="font-bold text-qc-blue truncate"></span>
+        </div>
+        <button
+          type="button"
+          id="unselectRouteBtn"
+          class="flex items-center gap-1 px-3 py-1 bg-white hover:bg-gray-100 active:bg-gray-200 text-qc-blue font-bold text-xs rounded-lg border border-blue-200 shadow-2xs transition ml-2 flex-shrink-0"
         >
           All routes
         </button>
-
       </div>
 
-
-      <div
-        class="
-          relative
-          mb-3
-        "
-      >
-
-        <input
-          id="routeSearchInput"
-          type="search"
-          placeholder="Search route..."
-          class="
-            w-full
-            px-3
-            py-2.5
-            pl-9
-            text-sm
-            bg-gray-50
-            border
-            border-gray-200
-            rounded-xl
-            outline-none
-            focus:border-qc-purple
-          "
-        >
-
-        <span
-          class="
-            absolute
-            left-3
-            top-1/2
-            -translate-y-1/2
-            text-gray-400
-            text-sm
-          "
-        >
-          🔍
-        </span>
-
-      </div>
-
-
+      <!-- Floating Routes Dropdown (Hidden initially; shown ONLY when typing/searching) -->
       <div
         id="routeList"
-        class="
-          space-y-2
-          max-h-52
-          overflow-y-auto
-        "
+        class="hidden absolute left-0 right-0 top-full mt-1.5 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 max-h-60 overflow-y-auto space-y-1.5"
       ></div>
-
     </div>
   `;
 
-
-  mapContainer.insertAdjacentElement("afterend", wrapper);
-
+  // Prevent any mouse, touch, or double-tap events on route picker from leaking to map underneath
+  ["pointerdown", "mousedown", "touchstart", "touchend", "dblclick"].forEach(evt => {
+    wrapper.addEventListener(evt, (e) => {
+      e.stopPropagation();
+    });
+  });
 
   const searchInput =
     document.getElementById(
@@ -587,8 +529,16 @@ function createRoutePicker() {
         );
       }
     );
-  }
 
+    searchInput.addEventListener(
+      "focus",
+      () => {
+        if (searchInput.value.trim().length > 0) {
+          updateRoutePicker(searchInput.value);
+        }
+      }
+    );
+  }
 
   const clearButton =
     document.getElementById(
@@ -596,12 +546,42 @@ function createRoutePicker() {
     );
 
   if (clearButton) {
-    clearButton.addEventListener(
-      "click",
-      clearSelectedRoute
-    );
+    ["click", "touchstart", "touchend", "pointerdown"].forEach(evt => {
+      clearButton.addEventListener(evt, (e) => {
+        e.stopPropagation();
+        if (evt === "click") {
+          e.preventDefault();
+          clearSelectedRoute();
+        }
+      });
+    });
   }
 
+  const unselectBtn =
+    document.getElementById(
+      "unselectRouteBtn"
+    );
+
+  if (unselectBtn) {
+    ["click", "touchstart", "touchend", "pointerdown"].forEach(evt => {
+      unselectBtn.addEventListener(evt, (e) => {
+        e.stopPropagation();
+        if (evt === "click") {
+          e.preventDefault();
+          clearSelectedRoute();
+        }
+      });
+    });
+  }
+
+  // Close dropdown if user clicks outside of route picker
+  document.addEventListener("click", (e) => {
+    const picker = document.getElementById("routePicker");
+    const list = document.getElementById("routeList");
+    if (picker && list && !picker.contains(e.target)) {
+      list.classList.add("hidden");
+    }
+  });
 
   updateRoutePicker();
 }
@@ -619,8 +599,71 @@ function updateRoutePicker(
       "routeList"
     );
 
+  const clearButton =
+    document.getElementById(
+      "clearRouteButton"
+    );
+
+  const selectedBadge =
+    document.getElementById(
+      "selectedRouteBadge"
+    );
+
+  const selectedDot =
+    document.getElementById(
+      "selectedRouteDot"
+    );
+
+  const selectedName =
+    document.getElementById(
+      "selectedRouteName"
+    );
+
+  const searchInput =
+    document.getElementById(
+      "routeSearchInput"
+    );
+
+  // Sync selected route badge
+  const selectedRoute =
+    selectedRouteId
+      ? getRouteById(selectedRouteId)
+      : null;
+
+  if (selectedRoute) {
+    if (selectedBadge) selectedBadge.classList.remove("hidden");
+    if (selectedDot) selectedDot.style.background = getRouteColor(selectedRoute);
+    if (selectedName) {
+      selectedName.textContent = selectedRoute.code
+        ? `${selectedRoute.code}${selectedRoute.name ? " — " + selectedRoute.name : ""}`
+        : (selectedRoute.name || "Selected route");
+    }
+    if (clearButton) clearButton.classList.remove("hidden");
+  } else {
+    if (selectedBadge) selectedBadge.classList.add("hidden");
+  }
+
   if (!list) return;
 
+  const search =
+    String(searchTerm || "")
+      .trim()
+      .toLowerCase();
+
+  // "hide the routs in the search and when i type or search for a route it well then show me the routes"
+  // If search is empty, hide the route list
+  if (!search) {
+    list.classList.add("hidden");
+    list.innerHTML = "";
+    if (!selectedRoute && clearButton) {
+      clearButton.classList.add("hidden");
+    }
+    return;
+  }
+
+  // When searching, show the route list
+  list.classList.remove("hidden");
+  if (clearButton) clearButton.classList.remove("hidden");
 
   const routes =
     Array.isArray(
@@ -629,20 +672,8 @@ function updateRoutePicker(
       ? AppState.routes
       : [];
 
-
-  const search =
-    String(searchTerm || "")
-      .trim()
-      .toLowerCase();
-
-
   const filteredRoutes =
     routes.filter(route => {
-
-      if (!search) {
-        return true;
-      }
-
       const text = `
         ${route.code || ""}
         ${route.name || ""}
@@ -652,36 +683,32 @@ function updateRoutePicker(
       return text.includes(search);
     });
 
-
   if (filteredRoutes.length === 0) {
     list.innerHTML = `
       <div
         class="
-          py-5
+          py-4
           text-center
           text-xs
           text-gray-400
         "
       >
-        No routes found.
+        No routes found matching "${escapeHtml(searchTerm)}".
       </div>
     `;
 
     return;
   }
 
-
   list.innerHTML =
     filteredRoutes
       .map(route => {
-
         const selected =
           route.id ===
           selectedRouteId;
 
         const color =
           getRouteColor(route);
-
 
         return `
           <button
@@ -693,126 +720,107 @@ function updateRoutePicker(
               rounded-xl
               border
               px-3
-              py-3
+              py-2.5
               transition
+              flex
+              items-center
+              gap-3
               ${
                 selected
-                  ? "border-gray-300 bg-gray-50 shadow-sm"
+                  ? "border-blue-300 bg-blue-50/70 shadow-sm"
                   : "border-gray-100 bg-white hover:bg-gray-50"
               }
             "
           >
+            <span
+              class="
+                w-3.5
+                h-3.5
+                rounded-full
+                flex-shrink-0
+                border-2
+                border-white
+                shadow-sm
+              "
+              style="
+                background:${escapeHtml(color)};
+              "
+            ></span>
 
             <div
               class="
-                flex
-                items-center
-                gap-3
+                flex-1
+                min-w-0
               "
             >
-
-              <span
+              <p
                 class="
-                  w-4
-                  h-4
-                  rounded-full
-                  flex-shrink-0
-                  border-2
-                  border-white
-                  shadow-sm
-                "
-                style="
-                  background:${escapeHtml(color)};
-                "
-              ></span>
-
-
-              <div
-                class="
-                  flex-1
-                  min-w-0
+                  text-xs
+                  font-bold
+                  text-gray-800
                 "
               >
+                ${escapeHtml(
+                  route.code ||
+                  "Route"
+                )}
+              </p>
 
-                <p
-                  class="
-                    text-sm
-                    font-semibold
-                    text-gray-800
-                  "
-                >
-                  ${escapeHtml(
-                    route.code ||
-                    "Route"
-                  )}
-                </p>
-
-
-                <p
-                  class="
-                    text-xs
-                    text-gray-500
-                    truncate
-                    mt-0.5
-                  "
-                >
-                  ${escapeHtml(
-                    route.name ||
-                    "Unnamed route"
-                  )}
-                </p>
-
-              </div>
-
-
-              <span
+              <p
                 class="
-                  text-gray-300
-                  text-lg
-                  leading-none
+                  text-[11px]
+                  text-gray-500
+                  truncate
+                  mt-0.5
                 "
               >
-                ›
-              </span>
-
+                ${escapeHtml(
+                  route.name ||
+                  route.description ||
+                  "Unnamed route"
+                )}
+              </p>
             </div>
 
+            <span
+              class="
+                text-gray-300
+                text-sm
+              "
+            >
+              ›
+            </span>
           </button>
         `;
       })
       .join("");
-
 
   list
     .querySelectorAll(
       "[data-route-id]"
     )
     .forEach(button => {
+      const handleSelect = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-      button.addEventListener(
-        "click",
-        () => {
+        const routeId =
+          button.dataset.routeId;
 
-          const routeId =
-            button.dataset.routeId;
+        selectRoute(routeId);
+        list.classList.add("hidden");
 
-          selectRoute(routeId);
+        const r = getRouteById(routeId);
+        if (r && searchInput) {
+          searchInput.value = r.code
+            ? `${r.code}${r.name ? " — " + r.name : ""}`
+            : (r.name || "");
         }
-      );
+      };
+
+      button.addEventListener("click", handleSelect);
+      button.addEventListener("touchend", handleSelect);
     });
-
-
-  const clearButton =
-    document.getElementById(
-      "clearRouteButton"
-    );
-
-  if (clearButton) {
-    clearButton.classList.toggle(
-      "hidden",
-      !selectedRouteId
-    );
-  }
 }
 
 
@@ -829,20 +837,47 @@ function selectRoute(routeId) {
     return;
   }
 
-  if (!map || !map.isStyleLoaded()) {
+  selectedRouteId = routeId;
+
+  const searchInput =
+    document.getElementById(
+      "routeSearchInput"
+    );
+
+  if (searchInput) {
+    searchInput.value = route.code
+      ? `${route.code}${route.name ? " — " + route.name : ""}`
+      : (route.name || "");
+  }
+
+  const list =
+    document.getElementById(
+      "routeList"
+    );
+
+  if (list) {
+    list.classList.add("hidden");
+  }
+
+  updateRoutePicker();
+
+  if (map) {
+    centerMapOnRoute(route);
+
+    if (map.isStyleLoaded()) {
+      updateRouteLayers();
+      updateBusMarkers();
+      updateBusLegend();
+    } else {
+      map.once("styledata", () => {
+        updateRouteLayers();
+        updateBusMarkers();
+        updateBusLegend();
+      });
+    }
+  } else {
     pendingSelectedRouteId = routeId;
-    return;
   }
-
-  if (selectedRouteId !== routeId) {
-    selectedRouteId = routeId;
-    updateRoutePicker();
-    updateRouteLayers();
-    updateBusMarkers();
-    updateBusLegend();
-  }
-
-  centerMapOnRoute(route);
 }
 
 function centerMapOnRoute(route) {
@@ -851,30 +886,58 @@ function centerMapOnRoute(route) {
   hasUserMovedMap = true;
   hasCenteredOnUser = true;
 
-  const routeCoordinates = getGeometryCoordinates(
+  const rawRouteCoordinates = getGeometryCoordinates(
     parseRouteGeometry(route)
   );
-  const coordinates = (routeCoordinates.length
-    ? routeCoordinates
-    : getStopsByRoute(route.id).map(getStopCoordinates)
-  ).filter((coordinate) =>
-    Array.isArray(coordinate) &&
-    Number.isFinite(Number(coordinate[0])) &&
-    Number.isFinite(Number(coordinate[1])) &&
-    Math.abs(Number(coordinate[0])) <= 180 &&
-    Math.abs(Number(coordinate[1])) <= 90
-  ).map(([lng, lat]) => [Number(lng), Number(lat)]);
 
-  if (!coordinates.length) return;
-  if (coordinates.length === 1) {
-    map.flyTo({ center: coordinates[0], zoom: 15, duration: 700 });
+  const routeCoordinates = (rawRouteCoordinates || [])
+    .map(coord => {
+      if (!Array.isArray(coord) || coord.length < 2) return null;
+      let c0 = Number(coord[0]);
+      let c1 = Number(coord[1]);
+      if (!Number.isFinite(c0) || !Number.isFinite(c1)) return null;
+      // Philippines / QC longitude is ~121, latitude is ~14. If swapped [lat, lng], normalize to [lng, lat]
+      if (c0 < 50 && c1 > 100) return [c1, c0];
+      return [c0, c1];
+    })
+    .filter(Boolean);
+
+  const stopCoordinates = getStopsForRoute(route.id)
+    .map(getStopCoordinates)
+    .filter(Boolean);
+
+  const directStops = (Array.isArray(route.stops) ? route.stops : [])
+    .map(getStopCoordinates)
+    .filter(Boolean);
+
+  const allCoordinates = [
+    ...routeCoordinates,
+    ...stopCoordinates,
+    ...directStops,
+  ].filter(
+    (coord) =>
+      Array.isArray(coord) &&
+      coord.length >= 2 &&
+      Number.isFinite(Number(coord[0])) &&
+      Number.isFinite(Number(coord[1])) &&
+      Math.abs(Number(coord[0])) <= 180 &&
+      Math.abs(Number(coord[1])) <= 90
+  );
+
+  if (!allCoordinates.length) {
+    map.flyTo({ center: QC_CIRCLE_CENTER, zoom: QC_CIRCLE_ZOOM, duration: 700 });
+    return;
+  }
+
+  if (allCoordinates.length === 1) {
+    map.flyTo({ center: allCoordinates[0], zoom: 15, duration: 700 });
     return;
   }
 
   const bounds = new maplibregl.LngLatBounds();
-  coordinates.forEach((coordinate) => bounds.extend(coordinate));
+  allCoordinates.forEach((coordinate) => bounds.extend(coordinate));
   map.fitBounds(bounds, {
-    padding: { top: 65, right: 45, bottom: 75, left: 45 },
+    padding: { top: 90, right: 40, bottom: 75, left: 40 },
     maxZoom: 15,
     duration: 700,
   });
@@ -888,11 +951,56 @@ function clearSelectedRoute() {
   selectedRouteId = null;
   pendingSelectedRouteId = null;
 
+  const searchInput =
+    document.getElementById(
+      "routeSearchInput"
+    );
+
+  if (searchInput) {
+    searchInput.value = "";
+  }
+
+  const list =
+    document.getElementById(
+      "routeList"
+    );
+
+  if (list) {
+    list.classList.add("hidden");
+    list.innerHTML = "";
+  }
+
+  const clearButton =
+    document.getElementById(
+      "clearRouteButton"
+    );
+
+  if (clearButton) {
+    clearButton.classList.add("hidden");
+  }
+
+  const selectedBadge =
+    document.getElementById(
+      "selectedRouteBadge"
+    );
+
+  if (selectedBadge) {
+    selectedBadge.classList.add("hidden");
+  }
 
   updateRoutePicker();
   updateRouteLayers();
   updateBusMarkers();
   updateBusLegend();
+
+  if (map) {
+    hasUserMovedMap = false;
+    map.flyTo({
+      center: QC_CIRCLE_CENTER,
+      zoom: QC_CIRCLE_ZOOM,
+      duration: 700,
+    });
+  }
 }
 
 
@@ -2338,6 +2446,12 @@ window.updateRouteLayers =
 
 window.selectMapRoute =
   selectRoute;
+
+window.updateRoutePicker =
+  updateRoutePicker;
+
+window.clearSelectedRoute =
+  clearSelectedRoute;
 
 window.centerMapOnCommuter =
   centerMapOnCommuter;

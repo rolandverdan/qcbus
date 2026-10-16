@@ -78,6 +78,10 @@ async function navigateTo(page) {
       title: 'Trip Logs',
       sub: 'Quezon City · Trip history & passenger counts'
     },
+    emergencyLogs: {
+      title: 'Emergency Logs',
+      sub: 'Quezon City · SOS alerts & incident records'
+    },
   };
 
   document.getElementById('pageTitle').textContent =
@@ -102,6 +106,10 @@ async function navigateTo(page) {
 
   if (page === 'tripLogs') {
     await window.initTripLogsPage();
+  }
+
+  if (page === 'emergencyLogs') {
+    await window.initEmergencyLogsPage?.();
   }
 
   if (page === 'routes') {

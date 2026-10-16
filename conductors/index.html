@@ -128,9 +128,9 @@
             </button>
             <button data-page="alerts" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
                 </svg>
-                <span>Alerts</span>
+                <span>Logs</span>
             </button>
             <button data-page="account" class="nav-btn flex flex-col items-center justify-center gap-1 text-xs text-gray-400 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,6 +220,146 @@
         <button onclick="closeSOS()" class="w-full py-3 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition">
             Cancel
         </button>
+    </div>
+</div>
+
+<!-- ========== HELP & SUPPORT / ABOUT MODAL ========== -->
+<div id="helpSupportModal" class="fixed inset-0 z-[100] hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeHelpSupportModal()"></div>
+
+    <div class="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:max-w-md mx-auto bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden slide-up">
+
+        <!-- Header -->
+        <div class="sticky top-0 bg-white z-10 pt-3 pb-2 px-5 border-b border-gray-100 flex-shrink-0">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-base text-gray-800">Help & Support</h3>
+                <button
+                    onclick="closeHelpSupportModal()"
+                    class="p-1.5 hover:bg-gray-100 rounded-full transition"
+                    aria-label="Close"
+                >
+                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="p-5 overflow-y-auto space-y-4">
+
+            <!-- Logo + name -->
+            <div class="text-center">
+                <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-qc-blue-accent rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-3 p-2">
+                    <img src="../images/qclogo2.png" alt="Quezon City" class="w-full h-full object-contain">
+                </div>
+
+                <h2 class="text-xl font-bold text-gray-800">QCommute</h2>
+                <p class="text-xs text-gray-500 mt-0.5">Quezon City Conductor Portal</p>
+                <span class="inline-block mt-2 px-3 py-0.5 bg-blue-50 text-qc-blue-accent rounded-full text-[11px] font-semibold">
+                    Version 1.0.0
+                </span>
+            </div>
+
+            <!-- Description -->
+            <p class="text-sm text-gray-600 leading-relaxed text-center">
+                QCommute Conductor Portal enables bus conductors to manage line trips, track boardings and alightings in real time via manual counter or AI doorway scanner, broadcast emergency SOS alerts, and provide live occupancy updates to Quezon City commuters.
+            </p>
+
+            <!-- Conductor Operations Guide -->
+            <div class="bg-blue-50/60 border border-blue-100 rounded-2xl p-4 space-y-3">
+                <h4 class="text-xs font-bold text-qc-blue uppercase tracking-wider flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-qc-blue-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Conductor Operational Guide
+                </h4>
+                <div class="space-y-2 text-xs text-gray-700">
+                    <div class="flex items-start gap-2">
+                        <span class="text-base shrink-0">🚌</span>
+                        <div>
+                            <span class="font-semibold text-gray-800">Trip Management:</span>
+                            <span>Select your route direction and tap "Start Trip". Tap "End Trip" upon completing the line run to record official trip statistics.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <span class="text-base shrink-0">👥</span>
+                        <div>
+                            <span class="font-semibold text-gray-800">Passenger Counting:</span>
+                            <span>Use the large + / - buttons on the Counter tab, or use the Scanner tab for AI-assisted overhead doorway detection.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <span class="text-base shrink-0">🚨</span>
+                        <div>
+                            <span class="font-semibold text-gray-800">Emergency SOS:</span>
+                            <span>Tap the SOS button to immediately alert QC Command Center for medical, accident, crime, or breakdown incidents.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info list -->
+            <div class="bg-gray-50 rounded-2xl divide-y divide-gray-100">
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">Developer</span>
+                    <span class="text-xs font-medium text-gray-800">Group 5 po sa Capstone</span>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">Platform</span>
+                    <span class="text-xs font-medium text-gray-800">QCommute Conductor</span>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">Service Area</span>
+                    <span class="text-xs font-medium text-gray-800">Quezon City</span>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">Emergency Hotline</span>
+                    <a href="tel:122" class="text-xs font-semibold text-qc-red hover:underline">QC Helpline 122</a>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">QC Hotline</span>
+                    <a href="tel:0289884242" class="text-xs font-medium text-gray-800 hover:underline">(02) 8988-4242</a>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5">
+                    <span class="text-xs text-gray-500">Support & Services</span>
+                    <a
+                        href="https://qceservices.quezoncity.gov.ph"
+                        target="_blank"
+                        class="text-xs font-medium text-qc-blue-accent hover:underline flex items-center gap-1"
+                    >
+                        QC E-Services
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Copyright -->
+            <p class="text-center text-[10px] text-gray-400 mt-2">
+                © 2026 Quezon City Government
+            </p>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
+            <button
+                onclick="closeHelpSupportModal()"
+                class="w-full py-2.5 bg-qc-blue-accent hover:bg-qc-blue text-white text-sm font-semibold rounded-xl transition"
+            >
+                Close
+            </button>
+        </div>
     </div>
 </div>
 

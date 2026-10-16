@@ -14,6 +14,10 @@ import {
   getStopsRepo,
 } from "../../shared/js/repositories/stops.repo.js";
 
+import {
+  listenToTripsRepo,
+} from "../../shared/js/repositories/trips.repo.js";
+
 import { getEta } from "../../shared/js/eta.js";
 
 const session = await requireRole("conductor");
@@ -33,6 +37,24 @@ function loadSavedActivity() {
     console.warn("Could not load saved conductor activity:", error);
     return [];
   }
+}
+
+function getLocalDateString(date) {
+  if (!date) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getTodayDateString() {
+  return getLocalDateString(new Date());
+}
+
+function getYesterdayDateString() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return getLocalDateString(d);
 }
 
 // ==================================================
@@ -81,6 +103,12 @@ const AppState = {
     lastTriggered: null,
     type: null,
   },
+  tripHistory: [],
+  tripHistoryLoading: true,
+  tripHistoryDateFilter: getYesterdayDateString(),
+  tripHistoryFilterPreset: 'yesterday',
+  tripHistoryPage: 1,
+  tripHistoryPageSize: 10,
 };
 
 // ==================================================
@@ -565,7 +593,7 @@ const Pages = {
     return `
     <div class="space-y-4 slide-in">
       <div class="flex items-center justify-between">
-        <h2 class="font-semibold text-gray-800">Activity Log</h2>
+        <h2 class="font-semibold text-gray-800">Logs</h2>
         <button onclick="clearHistory()" class="text-xs text-qc-red font-medium">Clear</button>
       </div>
 
@@ -634,27 +662,143 @@ const Pages = {
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
-        <button class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left">
-          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        <button onclick="navigateTo('tripHistory')" class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition text-left group">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400 group-hover:text-qc-blue-accent transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <span class="text-sm font-medium text-gray-700 block">Trip History</span>
+              <span class="text-[11px] text-gray-400 block">View official archived trip logs</span>
+            </div>
+          </div>
+          <svg class="w-4 h-4 text-gray-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
           </svg>
-          <span class="text-sm text-gray-700">Trip History</span>
         </button>
-        <button class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left">
-          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        <button onclick="openHelpSupportModal()" class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition text-left group">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400 group-hover:text-qc-blue-accent transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <span class="text-sm font-medium text-gray-700 block">Help & Support</span>
+              <span class="text-[11px] text-gray-400 block">App guide, hotlines & QC E-Services</span>
+            </div>
+          </div>
+          <svg class="w-4 h-4 text-gray-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
           </svg>
-          <span class="text-sm text-gray-700">Help & Support</span>
         </button>
         <button onclick="logout()" class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition text-left">
           <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
           </svg>
-          <span class="text-sm text-red-600">End Shift & Logout</span>
+          <span class="text-sm text-red-600 font-medium">End Shift & Logout</span>
         </button>
       </div>
     </div>
   `,
+
+  // ---------- TRIP HISTORY PAGE ----------
+  tripHistory: () => {
+    const filtered = getFilteredTripHistory();
+    const preset = AppState.tripHistoryFilterPreset || "yesterday";
+
+    return `
+    <div class="space-y-4 slide-in">
+      <!-- Back button & Audit lock indicator -->
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('account')" class="inline-flex items-center gap-1.5 text-xs font-semibold text-qc-blue-accent hover:underline">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back to Account
+        </button>
+        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-full">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          Permanent Records
+        </div>
+      </div>
+
+      <!-- Filter Controls Card -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-qc-blue-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+              </svg>
+              My Trip Records
+            </h3>
+            <p class="text-[11px] text-gray-500 mt-0.5">Your official trips and passenger counts</p>
+          </div>
+          <span class="text-xs text-qc-blue-accent font-semibold px-2.5 py-1 bg-blue-50 rounded-lg" id="tripHistoryResultCount">
+            ${filtered.length} ${filtered.length === 1 ? "trip" : "trips"}
+          </span>
+        </div>
+
+        <!-- Quick filter preset pills -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1">
+          <button onclick="setTripHistoryFilterPreset('all')"
+            class="px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${
+              preset === "all"
+                ? "bg-qc-blue-accent text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }">
+            All Dates
+          </button>
+          <button onclick="setTripHistoryFilterPreset('today')"
+            class="px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${
+              preset === "today"
+                ? "bg-qc-blue-accent text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }">
+            Today
+          </button>
+          <button onclick="setTripHistoryFilterPreset('yesterday')"
+            class="px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${
+              preset === "yesterday"
+                ? "bg-qc-blue-accent text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }">
+            Yesterday
+          </button>
+        </div>
+
+        <!-- Date input picker -->
+        <div>
+          <label class="block text-[11px] font-medium text-gray-400 mb-1">Pick a specific date</label>
+          <div class="relative">
+            <input
+              type="date"
+              id="tripHistoryDateInput"
+              value="${AppState.tripHistoryDateFilter || ""}"
+              onchange="onTripHistoryDateInputChange(this.value)"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-qc-blue-accent/20 focus:border-qc-blue-accent transition"
+            />
+            ${
+              AppState.tripHistoryDateFilter
+                ? `
+              <button onclick="setTripHistoryFilterPreset('all')" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 p-1" title="Clear date filter">
+                ✕
+              </button>
+            `
+                : ""
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Trips List Container -->
+      <div id="tripHistoryListContainer" class="space-y-3">
+        ${renderTripHistoryList(filtered)}
+      </div>
+    </div>
+    `;
+  },
 };
 
 function escapeTripText(value) {
@@ -664,6 +808,396 @@ function escapeTripText(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function parseTripDate(val) {
+  if (!val) return null;
+  if (typeof val.toDate === "function") return val.toDate();
+  if (typeof val.toMillis === "function") return new Date(val.toMillis());
+  if (typeof val.seconds === "number") return new Date(val.seconds * 1000);
+  if (typeof val === "number") return new Date(val);
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatTripDurationBetween(startDate, endDate) {
+  if (!startDate) return "—";
+  const start = startDate.getTime();
+  const end = endDate ? endDate.getTime() : Date.now();
+  const diffSec = Math.max(0, Math.floor((end - start) / 1000));
+  const hrs = Math.floor(diffSec / 3600);
+  const mins = Math.floor((diffSec % 3600) / 60);
+  if (hrs > 0) {
+    return `${hrs}h ${mins}m`;
+  }
+  return `${mins}m`;
+}
+
+function isConductorTrip(trip) {
+  if (!trip) return false;
+  const myConductorId = AppState.conductor.id;
+  const userUid = user?.uid;
+  const profileUid = profile?.uid;
+  const myName = (AppState.conductor.name || "").trim().toLowerCase();
+  const myBusId = AppState.bus.id;
+  const myBusDocId = AppState.bus.documentId;
+  const myStaffId = AppState.bus.staffId;
+
+  if (myConductorId && trip.conductorId === myConductorId) return true;
+  if (userUid && trip.conductorId === userUid) return true;
+  if (profileUid && trip.conductorId === profileUid) return true;
+  if (myStaffId && trip.conductorId === myStaffId) return true;
+  if (myName && trip.conductorName && trip.conductorName.trim().toLowerCase() === myName) return true;
+  if (myBusId && (trip.busId === myBusId || trip.busCode === myBusId)) return true;
+  if (myBusDocId && (trip.busId === myBusDocId || trip.busCode === myBusDocId)) return true;
+
+  return false;
+}
+
+function getFilteredTripHistory() {
+  const allTrips = Array.isArray(AppState.tripHistory) ? AppState.tripHistory : [];
+
+  // Exclusively show the conductor's own trips
+  let list = allTrips.filter(isConductorTrip);
+
+  if (AppState.tripHistoryDateFilter) {
+    list = list.filter((t) => {
+      const d =
+        parseTripDate(t.startedAt) ||
+        parseTripDate(t.endedAt) ||
+        parseTripDate(t.updatedAt);
+      if (!d) return false;
+      return getLocalDateString(d) === AppState.tripHistoryDateFilter;
+    });
+  }
+
+  list.sort((a, b) => {
+    const dateA =
+      parseTripDate(a.startedAt) ||
+      parseTripDate(a.endedAt) ||
+      parseTripDate(a.updatedAt) ||
+      new Date(0);
+    const dateB =
+      parseTripDate(b.startedAt) ||
+      parseTripDate(b.endedAt) ||
+      parseTripDate(b.updatedAt) ||
+      new Date(0);
+    return dateB.getTime() - dateA.getTime();
+  });
+
+  return list;
+}
+
+function renderTripHistoryCard(trip) {
+  const startDate = parseTripDate(trip.startedAt);
+  const endDate = parseTripDate(trip.endedAt);
+  const isActive = trip.status === "active" && !trip.endedAt;
+
+  const dateLabel = startDate
+    ? startDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Unknown Date";
+
+  const startTimeStr = startDate
+    ? startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "—";
+  const endTimeStr = endDate
+    ? endDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : isActive
+    ? "Ongoing"
+    : "—";
+  const timeRange = `${startTimeStr} – ${endTimeStr}`;
+
+  const durationText = formatTripDurationBetween(startDate, endDate);
+
+  const routeName = escapeTripText(
+    trip.routeName || trip.route || "Quezon City Bus Route"
+  );
+  const directionDisplay = escapeTripText(
+    trip.directionLabel ||
+      (trip.directionFromName && trip.directionToName
+        ? `${trip.directionFromName} ➔ ${trip.directionToName}`
+        : "Standard Direction")
+  );
+
+  const busBadge = escapeTripText(trip.busCode || trip.busId || "BUS");
+  const conductorName = escapeTripText(
+    trip.conductorName || trip.conductorId || AppState.conductor.name || "Conductor"
+  );
+
+  const totalIn = Number(trip.totalIn) || 0;
+  const totalOut = Number(trip.totalOut) || 0;
+  const onboard = Number(trip.onboard) || 0;
+  const capacity = Number(trip.capacity) || 45;
+
+  return `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div class="space-y-1">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+              isActive
+                ? "bg-green-100 text-green-700 animate-pulse"
+                : "bg-gray-100 text-gray-700"
+            }">
+              ${isActive ? "● Active Trip" : "✓ Completed"}
+            </span>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-qc-blue-accent border border-blue-100">
+              ${busBadge}
+            </span>
+          </div>
+          <h4 class="font-bold text-sm text-gray-900 leading-snug">${routeName}</h4>
+          <p class="text-xs text-gray-500 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+            <span>${directionDisplay}</span>
+          </p>
+        </div>
+        <div class="text-right shrink-0">
+          <span class="text-xs font-medium text-gray-500 block">${dateLabel}</span>
+          <span class="text-xs font-semibold text-gray-700 block">${durationText}</span>
+        </div>
+      </div>
+
+      <div class="bg-gray-50 rounded-xl p-2.5 flex items-center justify-between text-xs text-gray-600 gap-2">
+        <div class="flex items-center gap-1.5 truncate">
+          <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span class="font-medium">${timeRange}</span>
+        </div>
+        <div class="text-gray-500 text-[11px] truncate shrink-0 flex items-center gap-1">
+          <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          <span>${conductorName}</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 text-center pt-1 border-t border-gray-100">
+        <div class="p-2 rounded-xl bg-green-50/70 border border-green-100/60">
+          <p class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Boarded</p>
+          <p class="text-base font-bold text-qc-green">${totalIn}</p>
+        </div>
+        <div class="p-2 rounded-xl bg-blue-50/70 border border-blue-100/60">
+          <p class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Alighted</p>
+          <p class="text-base font-bold text-qc-blue-accent">${totalOut}</p>
+        </div>
+        <div class="p-2 rounded-xl bg-purple-50/70 border border-purple-100/60">
+          <p class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">${
+            isActive ? "Onboard" : "Max Cap"
+          }</p>
+          <p class="text-base font-bold text-purple-700">${
+            isActive ? `${onboard}/${capacity}` : capacity
+          }</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTripHistoryList(trips) {
+  if (AppState.tripHistoryLoading && trips.length === 0) {
+    return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+        <div class="w-8 h-8 border-2 border-qc-blue-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-xs text-gray-500 font-medium">Loading your trip history from database...</p>
+      </div>
+    `;
+  }
+
+  if (trips.length === 0) {
+    const isFiltered = Boolean(AppState.tripHistoryDateFilter);
+    const filterLabel =
+      AppState.tripHistoryFilterPreset === "yesterday"
+        ? `yesterday (${AppState.tripHistoryDateFilter})`
+        : AppState.tripHistoryFilterPreset === "today"
+        ? `today (${AppState.tripHistoryDateFilter})`
+        : AppState.tripHistoryDateFilter;
+
+    return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center space-y-3">
+        <div class="w-14 h-14 bg-blue-50 text-qc-blue-accent rounded-full mx-auto flex items-center justify-center">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm">No trips found</h4>
+          <p class="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+            ${
+              isFiltered
+                ? `No trips recorded for ${filterLabel}. Tap "All Dates" to view all your trips.`
+                : "You have no recorded trips yet. Completed and active trips will appear here."
+            }
+          </p>
+        </div>
+        ${
+          isFiltered
+            ? `
+          <button onclick="setTripHistoryFilterPreset('all')" class="mt-2 px-4 py-2 bg-qc-blue-accent text-white text-xs font-semibold rounded-xl hover:bg-qc-blue transition">
+            View All Dates
+          </button>
+        `
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  const totalCount = trips.length;
+  const pageSize = AppState.tripHistoryPageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  if (AppState.tripHistoryPage > totalPages) {
+    AppState.tripHistoryPage = totalPages;
+  }
+  if (AppState.tripHistoryPage < 1) {
+    AppState.tripHistoryPage = 1;
+  }
+  const currentPage = AppState.tripHistoryPage;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+  const pageTrips = trips.slice(startIndex, endIndex);
+
+  const cardsHtml = pageTrips.map((trip) => renderTripHistoryCard(trip)).join("");
+
+  if (totalCount <= pageSize) {
+    return cardsHtml;
+  }
+
+  const paginationHtml = `
+    <div class="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-gray-100 shadow-sm mt-3">
+      <div class="text-xs text-gray-500 font-medium">
+        Showing <span class="font-bold text-gray-800">${startIndex + 1}–${endIndex}</span> of <span class="font-bold text-gray-800">${totalCount}</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button
+          onclick="setTripHistoryPage(${currentPage - 1})"
+          ${currentPage <= 1 ? "disabled" : ""}
+          class="px-3 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 transition ${
+            currentPage <= 1
+              ? "opacity-35 cursor-not-allowed bg-gray-50 text-gray-400"
+              : "bg-white hover:bg-gray-50 text-gray-700 shadow-sm active:scale-95"
+          }"
+          aria-label="Previous page"
+        >
+          ← Prev
+        </button>
+        <span class="text-xs font-bold text-qc-blue-accent px-2.5 py-1 bg-blue-50 rounded-lg">
+          ${currentPage} / ${totalPages}
+        </span>
+        <button
+          onclick="setTripHistoryPage(${currentPage + 1})"
+          ${currentPage >= totalPages ? "disabled" : ""}
+          class="px-3 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 transition ${
+            currentPage >= totalPages
+              ? "opacity-35 cursor-not-allowed bg-gray-50 text-gray-400"
+              : "bg-white hover:bg-gray-50 text-gray-700 shadow-sm active:scale-95"
+          }"
+          aria-label="Next page"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  `;
+
+  return `${cardsHtml}${paginationHtml}`;
+}
+
+function setTripHistoryPage(page) {
+  const filtered = getFilteredTripHistory();
+  const pageSize = AppState.tripHistoryPageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  AppState.tripHistoryPage = Math.max(1, Math.min(Number(page) || 1, totalPages));
+  navigateTo("tripHistory");
+}
+
+function renderTripHistoryPageDynamic() {
+  const container = document.getElementById("tripHistoryListContainer");
+  const countEl = document.getElementById("tripHistoryResultCount");
+  const filtered = getFilteredTripHistory();
+
+  if (container) {
+    container.innerHTML = renderTripHistoryList(filtered);
+  }
+  if (countEl) {
+    countEl.textContent = `${filtered.length} ${
+      filtered.length === 1 ? "trip" : "trips"
+    }`;
+  }
+}
+
+function setTripHistoryFilterPreset(preset) {
+  AppState.tripHistoryFilterPreset = preset;
+  AppState.tripHistoryPage = 1;
+  if (preset === "today") {
+    AppState.tripHistoryDateFilter = getTodayDateString();
+  } else if (preset === "yesterday") {
+    AppState.tripHistoryDateFilter = getYesterdayDateString();
+  } else if (preset === "all") {
+    AppState.tripHistoryDateFilter = "";
+  }
+  navigateTo("tripHistory");
+}
+
+function onTripHistoryDateInputChange(dateStr) {
+  AppState.tripHistoryDateFilter = dateStr || "";
+  AppState.tripHistoryPage = 1;
+  if (!dateStr) {
+    AppState.tripHistoryFilterPreset = "all";
+  } else if (dateStr === getTodayDateString()) {
+    AppState.tripHistoryFilterPreset = "today";
+  } else if (dateStr === getYesterdayDateString()) {
+    AppState.tripHistoryFilterPreset = "yesterday";
+  } else {
+    AppState.tripHistoryFilterPreset = "custom";
+  }
+  navigateTo("tripHistory");
+}
+
+function openHelpSupportModal() {
+  const modal = document.getElementById("helpSupportModal");
+  if (modal) {
+    modal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+  }
+}
+
+function closeHelpSupportModal() {
+  const modal = document.getElementById("helpSupportModal");
+  if (modal) {
+    modal.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
+}
+
+function initTripHistoryListener() {
+  try {
+    listenToTripsRepo(
+      (trips) => {
+        AppState.tripHistory = Array.isArray(trips) ? trips : [];
+        AppState.tripHistoryLoading = false;
+        if (AppState.currentPage === "tripHistory") {
+          renderTripHistoryPageDynamic();
+        }
+      },
+      (error) => {
+        console.error("Trip history listener error:", error);
+        AppState.tripHistoryLoading = false;
+        if (AppState.currentPage === "tripHistory") {
+          renderTripHistoryPageDynamic();
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Failed to init trip history listener:", error);
+    AppState.tripHistoryLoading = false;
+  }
 }
 
 document.addEventListener("change", (event) => {
@@ -715,7 +1249,8 @@ async function navigateTo(page) {
     Pages[page] ? await Pages[page]() : '';
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
-    const active = btn.dataset.page === page;
+    const isAccountTab = btn.dataset.page === 'account';
+    const active = btn.dataset.page === page || (page === 'tripHistory' && isAccountTab);
     btn.className = `nav-btn flex flex-col items-center justify-center gap-1 text-xs transition ${
       active ? 'text-qc-blue-accent' : 'text-gray-400'
     }`;
@@ -725,16 +1260,18 @@ async function navigateTo(page) {
     trip: 'Conductor Dashboard',
     scanner: 'AI Passenger Scanner',
     counter: 'Passenger Counter',
-    alerts: 'Activity Log',
+    alerts: 'Logs',
     account: 'My Account',
+    tripHistory: 'Trip History',
   };
   document.getElementById('pageTitle').textContent = titles[page] || 'Conductor';
 
   const subTitles = {
     trip:    AppState.trip.active ? 'Trip in progress' : 'Quezon City · No active trip',
     counter: 'Quezon City · Passenger Counter',
-    alerts:  'Quezon City · Activity Log',
+    alerts:  'Quezon City · Logs',
     account: 'Quezon City · My Account',
+    tripHistory: 'Quezon City · Official Trip Records',
   };
   const subEl = document.getElementById('tripStatus');
   if (subEl) subEl.textContent = subTitles[page] || 'Quezon City';
@@ -757,6 +1294,11 @@ function refreshCurrentPage() {
   const content = document.getElementById("content");
   const page = AppState.currentPage;
   if (!content || !Pages[page]) return;
+
+  if (page === "tripHistory") {
+    renderTripHistoryPageDynamic();
+    return;
+  }
 
   if (page === "trip") {
     const active = AppState.trip.active;
@@ -984,6 +1526,7 @@ async function initApp() {
     if (window.initActiveTripListener) {
       window.initActiveTripListener();
     }
+    initTripHistoryListener();
     await navigateTo('trip');
   } catch (error) {
     console.error('Conductor data load failed:', error);
@@ -1026,3 +1569,8 @@ window.setNearestAlightStop = (stopId) => {
   window.updateFloatingLiveMap?.();
 };
 window.updateConductorEta = updateConductorEta;
+window.openHelpSupportModal = openHelpSupportModal;
+window.closeHelpSupportModal = closeHelpSupportModal;
+window.setTripHistoryFilterPreset = setTripHistoryFilterPreset;
+window.setTripHistoryPage = setTripHistoryPage;
+window.onTripHistoryDateInputChange = onTripHistoryDateInputChange;

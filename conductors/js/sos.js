@@ -1,3 +1,8 @@
+import {
+  createEmergencyRepo,
+  resolveEmergencyRepo,
+} from "../../shared/js/repositories/emergencies.repo.js";
+
 // ==================================================
 // SOS EMERGENCY
 // ==================================================
@@ -96,21 +101,53 @@ function dismissSOS() {
   AppState.sos.active = false;
   recordHistory('sos', 'SOS cleared');
   showToast('SOS cleared', 'info');
+
+  if (AppState.sos.currentEmergencyId) {
+    const conductorName = AppState.conductor?.name || "Conductor";
+    resolveEmergencyRepo(AppState.sos.currentEmergencyId, `Conductor (${conductorName})`).catch((err) => {
+      console.warn("Could not mark emergency resolved from conductor app:", err);
+    });
+  }
 }
 
-// Broadcast SOS via localStorage (temporary until backend exists)
-function broadcastSOS(type, label) {
+// Broadcast SOS to Firestore backend and localStorage
+async function broadcastSOS(type, label) {
   const payload = {
-    kind: 'sos',
-    busId: AppState.bus.id,
-    route: AppState.bus.route,
-    conductor: AppState.conductor.name,
     type,
-    label,
-    time: Date.now(),
+    label: label || 'Emergency',
+    busId: AppState.bus.id || 'BUS',
+    busCode: AppState.bus.code || AppState.bus.id || 'BUS',
+    plateNumber: AppState.bus.plateNumber || '',
+    route: AppState.bus.route || 'No Route',
+    routeId: AppState.bus.routeId || null,
+    tripId: AppState.trip.tripId || null,
+    tripDirection: AppState.trip.directionLabel || '',
+    conductorId: AppState.conductor.id || null,
+    conductorName: AppState.conductor.name || 'Conductor',
+    conductorEmail: AppState.conductor.email || '',
+    onboard: AppState.occupancy.onboard || 0,
+    capacity: AppState.occupancy.capacity || 45,
+    totalIn: AppState.occupancy.totalIn || 0,
+    totalOut: AppState.occupancy.totalOut || 0,
+    lat: AppState.bus.lat || null,
+    lng: AppState.bus.lng || null,
+    speedKmh: AppState.bus.speedKmh || null,
   };
-  localStorage.setItem('qcSOS', JSON.stringify(payload));
-  localStorage.setItem('qcSOS_updated', Date.now().toString());
+
+  try {
+    const created = await createEmergencyRepo(payload);
+    AppState.sos.currentEmergencyId = created.id;
+  } catch (error) {
+    console.error("Failed to broadcast SOS to Firestore:", error);
+  }
+
+  // Also store in localStorage for local reactive sync
+  try {
+    localStorage.setItem('qcSOS', JSON.stringify({ kind: 'sos', ...payload, time: Date.now() }));
+    localStorage.setItem('qcSOS_updated', Date.now().toString());
+  } catch (err) {
+    console.warn("Could not write qcSOS to localStorage:", err);
+  }
 }
 
 // Expose

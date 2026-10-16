@@ -157,6 +157,17 @@
                     <span class="truncate">Trip Logs</span>
                 </button>
 
+                <button data-page="emergencyLogs"
+                    class="nav-btn w-full flex flex-row items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <svg class="w-5 h-5 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        <span class="truncate">Emergency Logs</span>
+                    </div>
+                    <span id="emergencyBadge" class="hidden px-2 py-0.5 text-[11px] font-bold rounded-full bg-red-600 text-white shadow-sm animate-pulse">0</span>
+                </button>
+
             </nav>
 
             <!-- ============================================== -->
@@ -188,6 +199,45 @@
         <!-- MAIN COLUMN                                    -->
         <!-- ============================================== -->
         <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+
+            <!-- EMERGENCY NOTIFICATION BAR (REAL-TIME SOS) -->
+            <div id="adminSosNotificationBar" class="hidden bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white px-3 sm:px-6 py-2.5 sm:py-3 shadow-md z-50 flex-shrink-0 transition-all duration-300">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 max-w-7xl 2xl:max-w-[1600px] mx-auto w-full">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="relative flex h-3.5 w-3.5 flex-shrink-0">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-yellow-300"></span>
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="bg-red-800/80 uppercase tracking-wider text-[10px] font-extrabold px-2 py-0.5 rounded border border-white/20">
+                                    EMERGENCY ALERT
+                                </span>
+                                <span id="adminSosBarTitle" class="font-bold text-xs sm:text-sm tracking-wide truncate">
+                                    Bus SOS Alert
+                                </span>
+                            </div>
+                            <p id="adminSosBarSub" class="text-[11px] text-red-100 truncate mt-0.5">
+                                Location & Conductor details available
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+                        <button onclick="navigateTo('emergencyLogs')" class="px-3 py-1.5 bg-white text-red-700 hover:bg-red-50 text-xs font-bold rounded-lg shadow-sm transition active:scale-95 flex items-center gap-1.5">
+                            <span>View Details</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                        <button onclick="window.dismissAdminSosNotification()" class="p-1 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition" title="Dismiss banner">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <!-- HEADER -->
             <header class="bg-white border-b border-gray-200 z-40 shadow-sm flex-shrink-0">
@@ -296,6 +346,7 @@
     <script type="module" src="js/staff.js"></script>
     <script type="module" src="js/reports.js"></script>
     <script type="module" src="js/trips.js"></script>
+    <script type="module" src="js/emergencies.js"></script>
 
     <!-- ========== SIDEBAR HELPERS ========== -->
     <script>
