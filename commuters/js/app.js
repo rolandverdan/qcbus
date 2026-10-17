@@ -409,6 +409,35 @@ function getNextStopEtaForBus(bus) {
   };
 }
 
+function isDropoffStopAheadForTrip(trip, stop) {
+  if (!trip || !stop || trip.routeId !== stop.routeId) return false;
+
+  const bus = AppState.buses.find((activeBus) =>
+    activeBus.tripId === trip.id ||
+    activeBus.id === trip.busId ||
+    activeBus.code === trip.busCode
+  );
+  const nextStop = getNextStopEtaForBus(bus)?.stop;
+  if (!bus || !nextStop) return false;
+
+  const stops = getStopsByRoute(trip.routeId);
+  const fromStopId = trip.directionFromId || bus.directionFromId;
+  const toStopId = trip.directionToId || bus.directionToId;
+  const fromIndex = stops.findIndex((routeStop) => routeStop.id === fromStopId);
+  const toIndex = stops.findIndex((routeStop) => routeStop.id === toStopId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return false;
+
+  const direction = fromIndex < toIndex ? 1 : -1;
+  const directedStops = [];
+  for (let i = fromIndex; direction > 0 ? i <= toIndex : i >= toIndex; i += direction) {
+    directedStops.push(stops[i]);
+  }
+
+  const nextPosition = directedStops.findIndex((routeStop) => routeStop.id === nextStop.id);
+  const candidatePosition = directedStops.findIndex((routeStop) => routeStop.id === stop.id);
+  return nextPosition >= 0 && candidatePosition >= nextPosition;
+}
+
 function startNearbyBusDetection() {
   if (!navigator.geolocation) {
     AppState.nearbyLocationError = "Location is not supported by this browser.";
@@ -518,13 +547,36 @@ async function toggleSavedRoute(routeId) {
 
     AppState.user.savedRoutes = updatedSavedRoutes;
 
+    const favoriteButton = Array.from(
+      document.querySelectorAll("[data-favorite-route-id]")
+    ).find((button) => button.dataset.favoriteRouteId === routeId);
+
+    if (favoriteButton) {
+      const isSaved = updatedSavedRoutes.includes(routeId);
+      favoriteButton.classList.toggle("bg-yellow-50", isSaved);
+      favoriteButton.classList.toggle("text-yellow-500", isSaved);
+      favoriteButton.classList.toggle("bg-gray-50", !isSaved);
+      favoriteButton.classList.toggle("text-gray-400", !isSaved);
+      favoriteButton.classList.toggle("hover:bg-blue-50", !isSaved);
+      favoriteButton.classList.toggle("hover:text-qc-blue", !isSaved);
+      favoriteButton.title = isSaved ? "Remove from saved routes" : "Save route";
+      favoriteButton.setAttribute("aria-label", favoriteButton.title);
+      favoriteButton.querySelector("svg")?.setAttribute(
+        "fill",
+        isSaved ? "currentColor" : "none"
+      );
+
+      // In the favorites-only view, remove the card after un-favoriting it.
+      if (!isSaved && AppState.routeFilter === "favorites") {
+        favoriteButton.closest("[data-saved-route-id]")?.remove();
+      }
+    }
+
     showSavedRouteToast(
       alreadySaved
         ? "Route removed from saved routes"
         : "Route saved successfully"
     );
-
-    navigateTo(AppState.currentPage, false);
 
   } catch (error) {
     console.error("Failed to update saved route:", error);
@@ -873,6 +925,14 @@ async function confirmDropoffStop(tripId, stop) {
   if (!isCommuterNearTripBus(trip)) {
     showSavedRouteToast(
       `Move within ${DROPOFF_BUS_RADIUS_METERS} meters of your bus to choose a stop`,
+      true
+    );
+    return false;
+  }
+
+  if (!isDropoffStopAheadForTrip(trip, stop)) {
+    showSavedRouteToast(
+      "This stop has already been passed or the bus's next stop cannot be verified. Choose a later stop.",
       true
     );
     return false;
@@ -1247,7 +1307,7 @@ const Pages = {
         </h2>
 
         <p class="text-xs opacity-75 mt-1">
-          Track your bus in real-time
+          Track QC bus in real-time
         </p>
 
       </div>
@@ -1839,6 +1899,7 @@ const Pages = {
                         <div class="flex items-center gap-2 flex-shrink-0">
 
                         <button
+                          data-favorite-route-id="${escapeHtml(route.id)}"
                           onclick="toggleSavedRoute('${escapeHtml(route.id)}')"
                           class="w-9 h-9 rounded-full flex items-center justify-center transition ${
                             AppState.user.savedRoutes.includes(route.id)
@@ -1850,6 +1911,7 @@ const Pages = {
                               ? "Remove from saved routes"
                               : "Save route"
                           }"
+                          aria-label="${AppState.user.savedRoutes.includes(route.id) ? "Remove from saved routes" : "Save route"}"
                         >
 
                           <svg
@@ -2869,7 +2931,7 @@ function navigateTo(page, updateHash = true, options = {}) {
   // ==================================================
 
   const titles = {
-    home: "QC Bus Tracker",
+    home: "QCommute",
     routes: "Bus Routes",
     map: "Live Map",
     notifications: "Notifications",
@@ -3995,6 +4057,7 @@ window.selectDropoffTrip = selectDropoffTrip;
 
 window.confirmDropoffStop = confirmDropoffStop;
 window.isCommuterNearTripBus = isCommuterNearTripBus;
+window.isDropoffStopAheadForTrip = isDropoffStopAheadForTrip;
 window.getNextStopEtaForBus = getNextStopEtaForBus;
 window.loadMyReports = loadMyReports;
 

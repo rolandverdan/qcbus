@@ -100,6 +100,11 @@ Pages.monitor = async function () {
       };
     });
 
+  const activeBusCount = new Set([
+    ...buses.map(bus => bus.id),
+    ...activeTrips.map(bus => bus.id || bus.busId),
+  ]).size;
+
   return `
     <div class="space-y-3 slide-in">
 
@@ -141,7 +146,7 @@ Pages.monitor = async function () {
 
         <div class="text-right flex-shrink-0">
           <p class="text-lg font-bold text-gray-800">
-            ${buses.length}
+            ${activeBusCount}
           </p>
 
           <p class="text-[9px] text-gray-400 uppercase tracking-wide">
@@ -218,7 +223,7 @@ Pages.monitor = async function () {
                 id="monitorMapSubtitle"
                 class="text-[9px] text-gray-400"
               >
-                Tap a route to focus
+                Active buses across all routes
               </p>
             </div>
 
@@ -249,7 +254,7 @@ Pages.monitor = async function () {
               backdrop-blur-sm
             "
           >
-            Tap a colored route
+            Tap a route to focus · all buses shown by default
           </div>
         </div>
 
@@ -351,7 +356,7 @@ Pages.monitor = async function () {
               text-xs
             "
           >
-            🔍
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m16 16 4 4"/></svg>
           </span>
 
         </div>
@@ -448,7 +453,7 @@ Pages.monitor = async function () {
                     text-lg
                   "
                 >
-                  🚌
+                  <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7h18v11H3zM5 7l2-3h10l2 3M7 18v2m10-2v2M6 11h12"/></svg>
                 </div>
 
                 <p class="text-xs font-medium text-gray-500 mt-2">
@@ -1745,7 +1750,7 @@ function updateMonitorStopMarkers() {
                     color:#4b5563;
                   "
                 >
-                  📍 ${escapeHtml(stopPlace)}
+                  Location: ${escapeHtml(stopPlace)}
                 </div>
               `
               : ""
@@ -2519,18 +2524,49 @@ async function initMonitorPage() {
   // LOAD DATA
   // ================================================
 
-  monitorRoutes =
-    await Store.getRoutes();
+  // Start the admin map with the full fleet in view every time it opens.
+  selectedMonitorRouteId = null;
 
-  monitorBuses =
-    (await Store.getBuses())
-      .filter(
-        bus =>
-          bus.status === "active"
-      );
+  const [routes, buses, stops, activeTripsSnapshot] = await Promise.all([
+    Store.getRoutes(),
+    Store.getBuses(),
+    Store.getStops(),
+    getDocs(query(collection(db, "trips"), where("status", "==", "active"))),
+  ]);
 
-  monitorStops =
-    await Store.getStops();
+  monitorRoutes = routes;
+  monitorStops = stops;
+
+  const activeTripsByBusId = new Map();
+  activeTripsSnapshot.docs.forEach((tripDoc) => {
+    const trip = { id: tripDoc.id, ...tripDoc.data() };
+    const bus = buses.find((item) => item.id === trip.busId);
+    const busId = bus?.id || trip.busId;
+    if (!busId) return;
+
+    activeTripsByBusId.set(busId, {
+      ...bus,
+      ...trip,
+      id: busId,
+      code: bus?.code || trip.busCode || busId,
+      routeId: trip.routeId || bus?.routeId || null,
+      lat: trip.lat ?? bus?.lat,
+      lng: trip.lng ?? bus?.lng,
+      onboard: trip.onboard ?? bus?.onboard ?? 0,
+      capacity: trip.capacity ?? bus?.capacity ?? 0,
+      driverId: trip.driverId || bus?.driverId || null,
+      conductorId: trip.conductorId || bus?.conductorId || null,
+      status: bus?.status || "active",
+      tripActive: true,
+    });
+  });
+
+  const busesById = new Map();
+  buses.filter((bus) => bus.status === "active").forEach((bus) => {
+    busesById.set(bus.id, { ...bus, tripActive: activeTripsByBusId.has(bus.id) });
+  });
+  activeTripsByBusId.forEach((bus, busId) => busesById.set(busId, bus));
+  monitorBuses = [...busesById.values()];
 
 
   // ================================================

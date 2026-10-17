@@ -3,6 +3,10 @@
 // ACCOUNT MANAGER
 // ==================================================
 
+let staffPage = 1;
+let currentStaffRole = 'all';
+const STAFF_PAGE_SIZE = 10;
+
 Pages.staff = async function () {
   const staff = await Store.getStaff();
   const users = await Store.getUsers();
@@ -110,6 +114,7 @@ Pages.staff = async function () {
 // ==================================================
 
 async function renderStaffList(role = 'all') {
+  currentStaffRole = role;
   const staff = await Store.getStaff();
   const users = await Store.getUsers();
   const buses = await Store.getBuses();
@@ -160,7 +165,7 @@ async function renderStaffList(role = 'all') {
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
 
         <div class="text-2xl mb-2">
-          👤
+          <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke-width="1.8"/><path stroke-linecap="round" stroke-width="1.8" d="M4 21a8 8 0 0 1 16 0"/></svg>
         </div>
 
         <p class="text-sm text-gray-500">
@@ -171,7 +176,14 @@ async function renderStaffList(role = 'all') {
     `;
   }
 
-  return filtered.map(account => {
+  const pageCount = Math.max(1, Math.ceil(filtered.length / STAFF_PAGE_SIZE));
+  staffPage = Math.min(staffPage, pageCount);
+  const visibleAccounts = filtered.slice(
+    (staffPage - 1) * STAFF_PAGE_SIZE,
+    staffPage * STAFF_PAGE_SIZE
+  );
+
+  return visibleAccounts.map(account => {
 
     const isAdmin =
       account.role === 'admin';
@@ -298,7 +310,7 @@ async function renderStaffList(role = 'all') {
 
             ${
               assignedBus
-                ? `🚌 ${escapeHtml(assignedBus.code)}`
+                ? `Bus ${escapeHtml(assignedBus.code)}`
                 : isAdmin
                   ? 'System administrator'
                   : 'No bus assigned'
@@ -330,7 +342,7 @@ async function renderStaffList(role = 'all') {
 
       </div>
     `;
-  }).join('');
+  }).join('') + window.renderAdminPagination(staffPage, filtered.length, 'setStaffPage');
 }
 
 
@@ -339,6 +351,8 @@ async function renderStaffList(role = 'all') {
 // ==================================================
 
 async function filterStaff(role) {
+  staffPage = 1;
+  currentStaffRole = role;
 
   document.querySelectorAll('.staff-tab').forEach(btn => {
 
@@ -356,6 +370,12 @@ async function filterStaff(role) {
   document.getElementById('staffList').innerHTML =
     await renderStaffList(role);
 }
+
+window.setStaffPage = async function (page) {
+  staffPage = page;
+  const list = document.getElementById('staffList');
+  if (list) list.innerHTML = await renderStaffList(currentStaffRole);
+};
 
 
 // ==================================================
@@ -459,7 +479,7 @@ async function openStaffModal(
               <span
                 class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-purple peer-checked:bg-purple-50 peer-checked:text-qc-purple transition"
               >
-                👑 Admin
+                Admin
               </span>
 
             </label>
@@ -489,7 +509,7 @@ async function openStaffModal(
               <span
                 class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-green peer-checked:bg-green-50 peer-checked:text-qc-green transition"
               >
-                🎫 Conductor
+                Conductor
               </span>
 
             </label>
@@ -519,7 +539,7 @@ async function openStaffModal(
               <span
                 class="block text-center py-2.5 text-xs font-semibold rounded-xl border-2 border-gray-200 peer-checked:border-qc-blue peer-checked:bg-blue-50 peer-checked:text-qc-blue transition"
               >
-                🚗 Driver
+                Driver
               </span>
 
             </label>
@@ -1163,7 +1183,7 @@ async function openStaffActions(
           <span
             class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center"
           >
-            ✏️
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16 4 4 4M4 20l4-.8L19 8a2.8 2.8 0 0 0-4-4L4 15z"/></svg>
           </span>
 
           <span class="text-sm font-medium text-gray-700">
@@ -1183,7 +1203,7 @@ async function openStaffActions(
           <span
             class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center"
           >
-            🗑️
+            <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
           </span>
 
           <span class="text-sm font-medium text-red-600">

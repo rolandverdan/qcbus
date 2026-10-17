@@ -181,7 +181,7 @@ Pages.stops = async function (routeId) {
               disabled:cursor-not-allowed
             "
           >
-            🛣️ ${hasRoadRoute ? 'Regenerate' : 'Generate Route'}
+            <svg class="inline-block w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 19c4-10 12-10 16 0M4 5l4 4m-4-4 4-4m12 4-4 4m4-4-4-4"/></svg>${hasRoadRoute ? 'Regenerate' : 'Generate Route'}
           </button>
 
           <button
@@ -236,7 +236,7 @@ Pages.stops = async function (routeId) {
               flex-shrink-0
             "
           >
-            ↕️
+            <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v18m0-18-4 4m4-4 4 4m-4 14-4-4m4 4 4-4"/></svg>
           </div>
 
           <div class="min-w-0">
@@ -314,7 +314,7 @@ Pages.stops = async function (routeId) {
             >
 
               <div class="text-3xl mb-3">
-                📍
+                <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5" stroke-width="1.8"/></svg>
               </div>
 
               <p class="text-sm font-medium text-gray-700">
@@ -1478,7 +1478,7 @@ async function openAddStopHint(
             transition
           "
         >
-          🗺️ Pick on Map
+          <svg class="inline-block w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></svg> Pick on Map
         </button>
 
       </div>
@@ -1787,7 +1787,7 @@ function enablePickMode(
                         mb-3
                       "
                     >
-                      📍 Location:
+                      Location:
                       ${lat.toFixed(5)},
                       ${lng.toFixed(5)}
                     </div>
@@ -2008,7 +2008,7 @@ async function openStopActions(
               justify-center
             "
           >
-            ✏️
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16 4 4 4M4 20l4-.8L19 8a2.8 2.8 0 0 0-4-4L4 15z"/></svg>
           </span>
 
 
@@ -2051,7 +2051,7 @@ async function openStopActions(
               justify-center
             "
           >
-            🗑️
+            <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
           </span>
 
 

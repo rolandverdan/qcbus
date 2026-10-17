@@ -16,13 +16,27 @@ import {
   getUserProfile,
 } from "../../shared/js/repositories/users.repo.js";
 
+import {
+  getBusesRepo,
+} from "../../shared/js/repositories/buses.repo.js";
+
+import {
+  getStaffRepo,
+} from "../../shared/js/repositories/staff.repo.js";
+
 let allReports = [];
 let activeFilter = "all";
+let reportsPage = 1;
+const REPORTS_PAGE_SIZE = 10;
 
 
 async function loadReports() {
   try {
     const reports = await getReports();
+    const [buses, staff] = await Promise.all([
+      getBusesRepo(),
+      getStaffRepo(),
+    ]);
 
     allReports = await Promise.all(
       reports.map(async (report) => {
@@ -52,11 +66,25 @@ async function loadReports() {
           }
         }
 
+        const reportBus = String(report.busRoute || "").trim();
+        const bus = buses.find((item) =>
+          item.id === reportBus ||
+          (item.code && reportBus.startsWith(item.code))
+        );
+        const driver = bus?.driverId
+          ? staff.find((member) => member.id === bus.driverId)
+          : null;
+        const conductor = bus?.conductorId
+          ? staff.find((member) => member.id === bus.conductorId)
+          : null;
+
         return {
           ...report,
 
           reporterName,
           reporterEmail,
+          driverName: driver?.name || "Not assigned",
+          conductorName: conductor?.name || "Not assigned",
 
           submittedAt:
             report.createdAt?.toDate
@@ -90,6 +118,12 @@ window.Pages = window.Pages || {};
 
 window.Pages.reports = function () {
   const filtered = filterReports(allReports);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / REPORTS_PAGE_SIZE));
+  reportsPage = Math.min(reportsPage, pageCount);
+  const visibleReports = filtered.slice(
+    (reportsPage - 1) * REPORTS_PAGE_SIZE,
+    reportsPage * REPORTS_PAGE_SIZE
+  );
 
   return `
     <div class="space-y-4 slide-in">
@@ -130,7 +164,8 @@ window.Pages.reports = function () {
           </div>
           <p class="text-sm text-gray-500">No reports ${activeFilter === 'all' ? 'yet' : 'in this category'}</p>
         </div>
-      ` : filtered.map(r => renderReportCard(r)).join('')}
+      ` : visibleReports.map(r => renderReportCard(r)).join('')}
+      ${window.renderAdminPagination(reportsPage, filtered.length, 'setReportsPage')}
 
     </div>
   `;
@@ -201,6 +236,12 @@ function renderReportCard(r) {
           </svg>
           <span>${escapeHtml(r.busRoute || 'Unknown bus')}</span>
         </p>
+
+        <!-- Assigned bus staff -->
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500 mb-3">
+          <span><span class="font-semibold text-gray-600">Driver:</span> ${escapeHtml(r.driverName || "Not assigned")}</span>
+          <span><span class="font-semibold text-gray-600">Conductor:</span> ${escapeHtml(r.conductorName || "Not assigned")}</span>
+        </div>
 
         <!-- Description -->
         <p class="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 mb-3 leading-relaxed">
@@ -277,8 +318,14 @@ function filterReports(list) {
 
 function setReportFilter(key) {
   activeFilter = key;
+  reportsPage = 1;
   window.navigateTo('reports');
 }
+
+window.setReportsPage = function (page) {
+  reportsPage = page;
+  window.navigateTo('reports');
+};
 
 // ==================================================
 // ACTIONS

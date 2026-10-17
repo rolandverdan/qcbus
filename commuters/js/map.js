@@ -52,6 +52,14 @@ let hasCenteredOnUser = false;
 let selectedRouteId = null;
 let pendingSelectedRouteId = null;
 
+function closeBusPopups(exceptPopup = null) {
+  busMarkers.forEach(({ popup }) => {
+    if (popup !== exceptPopup && popup.isOpen()) {
+      popup.remove();
+    }
+  });
+}
+
 let routeLayersInitialized = false;
 
 
@@ -286,6 +294,7 @@ function initMap() {
   map.on("rotatestart", markMapAsUserMoved);
   map.on("pitchstart", markMapAsUserMoved);
   map.on("touchstart", markMapAsUserMoved);
+  map.on("rotate", updateBusMarkers);
 
 
   map.on("load", () => {
@@ -1729,13 +1738,21 @@ function updateStopMarkers() {
         event.preventDefault();
         event.stopPropagation();
 
+        closeBusPopups();
+
         const trips = (AppState.activeTrips || []).filter(
           trip => trip.status === "active" && trip.routeId === selectedRouteId
         );
-        const eligibleTrips = trips.filter(
+        const nearbyTrips = trips.filter(
           trip => window.isCommuterNearTripBus?.(trip)
         );
-        const tripEtas = trips.map(trip => {
+        const stopAheadTrips = trips.filter(
+          trip => window.isDropoffStopAheadForTrip?.(trip, stop)
+        );
+        const eligibleTrips = nearbyTrips.filter(
+          trip => stopAheadTrips.some(aheadTrip => aheadTrip.id === trip.id)
+        );
+        const tripEtas = stopAheadTrips.map(trip => {
           const bus = (AppState.buses || []).find(
             activeBus => activeBus.tripId === trip.id
           );
@@ -1776,7 +1793,7 @@ function updateStopMarkers() {
                 `).join("")}
               </div>
             ` : ""}
-            ${eligibleTrips.length > 1 ? `
+              ${eligibleTrips.length > 1 ? `
               <label style="display:block; margin-top:10px; font-size:11px; color:#4b5563;">
                 Bus you are riding
                 <select id="dropoffTripSelect" style="display:block; width:100%; margin-top:4px; padding:7px; border:1px solid #d1d5db; border-radius:6px; background:#fff;">
@@ -1790,9 +1807,13 @@ function updateStopMarkers() {
               </label>
             ` : eligibleTrips.length === 1 ? `
               <div style="margin-top:10px; font-size:11px; color:#4b5563;">Active bus: ${escapeHtml(eligibleTrips[0].busCode || eligibleTrips[0].busId || "Bus")}</div>
-            ` : trips.length ? `
+            ` : trips.length && nearbyTrips.length === 0 ? `
               <div style="margin-top:10px; font-size:11px; color:#b91c1c;">
                 ${AppState.userLocation ? `Get within ${DROPOFF_BUS_RADIUS_METERS} m of an active bus on this route to choose a stop.` : "Waiting for your location. Allow location access to choose a stop near your bus."}
+              </div>
+            ` : trips.length ? `
+              <div style="margin-top:10px; font-size:11px; color:#b91c1c;">
+                This stop has already been passed, or the bus's next stop cannot be verified. Choose a later stop.
               </div>
             ` : `
               <div style="margin-top:10px; font-size:11px; color:#b91c1c;">No active bus is running on this route.</div>
@@ -1821,7 +1842,9 @@ function updateStopMarkers() {
               const selectedTrip = eligibleTrips.find(
                 trip => trip.id === tripSelect.value
               );
-              const canConfirm = Boolean(selectedTrip);
+              const canConfirm = Boolean(
+                selectedTrip && window.isDropoffStopAheadForTrip?.(selectedTrip, stop)
+              );
               confirmButton.disabled = !canConfirm;
               confirmButton.style.background = canConfirm ? "#115272" : "#9ca3af";
               confirmButton.style.cursor = canConfirm ? "pointer" : "not-allowed";
@@ -1836,6 +1859,19 @@ function updateStopMarkers() {
         confirmButton?.addEventListener("click", async () => {
           const tripId = tripSelect?.value || selectedTripId;
           if (!tripId) return;
+
+          const selectedTrip = eligibleTrips.find((trip) => trip.id === tripId);
+          if (!selectedTrip || !window.isDropoffStopAheadForTrip?.(selectedTrip, stop)) {
+            confirmButton.disabled = true;
+            confirmButton.style.background = "#9ca3af";
+            confirmButton.style.cursor = "not-allowed";
+            const message = popupElement.querySelector("#dropoffConfirmMessage");
+            if (message) {
+              message.style.color = "#b91c1c";
+              message.textContent = "The bus has passed this stop. Choose a later stop.";
+            }
+            return;
+          }
 
           confirmButton.disabled = true;
           confirmButton.textContent = "Saving...";
@@ -1968,13 +2004,48 @@ function updateBusMarkers() {
     `;
   };
 
+    const getBusNextStopDirection = bus => {
+      const nextStopEta = window.getNextStopEtaForBus?.(bus);
+      const nextStop = nextStopEta?.stop;
+      if (!nextStop || !map) return null;
+
+      const busLat = Number(bus.lat);
+      const busLng = Number(bus.lng);
+      const stopLat = Number(nextStop.lat ?? nextStop.latitude);
+      const stopLng = Number(nextStop.lng ?? nextStop.longitude);
+      if (![busLat, busLng, stopLat, stopLng].every(Number.isFinite)) return null;
+
+      const busPoint = map.project([busLng, busLat]);
+      const stopPoint = map.project([stopLng, stopLat]);
+      const dx = stopPoint.x - busPoint.x;
+      const dy = stopPoint.y - busPoint.y;
+      if (Math.hypot(dx, dy) < 1) return null;
+
+      return {
+        angle: Math.atan2(dx, -dy) * 180 / Math.PI,
+        stopName: nextStop.name || nextStop.stopName || "next bus stop",
+      };
+    };
+
     const getMarkerContent = bus => {
     const routeColor =
       bus.routeColor ||
       getRouteColor(getRouteById(bus.routeId));
+      const nextStopDirection = getBusNextStopDirection(bus);
 
     return `
       <div class="relative">
+        ${nextStopDirection ? `
+          <div
+            title="Next stop: ${escapeHtml(nextStopDirection.stopName)}"
+            aria-hidden="true"
+            style="position:absolute; z-index:2; left:50%; top:-20px; width:20px; height:20px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; border-radius:50%; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.3); transform:translateX(-50%) rotate(${nextStopDirection.angle}deg);"
+          >
+            <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:#115272;">
+              <path d="M12 2 21 22 12 17 3 22 12 2Z" />
+            </svg>
+          </div>
+        ` : ""}
         <div
           class="w-11 h-11 rounded-lg shadow-lg flex items-center justify-center border-2 border-white overflow-hidden"
           style="background:${escapeHtml(routeColor)}"
@@ -2038,9 +2109,11 @@ function updateBusMarkers() {
       if (popup.isOpen()) {
         popup.remove();
       } else {
-        busMarkers.forEach(({ popup: openBusPopup }) => {
-          if (openBusPopup !== popup && openBusPopup.isOpen()) openBusPopup.remove();
-        });
+        closeBusPopups(popup);
+        if (activeStopPopup) {
+          activeStopPopup.remove();
+          activeStopPopup = null;
+        }
         popup.setLngLat(marker.getLngLat()).addTo(map);
       }
     };

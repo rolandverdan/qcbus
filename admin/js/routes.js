@@ -1,7 +1,16 @@
+let routesPage = 1;
+const ROUTES_PAGE_SIZE = 10;
+
 Pages.routes = async function () {
   const routes = await Store.getRoutes();
   const buses = await Store.getBuses();
   const stops = await Store.getStops();
+  const pageCount = Math.max(1, Math.ceil(routes.length / ROUTES_PAGE_SIZE));
+  routesPage = Math.min(routesPage, pageCount);
+  const visibleRoutes = routes.slice(
+    (routesPage - 1) * ROUTES_PAGE_SIZE,
+    routesPage * ROUTES_PAGE_SIZE
+  );
 
   return `
     <div class="space-y-4 slide-in">
@@ -24,7 +33,7 @@ Pages.routes = async function () {
             Create First Route
           </button>
         </div>
-      ` : routes.map(route => {
+      ` : visibleRoutes.map(route => {
         const routeStops = stops.filter(s => s.routeId === route.id).length;
         const routeBuses = buses.filter(b => b.routeId === route.id).length;
 
@@ -80,8 +89,14 @@ Pages.routes = async function () {
           </div>
         `;
       }).join('')}
+      ${window.renderAdminPagination(routesPage, routes.length, 'setRoutesPage')}
     </div>
   `;
+};
+
+window.setRoutesPage = function (page) {
+  routesPage = page;
+  window.navigateTo('routes');
 };
 
 
@@ -259,7 +274,7 @@ async function openRouteActions(id) {
         class="w-full p-3 flex items-center gap-3 hover:bg-gray-50 rounded-xl transition text-left">
 
         <span class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
-          ✏️
+          <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16 4 4 4M4 20l4-.8L19 8a2.8 2.8 0 0 0-4-4L4 15z"/></svg>
         </span>
 
         <span class="text-sm font-medium text-gray-700">
@@ -274,7 +289,7 @@ async function openRouteActions(id) {
         class="w-full p-3 flex items-center gap-3 hover:bg-gray-50 rounded-xl transition text-left">
 
         <span class="w-9 h-9 bg-green-50 rounded-lg flex items-center justify-center">
-          📍
+          <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5" stroke-width="2"/></svg>
         </span>
 
         <span class="text-sm font-medium text-gray-700">
@@ -289,7 +304,7 @@ async function openRouteActions(id) {
         class="w-full p-3 flex items-center gap-3 hover:bg-red-50 rounded-xl transition text-left">
 
         <span class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center">
-          🗑️
+          <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
         </span>
 
         <span class="text-sm font-medium text-red-600">

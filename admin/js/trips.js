@@ -16,6 +16,8 @@ let tripLogFilters = {
 };
 let unsubscribeTripLogs = null;
 let tripLogsLoadGeneration = 0;
+let tripLogsPage = 1;
+const TRIP_LOGS_PAGE_SIZE = 10;
 
 function escapeHtml(value) {
   return window.escapeHtml(value);
@@ -204,6 +206,13 @@ function renderTripResults() {
 
   if (!list || !count) return;
 
+  const pageCount = Math.max(1, Math.ceil(trips.length / TRIP_LOGS_PAGE_SIZE));
+  tripLogsPage = Math.min(tripLogsPage, pageCount);
+  const visibleTrips = trips.slice(
+    (tripLogsPage - 1) * TRIP_LOGS_PAGE_SIZE,
+    tripLogsPage * TRIP_LOGS_PAGE_SIZE
+  );
+
   count.textContent = `${trips.length} ${trips.length === 1 ? "trip" : "trips"}`;
   document.getElementById("tripLogMetricCount").textContent = String(trips.length);
   document.getElementById("tripLogMetricActive").textContent = String(
@@ -216,7 +225,7 @@ function renderTripResults() {
     trips.reduce((total, trip) => total + (Number(trip.totalIn) || 0), 0)
   );
   list.innerHTML = trips.length
-    ? trips.map(renderTripCard).join("")
+    ? `${visibleTrips.map(renderTripCard).join("")}${window.renderAdminPagination(tripLogsPage, trips.length, "setTripLogsPage")}`
     : `
       <div class="rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm">
         <p class="text-sm font-medium text-gray-700">No trips match these filters</p>
@@ -224,6 +233,11 @@ function renderTripResults() {
       </div>
     `;
 }
+
+window.setTripLogsPage = function (page) {
+  tripLogsPage = page;
+  renderTripResults();
+};
 
 function renderFilterOptions() {
   const routes = new Map(
@@ -355,6 +369,7 @@ function renderTripLogsPage() {
 }
 
 function applyTripLogFilters() {
+  tripLogsPage = 1;
   tripLogFilters = {
     routeId: document.getElementById("tripLogRoute")?.value || "",
     busId: document.getElementById("tripLogBus")?.value || "",
@@ -453,6 +468,7 @@ function initTripLogFilterListeners() {
         to: "",
         search: "",
       };
+      tripLogsPage = 1;
       document.getElementById("content").innerHTML = renderTripLogsPage();
       initTripLogFilterListeners();
       renderTripResults();

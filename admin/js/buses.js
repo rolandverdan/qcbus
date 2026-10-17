@@ -1,7 +1,16 @@
+let busesPage = 1;
+const BUSES_PAGE_SIZE = 10;
+
 Pages.buses = async function () {
   const buses = await Store.getBuses();
   const routes = await Store.getRoutes();
   const staff = await Store.getStaff();
+  const pageCount = Math.max(1, Math.ceil(buses.length / BUSES_PAGE_SIZE));
+  busesPage = Math.min(busesPage, pageCount);
+  const visibleBuses = buses.slice(
+    (busesPage - 1) * BUSES_PAGE_SIZE,
+    busesPage * BUSES_PAGE_SIZE
+  );
 
   return `
     <div class="space-y-4 slide-in">
@@ -24,7 +33,7 @@ Pages.buses = async function () {
             Register First Bus
           </button>
         </div>
-      ` : buses.map(bus => {
+      ` : visibleBuses.map(bus => {
         const route = bus.routeId
           ? routes.find(r => r.id === bus.routeId)
           : null;
@@ -107,8 +116,14 @@ Pages.buses = async function () {
           </div>
         `;
       }).join('')}
+      ${window.renderAdminPagination(busesPage, buses.length, 'setBusesPage')}
     </div>
   `;
+};
+
+window.setBusesPage = function (page) {
+  busesPage = page;
+  window.navigateTo('buses');
 };
 
 function statusBadge(status) {

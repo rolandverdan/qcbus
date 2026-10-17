@@ -10,6 +10,8 @@ import {
 
 // State
 let allEmergencies = [];
+let emergencyLogsPage = 1;
+const EMERGENCY_LOGS_PAGE_SIZE = 10;
 let emergencyFilters = {
   status: "all",
   type: "all",
@@ -108,28 +110,24 @@ const EMERGENCY_TYPE_CONFIG = {
     badgeClass: "bg-red-100 text-red-800 border-red-200",
     iconBg: "bg-red-500",
     icon: `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>`,
-    emoji: "🚑",
   },
   accident: {
     label: "Road Accident",
     badgeClass: "bg-amber-100 text-amber-800 border-amber-200",
     iconBg: "bg-amber-500",
     icon: `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`,
-    emoji: "💥",
   },
   crime: {
     label: "Crime / Theft",
     badgeClass: "bg-purple-100 text-purple-800 border-purple-200",
     iconBg: "bg-purple-600",
     icon: `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>`,
-    emoji: "🚨",
   },
   other: {
     label: "Other Emergency",
     badgeClass: "bg-gray-100 text-gray-800 border-gray-200",
     iconBg: "bg-gray-600",
     icon: `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>`,
-    emoji: "⚠️",
   },
 };
 
@@ -358,7 +356,7 @@ function renderEmergencyCard(item) {
         <div class="bg-gray-50/80 rounded-xl p-3 border border-gray-100">
           <div class="flex items-center justify-between mb-1">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Bus Details</span>
-            <span class="text-xs">🚌</span>
+            <span class="text-[10px] font-bold text-gray-400">BUS</span>
           </div>
           <p class="font-bold text-gray-900 text-sm truncate">${escapeHtml(busCode)}</p>
           <p class="text-xs text-gray-600 font-mono mt-0.5">${escapeHtml(plate)}</p>
@@ -371,7 +369,7 @@ function renderEmergencyCard(item) {
         <div class="bg-gray-50/80 rounded-xl p-3 border border-gray-100">
           <div class="flex items-center justify-between mb-1">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Conductor</span>
-            <span class="text-xs">👤</span>
+            <span class="text-[10px] font-bold text-gray-400">STAFF</span>
           </div>
           <p class="font-bold text-gray-900 text-sm truncate">${escapeHtml(conductorName)}</p>
           ${conductorEmail ? `<p class="text-xs text-gray-600 truncate mt-0.5">${escapeHtml(conductorEmail)}</p>` : '<p class="text-xs text-gray-400 mt-0.5">Email not provided</p>'}
@@ -402,7 +400,7 @@ function renderEmergencyCard(item) {
           <div>
             <div class="flex items-center justify-between mb-1">
               <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Location & Speed</span>
-              <span class="text-xs">📍</span>
+              <span class="text-[10px] font-bold text-gray-400">GPS</span>
             </div>
             ${hasGps ? `
               <p class="text-xs font-mono font-medium text-gray-800">${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
@@ -491,6 +489,13 @@ function renderEmergencyResults() {
 
   if (!list) return;
 
+  const pageCount = Math.max(1, Math.ceil(filtered.length / EMERGENCY_LOGS_PAGE_SIZE));
+  emergencyLogsPage = Math.min(emergencyLogsPage, pageCount);
+  const visibleEmergencies = filtered.slice(
+    (emergencyLogsPage - 1) * EMERGENCY_LOGS_PAGE_SIZE,
+    emergencyLogsPage * EMERGENCY_LOGS_PAGE_SIZE
+  );
+
   if (countSpan) {
     countSpan.textContent = `${filtered.length} ${filtered.length === 1 ? "incident" : "incidents"}`;
   }
@@ -499,7 +504,7 @@ function renderEmergencyResults() {
     list.innerHTML = `
       <div class="rounded-2xl border border-gray-100 bg-white p-10 text-center shadow-sm">
         <div class="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-3 text-xl">
-          🛡️
+          <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4"/></svg>
         </div>
         <p class="text-sm font-semibold text-gray-700">No emergency logs found</p>
         <p class="mt-1 text-xs text-gray-400">No incident records match your selected filters.</p>
@@ -515,8 +520,13 @@ function renderEmergencyResults() {
     return;
   }
 
-  list.innerHTML = filtered.map(renderEmergencyCard).join("");
+  list.innerHTML = `${visibleEmergencies.map(renderEmergencyCard).join("")}${window.renderAdminPagination(emergencyLogsPage, filtered.length, "setEmergencyLogsPage")}`;
 }
+
+window.setEmergencyLogsPage = function (page) {
+  emergencyLogsPage = page;
+  renderEmergencyResults();
+};
 
 // Render Emergency Logs Page Base Layout
 function renderEmergencyLogsPage() {
@@ -658,6 +668,7 @@ function initEmergencyFilterListeners() {
 }
 
 function applyEmergencyFilters() {
+  emergencyLogsPage = 1;
   emergencyFilters = {
     status: document.getElementById("emergencyFilterStatus")?.value || "all",
     type: document.getElementById("emergencyFilterType")?.value || "all",
@@ -669,6 +680,7 @@ function applyEmergencyFilters() {
 }
 
 window.resetEmergencyFilters = function () {
+  emergencyLogsPage = 1;
   emergencyFilters = {
     status: "all",
     type: "all",

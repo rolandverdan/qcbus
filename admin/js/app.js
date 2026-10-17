@@ -13,6 +13,28 @@ const AppState = {
   mapPickMode: null,   // callback when user taps the map
 };
 
+window.renderAdminPagination = function (page, totalItems, handlerName) {
+  const pageSize = 10;
+  const pageCount = Math.ceil(totalItems / pageSize);
+  if (totalItems === 0) return "";
+
+  const currentPage = Math.min(Math.max(1, page), pageCount);
+  const start = (currentPage - 1) * pageSize + 1;
+  const end = Math.min(currentPage * pageSize, totalItems);
+  const buttonClass = "rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40";
+
+  return `
+    <nav class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2" aria-label="List pagination">
+      <span class="text-xs text-gray-500">Showing ${start}–${end} of ${totalItems}</span>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="window.${handlerName}(${currentPage - 1})" class="${buttonClass}" ${currentPage === 1 ? "disabled" : ""}>Previous</button>
+        <span class="whitespace-nowrap text-xs text-gray-500">${currentPage} / ${pageCount}</span>
+        <button type="button" onclick="window.${handlerName}(${currentPage + 1})" class="${buttonClass}" ${currentPage === pageCount ? "disabled" : ""}>Next</button>
+      </div>
+    </nav>
+  `;
+};
+
 // ==================================================
 // NAVIGATION
 // ==================================================
