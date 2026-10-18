@@ -6,7 +6,8 @@ import {
   collection,
   getDocs,
   query,
-  where
+  where,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
@@ -20,11 +21,6 @@ import * as maplibregl from "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-
 
 Pages.monitor = async function () {
   const allBuses = await Store.getBuses();
-
-  const buses =
-    allBuses.filter(
-      b => b.status === "active"
-    );
 
   const routes =
     await Store.getRoutes();
@@ -100,10 +96,9 @@ Pages.monitor = async function () {
       };
     });
 
-  const activeBusCount = new Set([
-    ...buses.map(bus => bus.id),
-    ...activeTrips.map(bus => bus.id || bus.busId),
-  ]).size;
+  const activeBusCount = new Set(
+    activeTrips.map(bus => bus.id || bus.busId).filter(Boolean)
+  ).size;
 
   return `
     <div class="space-y-3 slide-in">
@@ -146,7 +141,7 @@ Pages.monitor = async function () {
 
         <div class="text-right flex-shrink-0">
           <p class="text-lg font-bold text-gray-800">
-            ${activeBusCount}
+            <span id="monitorActiveBusCount">${activeBusCount}</span>
           </p>
 
           <p class="text-[9px] text-gray-400 uppercase tracking-wide">
@@ -164,12 +159,14 @@ Pages.monitor = async function () {
       <div
         class="
           relative
+          -mx-3
           bg-white
-          rounded-2xl
-          border
-          border-gray-100
           shadow-sm
           overflow-hidden
+          sm:mx-0
+          sm:rounded-2xl
+          sm:border
+          sm:border-gray-100
         "
       >
 
@@ -177,19 +174,35 @@ Pages.monitor = async function () {
           id="monitorMap"
           class="
             w-full
-            h-[360px]
+            h-[68vh]
+            min-h-[440px]
+            max-h-[760px]
             bg-gray-100
           "
         ></div>
+
+        <!-- Floating route search, matching the commuter map controls -->
+        <div id="monitorRoutePicker" class="absolute top-3 left-3 right-3 z-20 sm:left-4 sm:right-auto sm:w-[min(420px,calc(100%-2rem))]">
+          <div class="relative">
+            <div class="relative flex items-center rounded-2xl border border-gray-200/90 bg-white/95 shadow-lg backdrop-blur-xl focus-within:border-qc-purple focus-within:ring-2 focus-within:ring-purple-100">
+              <span class="pointer-events-none absolute left-3.5 text-gray-500" aria-hidden="true">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+              </span>
+              <input id="monitorRouteSearch" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search route (e.g. R1, City Hall)" class="w-full rounded-2xl bg-transparent py-3 pl-10 pr-20 text-sm text-gray-800 outline-none placeholder:text-gray-400" aria-label="Search map routes">
+              <button id="monitorRouteClear" type="button" class="hidden absolute right-2.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-200" aria-label="Show all routes and buses">Clear</button>
+            </div>
+            <div id="monitorRouteList" class="absolute left-0 right-0 top-full z-30 mt-1.5 hidden max-h-60 space-y-1.5 overflow-y-auto rounded-2xl border border-gray-100 bg-white/95 p-2 shadow-2xl backdrop-blur-xl"></div>
+          </div>
+        </div>
 
         <!-- Map status -->
         <div
           class="
             absolute
-            top-3
+            bottom-3
             left-3
             z-10
-            bg-white/95
+            bg-white/90
             backdrop-blur-sm
             rounded-xl
             shadow-md
@@ -231,149 +244,12 @@ Pages.monitor = async function () {
 
         </div>
 
-        <!-- Map hint -->
-        <div
-          class="
-            absolute
-            bottom-3
-            left-1/2
-            -translate-x-1/2
-            z-10
-            pointer-events-none
-          "
-        >
-          <div
-            class="
-              bg-gray-900/75
-              text-white
-              px-3
-              py-1.5
-              rounded-full
-              text-[9px]
-              font-medium
-              backdrop-blur-sm
-            "
-          >
-            Tap a route to focus · all buses shown by default
-          </div>
-        </div>
-
       </div>
 
 
       <!-- ==================================================
-           ROUTE DOCK
+           ACTIVE BUS DETAILS
       ================================================== -->
-
-      <div
-        class="
-          bg-white
-          rounded-2xl
-          border
-          border-gray-100
-          shadow-sm
-          p-3
-        "
-      >
-
-        <div
-          class="
-            flex
-            items-center
-            justify-between
-            gap-3
-            mb-2.5
-          "
-        >
-
-
-
-          ${
-            selectedMonitorRouteId
-              ? `
-                <button
-                  type="button"
-                  onclick="clearMonitorRoute()"
-                  class="
-                    text-[10px]
-                    font-semibold
-                    text-qc-purple
-                    px-2.5
-                    py-1.5
-                    rounded-lg
-                    bg-purple-50
-                    hover:bg-purple-100
-                    transition
-                  "
-                >
-                  All routes
-                </button>
-              `
-              : `
-                <span
-                  class="
-                    text-[10px]
-                    text-gray-400
-                  "
-                >
-
-                </span>
-              `
-          }
-
-        </div>
-
-
-        <!-- Search -->
-        <div class="relative mb-2.5">
-
-          <input
-            id="monitorRouteSearch"
-            type="search"
-            placeholder="Search route..."
-            class="
-              w-full
-              px-3
-              py-2
-              pl-8
-              text-xs
-              bg-gray-50
-              border
-              border-gray-200
-              rounded-xl
-              outline-none
-              focus:border-qc-purple
-            "
-          />
-
-          <span
-            class="
-              absolute
-              left-2.5
-              top-1/2
-              -translate-y-1/2
-              text-gray-400
-              text-xs
-            "
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m16 16 4 4"/></svg>
-          </span>
-
-        </div>
-
-
-        <!-- Fixed-height route list -->
-        <div
-          id="monitorRouteList"
-          class="
-            space-y-1.5
-            max-h-40
-            overflow-y-auto
-            pr-1
-          "
-        ></div>
-
-      </div>
 
 
       <!-- ==================================================
@@ -411,6 +287,7 @@ Pages.monitor = async function () {
           </div>
 
           <div
+            id="monitorActiveTripCount"
             class="
               px-2
               py-1
@@ -427,6 +304,7 @@ Pages.monitor = async function () {
         </div>
 
 
+        <div id="monitorActiveTripsList">
         ${
           activeTrips.length === 0
             ? `
@@ -758,6 +636,7 @@ Pages.monitor = async function () {
               </div>
             `
         }
+        </div>
 
       </div>
 
@@ -782,11 +661,16 @@ let monitorMap = null;
 let monitorRoutes = [];
 let monitorBuses = [];
 let monitorStops = [];
+let monitorStaff = [];
+let monitorBusInventory = [];
+let monitorActiveTrips = [];
 
 let selectedMonitorRouteId = null;
 
 let monitorBusMarkers = [];
 let monitorStopMarkers = [];
+let unsubscribeMonitorBuses = null;
+let unsubscribeMonitorTrips = null;
 
 
 // ==================================================
@@ -804,6 +688,125 @@ const QC_CIRCLE_ZOOM = 13;
 // ==================================================
 // HELPERS
 // ==================================================
+
+function renderMonitorLiveTrips() {
+  const root = document.getElementById("monitorActiveTripsList");
+  if (!root) return;
+
+  if (!monitorBuses.length) {
+    root.innerHTML = `
+      <div class="rounded-xl bg-gray-50 py-7 text-center">
+        <p class="text-xs font-medium text-gray-500">No active trips</p>
+        <p class="mt-0.5 text-[10px] text-gray-400">Trips appear here when conductors start service.</p>
+      </div>`;
+    return;
+  }
+
+  root.innerHTML = `<div class="space-y-2">${monitorBuses.map((bus) => {
+    const route = getMonitorRoute(bus.routeId);
+    const conductor = monitorStaff.find((member) => member.id === bus.conductorId);
+    const color = getMonitorRouteColor(route);
+    const onboard = Number(bus.onboard) || 0;
+    const capacity = Number(bus.capacity) || 0;
+    const occupancy = capacity ? Math.min(100, Math.round(onboard / capacity * 100)) : 0;
+    return `
+      <button type="button" onclick="selectMonitorRoute('${escapeHtml(route?.id || "")}')" class="w-full rounded-xl border border-gray-100 p-3 text-left transition hover:bg-gray-50">
+        <div class="flex items-center gap-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold text-white" style="background:${escapeHtml(color)}">${escapeHtml(String(bus.code || bus.id || "BUS").split("-").pop())}</span>
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center gap-2">
+              <span class="truncate text-xs font-semibold text-gray-800">${escapeHtml(bus.code || bus.id || "Bus")}</span>
+              <span class="shrink-0 text-[9px] font-semibold text-green-600">● ON TRIP</span>
+            </span>
+            <span class="mt-0.5 block truncate text-[10px] text-gray-500">${escapeHtml(route ? `${route.code || ""}${route.name ? ` · ${route.name}` : ""}` : "No route assigned")}</span>
+            <span class="mt-1 block truncate text-[9px] text-gray-400">${escapeHtml(conductor ? `Conductor: ${conductor.name}` : "Conductor not assigned")}</span>
+          </span>
+          <span class="w-16 shrink-0 text-right">
+            <span class="block text-sm font-bold text-gray-800" data-monitor-occupancy>${onboard}/${capacity}</span>
+            <span class="mt-1.5 block h-1 overflow-hidden rounded-full bg-gray-100"><span class="block h-full rounded-full" data-monitor-occupancy-bar style="width:${occupancy}%;background:${escapeHtml(color)}"></span></span>
+          </span>
+        </div>
+      </button>`;
+  }).join("")}</div>`;
+}
+
+function updateMonitorLiveData({ fitNewBuses = false, renderTrips = true } = {}) {
+  const previousIds = new Set(monitorBuses.map((bus) => bus.id));
+  const previousLocatedIds = new Set(monitorBuses
+    .filter((bus) => getMonitorGps(bus))
+    .map((bus) => bus.id));
+  const inventoryById = new Map();
+  monitorBusInventory.forEach((bus) => {
+    [bus.id, bus.code, bus.busCode].filter(Boolean).forEach((key) => inventoryById.set(String(key), bus));
+  });
+  const busesById = new Map();
+
+  monitorActiveTrips.forEach((trip) => {
+    const busId = trip.busId;
+    if (!busId) return;
+    // Older conductor builds save the bus code in trips.busId, while GPS is
+    // written to the bus document. Resolve either identifier back to that doc.
+    const inventory = inventoryById.get(String(busId)) || {};
+    busesById.set(busId, {
+      ...inventory,
+      ...trip,
+      id: inventory.id || busId,
+      code: inventory.code || trip.busCode || busId,
+      routeId: trip.routeId || inventory.routeId || null,
+      lat: inventory.lat ?? trip.lat ?? null,
+      lng: inventory.lng ?? trip.lng ?? null,
+      speedKmh: inventory.speedKmh ?? trip.speedKmh ?? null,
+      locationUpdatedAt: inventory.locationUpdatedAt ?? trip.locationUpdatedAt ?? null,
+      onboard: trip.onboard ?? inventory.onboard ?? 0,
+      capacity: trip.capacity ?? inventory.capacity ?? 0,
+      driverId: trip.driverId || inventory.driverId || null,
+      conductorId: trip.conductorId || inventory.conductorId || null,
+      tripActive: true,
+    });
+  });
+
+  monitorBuses = [...busesById.values()];
+  updateMonitorBusMarkers();
+  if (renderTrips) renderMonitorLiveTrips();
+
+  const busCount = document.getElementById("monitorActiveBusCount");
+  if (busCount) busCount.textContent = String(monitorBuses.length);
+  const tripCount = document.getElementById("monitorActiveTripCount");
+  if (tripCount) tripCount.textContent = String(monitorBuses.length);
+  updateMonitorMapHeader(getMonitorRoute(selectedMonitorRouteId));
+
+  const hasNewActiveBus = monitorBuses.some((bus) => !previousIds.has(bus.id));
+  const hasNewGpsLocation = monitorBuses.some((bus) =>
+    getMonitorGps(bus) &&
+    !previousLocatedIds.has(bus.id)
+  );
+  if ((fitNewBuses && hasNewActiveBus) || hasNewGpsLocation) {
+    fitMonitorMapToBuses();
+  }
+}
+
+function startMonitorRealtimeListeners() {
+  unsubscribeMonitorBuses?.();
+  unsubscribeMonitorTrips?.();
+
+  unsubscribeMonitorBuses = onSnapshot(
+    collection(db, "buses"),
+    (snapshot) => {
+      monitorBusInventory = snapshot.docs.map((busDoc) => ({ id: busDoc.id, ...busDoc.data() }));
+      updateMonitorLiveData({ renderTrips: false });
+    },
+    (error) => console.error("Admin live bus location listener failed:", error)
+  );
+
+  unsubscribeMonitorTrips = onSnapshot(
+    query(collection(db, "trips"), where("status", "==", "active")),
+    (snapshot) => {
+      monitorActiveTrips = snapshot.docs.map((tripDoc) => ({ id: tripDoc.id, ...tripDoc.data() }));
+      updateMonitorLiveData({ fitNewBuses: true });
+    },
+    (error) => console.error("Admin active trip listener failed:", error)
+  );
+}
 
 function parseMonitorGeometry(route) {
   if (!route?.geometry) {
@@ -844,6 +847,24 @@ function parseMonitorGeometry(route) {
   }
 }
 
+
+function getMonitorGps(bus) {
+  const rawLat = bus?.lat;
+  const rawLng = bus?.lng;
+  if (rawLat === null || rawLat === undefined || rawLat === "" || rawLng === null || rawLng === undefined || rawLng === "") {
+    return null;
+  }
+
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+  // This monitor only covers Quezon City. Reject empty/default (0, 0) and
+  // stale or malformed coordinates so they cannot move the default map away.
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 14 || lat > 16 || lng < 120 || lng > 122) {
+    return null;
+  }
+
+  return { lat, lng };
+}
 
 function getMonitorRoute(routeId) {
   return (
@@ -925,6 +946,18 @@ function updateMonitorRoutePicker(
     String(searchTerm || "")
       .trim()
       .toLowerCase();
+
+  const clearButton = document.getElementById("monitorRouteClear");
+  if (clearButton) {
+    clearButton.classList.toggle("hidden", !search && !selectedMonitorRouteId);
+  }
+
+  if (!search) {
+    list.classList.add("hidden");
+    list.innerHTML = "";
+    return;
+  }
+  list.classList.remove("hidden");
 
   const filtered =
     monitorRoutes.filter(route => {
@@ -1154,24 +1187,17 @@ function selectMonitorRoute(
   }
 
 
-  // Clicking selected route again
-  // deselects it.
-  if (
-    selectedMonitorRouteId ===
-    routeId
-  ) {
-
-    clearMonitorRoute();
-
-    return;
-  }
-
-
   selectedMonitorRouteId =
     routeId;
 
+  const searchInput = document.getElementById("monitorRouteSearch");
+  if (searchInput) {
+    searchInput.value = route.code
+      ? `${route.code}${route.name ? ` — ${route.name}` : ""}`
+      : (route.name || "");
+  }
 
-  updateMonitorRoutePicker();
+  updateMonitorRoutePicker("");
 
   updateMonitorRouteLayers();
 
@@ -1194,7 +1220,10 @@ function clearMonitorRoute() {
   selectedMonitorRouteId =
     null;
 
-  updateMonitorRoutePicker();
+  const searchInput = document.getElementById("monitorRouteSearch");
+  if (searchInput) searchInput.value = "";
+
+  updateMonitorRoutePicker("");
 
   updateMonitorRouteLayers();
 
@@ -1235,8 +1264,12 @@ function updateMonitorMapHeader(
     title.textContent =
       "All routes";
 
-    subtitle.textContent =
-      "Tap a route to focus";
+    const locatedCount = monitorBuses.filter((bus) =>
+      Number.isFinite(Number(bus.lat)) && Number.isFinite(Number(bus.lng))
+    ).length;
+    subtitle.textContent = monitorBuses.length
+      ? `${locatedCount} of ${monitorBuses.length} active buses sharing GPS`
+      : "No active trips right now";
 
     return;
   }
@@ -1247,11 +1280,11 @@ function updateMonitorMapHeader(
     route.name ||
     "Selected route";
 
-  subtitle.textContent =
-    route.name &&
-    route.code
-      ? route.name
-      : "Focused route";
+  const routeBuses = monitorBuses.filter((bus) => bus.routeId === route.id);
+  const locatedCount = routeBuses.filter((bus) =>
+    Number.isFinite(Number(bus.lat)) && Number.isFinite(Number(bus.lng))
+  ).length;
+  subtitle.textContent = `${locatedCount} of ${routeBuses.length} active buses sharing GPS`;
 }
 
 
@@ -1852,293 +1885,114 @@ function updateMonitorStopMarkers() {
 // ==================================================
 
 function removeMonitorBusMarkers() {
-
-  monitorBusMarkers.forEach(
-    marker =>
-      marker.remove()
-  );
-
+  monitorBusMarkers.forEach(({ marker, popup }) => {
+    popup.remove();
+    marker.remove();
+  });
   monitorBusMarkers = [];
 }
 
+function getMonitorBusPopupHtml(bus, route) {
+  const capacity = Number(bus.capacity) || 0;
+  const onboard = Number(bus.onboard) || 0;
+  const speed = Number(bus.speedKmh);
+  const conductor = monitorStaff.find((member) => member.id === bus.conductorId);
+  const driver = monitorStaff.find((member) => member.id === bus.driverId);
+  const updatedAt = bus.locationUpdatedAt?.toDate
+    ? bus.locationUpdatedAt.toDate()
+    : bus.locationUpdatedAt
+      ? new Date(bus.locationUpdatedAt)
+      : null;
+  const updatedLabel = updatedAt && Number.isFinite(updatedAt.getTime())
+    ? updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Unavailable';
+  const routeLabel = route
+    ? [route.code, route.name].filter(Boolean).join(' · ')
+    : 'No route assigned';
+
+  return `
+    <div style="min-width:200px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">${escapeHtml(bus.code || bus.id || 'Bus')}</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:7px">${escapeHtml(routeLabel)}</div>
+      <div style="font-size:12px;color:#16a34a;font-weight:600">● ON TRIP</div>
+      ${bus.directionLabel ? `<div style="margin-top:7px;font-size:12px;color:#555">Direction: <strong>${escapeHtml(bus.directionLabel)}</strong></div>` : ''}
+      ${driver ? `<div style="margin-top:6px;font-size:12px;color:#555">Driver: <strong>${escapeHtml(driver.name)}</strong></div>` : ''}
+      ${conductor ? `<div style="margin-top:4px;font-size:12px;color:#555">Conductor: <strong>${escapeHtml(conductor.name)}</strong></div>` : ''}
+      <div style="margin-top:6px;font-size:12px;color:#555">Passengers: <strong>${onboard}/${capacity}</strong></div>
+      <div style="margin-top:4px;font-size:12px;color:#555">Available seats: <strong>${Math.max(0, capacity - onboard)}</strong></div>
+      <div style="margin-top:4px;font-size:12px;color:#555">Speed: <strong>${Number.isFinite(speed) ? `${speed} km/h` : 'Unavailable'}</strong></div>
+      <div style="margin-top:4px;font-size:11px;color:#888">GPS updated: ${escapeHtml(updatedLabel)}</div>
+    </div>`;
+}
+
+function getMonitorBusMarkerHtml(bus, color) {
+  const shortCode = String(bus.code || bus.id || 'BUS').split('-').pop();
+  return `
+    <div style="position:relative;display:inline-flex;align-items:center;gap:6px;background:${escapeHtml(color)};color:#fff;padding:4px 10px 4px 6px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)">
+      <img src="../images/bus (1).png" alt="" style="width:20px;height:20px;object-fit:contain;flex-shrink:0;filter:brightness(0) invert(1)">
+      <span>${escapeHtml(shortCode)}</span>
+      <span style="position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid #fff"></span>
+    </div>`;
+}
 
 function updateMonitorBusMarkers() {
+  if (!monitorMap) return;
 
-  if (!monitorMap) {
-    return;
-  }
+  const buses = selectedMonitorRouteId
+    ? monitorBuses.filter((bus) => bus.routeId === selectedMonitorRouteId)
+    : monitorBuses;
+  const busesWithLocation = buses.flatMap((bus) => {
+    const location = getMonitorGps(bus);
+    return bus.tripActive && bus.id && location
+      ? [{ bus, ...location }]
+      : [];
+  });
+  const visibleBusIds = new Set(busesWithLocation.map(({ bus }) => bus.id));
 
+  monitorBusMarkers = monitorBusMarkers.filter((record) => {
+    if (visibleBusIds.has(record.busId)) return true;
+    record.popup.remove();
+    record.marker.remove();
+    return false;
+  });
 
-  removeMonitorBusMarkers();
+  busesWithLocation.forEach(({ bus, lat, lng }) => {
+    const route = getMonitorRoute(bus.routeId);
+    const color = getMonitorRouteColor(route);
+    const popupHtml = getMonitorBusPopupHtml(bus, route);
+    const markerHtml = getMonitorBusMarkerHtml(bus, color);
+    const existing = monitorBusMarkers.find((record) => record.busId === bus.id);
 
-
-  const buses =
-    selectedMonitorRouteId
-      ? monitorBuses.filter(
-          bus =>
-            bus.routeId ===
-            selectedMonitorRouteId
-        )
-      : monitorBuses;
-
-
-  buses.forEach(bus => {
-
-    const route =
-      getMonitorRoute(
-        bus.routeId
-      );
-
-
-    const color =
-      getMonitorRouteColor(
-        route
-      );
-
-
-    let lat =
-      Number(bus.lat);
-
-    let lng =
-      Number(bus.lng);
-
-
-    // Fallback to first stop.
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
-
-      const firstStop =
-        getMonitorStops(
-          bus.routeId
-        )[0];
-
-      if (!firstStop) {
-        return;
+    if (existing) {
+      existing.marker.setLngLat([lng, lat]);
+      if (existing.popupHtml !== popupHtml) {
+        existing.popup.setHTML(popupHtml);
+        existing.popupHtml = popupHtml;
       }
-
-      lat =
-        Number(firstStop.lat);
-
-      lng =
-        Number(firstStop.lng);
-    }
-
-
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
+      if (existing.markerHtml !== markerHtml) {
+        existing.element.innerHTML = markerHtml;
+        existing.markerHtml = markerHtml;
+      }
+      existing.element.setAttribute('aria-label', `Show details for bus ${bus.code || bus.id || 'bus'}`);
       return;
     }
 
+    const element = document.createElement('div');
+    element.setAttribute('role', 'button');
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('aria-label', `Show details for bus ${bus.code || bus.id || 'bus'}`);
+    element.style.cursor = 'pointer';
+    element.innerHTML = markerHtml;
 
-    const element =
-      document.createElement(
-        "div"
-      );
+    const popup = new maplibregl.Popup({ offset: 12, closeButton: true }).setHTML(popupHtml);
+    const marker = new maplibregl.Marker({ element, anchor: 'bottom' })
+      .setLngLat([lng, lat])
+      .setPopup(popup)
+      .addTo(monitorMap);
 
-    element.addEventListener(
-      "pointerdown",
-      event => {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    );
-
-    element.addEventListener(
-      "mousedown",
-      event => {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    );
-
-    element.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    );
-
-
-    const shortCode =
-      String(
-        bus.code ||
-        bus.id ||
-        "BUS"
-      )
-      .split("-")
-      .pop();
-
-
-    element.innerHTML = `
-      <div
-        style="
-          position:relative;
-          display:inline-flex;
-          align-items:center;
-          gap:6px;
-          background:${escapeHtml(color)};
-          color:#fff;
-          padding:4px 10px 4px 6px;
-          border-radius:20px;
-          font-size:11px;
-          font-weight:700;
-          white-space:nowrap;
-          border:2px solid #fff;
-          box-shadow:0 2px 8px rgba(0,0,0,.25);
-        "
-      >
-        <img
-          src="../images/bus (1).png"
-          alt="Bus"
-          style="
-            width:20px;
-            height:20px;
-            object-fit:contain;
-            flex-shrink:0;
-            filter:brightness(0) invert(1);
-          "
-        />
-
-        <span>${escapeHtml(shortCode)}</span>
-
-        ${
-          bus.tripActive
-            ? `
-              <span
-                style="
-                  position:absolute;
-                  top:-4px;
-                  right:-4px;
-                  width:9px;
-                  height:9px;
-                  border-radius:50%;
-                  background:#22c55e;
-                  border:2px solid #fff;
-                "
-              ></span>
-            `
-            : ""
-        }
-
-      </div>
-    `;
-
-
-    const popup =
-      new maplibregl.Popup({
-        offset: 12,
-        closeButton: true
-      })
-      .setHTML(`
-        <div
-          style="
-            min-width:190px;
-          "
-        >
-
-          <div
-            style="
-              font-size:14px;
-              font-weight:700;
-              margin-bottom:4px;
-            "
-          >
-            ${escapeHtml(
-              bus.code ||
-              bus.id ||
-              "Bus"
-            )}
-          </div>
-
-          <div
-            style="
-              font-size:12px;
-              color:#6b7280;
-              margin-bottom:7px;
-            "
-          >
-            ${
-              route
-                ? `
-                  ${escapeHtml(
-                    route.code ||
-                    ""
-                  )}
-                  ·
-                  ${escapeHtml(
-                    route.name ||
-                    ""
-                  )}
-                `
-                : "No route"
-            }
-          </div>
-
-          <div
-            style="
-              font-size:12px;
-              color:#16a34a;
-              font-weight:600;
-            "
-          >
-            ● ${escapeHtml(
-              bus.status ||
-              "Active"
-            )}
-          </div>
-
-          ${
-            bus.tripActive
-              ? `
-                <div
-                  style="
-                    margin-top:8px;
-                    font-size:12px;
-                    color:#555;
-                  "
-                >
-                  Passengers:
-                  <strong>
-                    ${Number(bus.onboard) || 0}/${Number(bus.capacity) || 0}
-                  </strong>
-                </div>
-              `
-              : ""
-          }
-
-        </div>
-      `);
-
-
-    const marker =
-      new maplibregl.Marker({
-        element,
-        anchor: "bottom"
-      })
-      .setLngLat([
-        lng,
-        lat
-      ])
-      .setPopup(
-        popup
-      )
-      .addTo(
-        monitorMap
-      );
-
-
-    monitorBusMarkers.push(
-      marker
-    );
-
+    monitorBusMarkers.push({ busId: bus.id, marker, popup, element, popupHtml, markerHtml });
   });
 }
-
 
 // ==================================================
 // FIT ROUTE
@@ -2258,19 +2112,36 @@ function resetMonitorMapView() {
     return;
   }
 
+  fitMonitorMapToBuses();
+}
 
-  monitorMap.flyTo({
 
-    center:
-      QC_CIRCLE_CENTER,
+function fitMonitorMapToBuses() {
+  if (!monitorMap) return;
 
-    zoom:
-      QC_CIRCLE_ZOOM,
-
-    duration:
-      700
-
+  const coordinates = monitorBuses.flatMap((bus) => {
+    const location = getMonitorGps(bus);
+    return location ? [[location.lng, location.lat]] : [];
   });
+
+  if (!coordinates.length) {
+    monitorMap.flyTo({ center: QC_CIRCLE_CENTER, zoom: QC_CIRCLE_ZOOM, duration: 500 });
+    return;
+  }
+
+  if (coordinates.length === 1) {
+    monitorMap.flyTo({ center: coordinates[0], zoom: 13, duration: 600 });
+    return;
+  }
+
+  const bounds = new maplibregl.LngLatBounds();
+  coordinates.forEach((coordinate) => bounds.extend(coordinate));
+  monitorMap.fitBounds(bounds, {
+    padding: { top: 100, right: 55, bottom: 75, left: 55 },
+    maxZoom: 12.5,
+    duration: 650,
+  });
+
 }
 
 
@@ -2527,46 +2398,23 @@ async function initMonitorPage() {
   // Start the admin map with the full fleet in view every time it opens.
   selectedMonitorRouteId = null;
 
-  const [routes, buses, stops, activeTripsSnapshot] = await Promise.all([
+  const [routes, buses, stops, staff, activeTripsSnapshot] = await Promise.all([
     Store.getRoutes(),
     Store.getBuses(),
     Store.getStops(),
+    Store.getStaff(),
     getDocs(query(collection(db, "trips"), where("status", "==", "active"))),
   ]);
 
   monitorRoutes = routes;
   monitorStops = stops;
-
-  const activeTripsByBusId = new Map();
-  activeTripsSnapshot.docs.forEach((tripDoc) => {
-    const trip = { id: tripDoc.id, ...tripDoc.data() };
-    const bus = buses.find((item) => item.id === trip.busId);
-    const busId = bus?.id || trip.busId;
-    if (!busId) return;
-
-    activeTripsByBusId.set(busId, {
-      ...bus,
-      ...trip,
-      id: busId,
-      code: bus?.code || trip.busCode || busId,
-      routeId: trip.routeId || bus?.routeId || null,
-      lat: trip.lat ?? bus?.lat,
-      lng: trip.lng ?? bus?.lng,
-      onboard: trip.onboard ?? bus?.onboard ?? 0,
-      capacity: trip.capacity ?? bus?.capacity ?? 0,
-      driverId: trip.driverId || bus?.driverId || null,
-      conductorId: trip.conductorId || bus?.conductorId || null,
-      status: bus?.status || "active",
-      tripActive: true,
-    });
-  });
-
-  const busesById = new Map();
-  buses.filter((bus) => bus.status === "active").forEach((bus) => {
-    busesById.set(bus.id, { ...bus, tripActive: activeTripsByBusId.has(bus.id) });
-  });
-  activeTripsByBusId.forEach((bus, busId) => busesById.set(busId, bus));
-  monitorBuses = [...busesById.values()];
+  monitorStaff = staff;
+  monitorBusInventory = buses;
+  monitorActiveTrips = activeTripsSnapshot.docs.map((tripDoc) => ({
+    id: tripDoc.id,
+    ...tripDoc.data(),
+  }));
+  updateMonitorLiveData();
 
 
   // ================================================
@@ -2592,10 +2440,22 @@ async function initMonitorPage() {
       }
     );
 
+    searchInput.addEventListener("focus", () => {
+      if (searchInput.value.trim()) {
+        updateMonitorRoutePicker(searchInput.value);
+      }
+    });
+
   }
 
+  const clearRouteButton = document.getElementById("monitorRouteClear");
+  clearRouteButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearMonitorRoute();
+  });
 
-  updateMonitorRoutePicker();
+  updateMonitorRoutePicker("");
 
 
   // ================================================
@@ -2608,8 +2468,29 @@ async function initMonitorPage() {
       container:
         "monitorMap",
 
-      style:
-        "https://tiles.openfreemap.org/styles/liberty",
+      // Use a raster basemap here so the monitor remains readable when the
+      // remote vector style fails to load (which otherwise leaves a flat blue
+      // background while markers and controls still appear).
+      style: {
+        version: 8,
+        sources: {
+          "monitor-basemap": {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution: "© OpenStreetMap contributors",
+          },
+        },
+        layers: [
+          {
+            id: "monitor-basemap",
+            type: "raster",
+            source: "monitor-basemap",
+            minzoom: 0,
+            maxzoom: 19,
+          },
+        ],
+      },
 
       center:
         QC_CIRCLE_CENTER,
@@ -2678,6 +2559,8 @@ async function initMonitorPage() {
   // ================================================
 
   updateMonitorBusMarkers();
+  fitMonitorMapToBuses();
+  startMonitorRealtimeListeners();
 
 
   // ================================================
@@ -2721,13 +2604,12 @@ async function initMonitorPage() {
 // ==================================================
 
 function destroyMonitorMap() {
+  unsubscribeMonitorBuses?.();
+  unsubscribeMonitorTrips?.();
+  unsubscribeMonitorBuses = null;
+  unsubscribeMonitorTrips = null;
 
-  monitorBusMarkers.forEach(
-    marker =>
-      marker.remove()
-  );
-
-  monitorBusMarkers = [];
+  removeMonitorBusMarkers();
 
 
   monitorStopMarkers.forEach(
@@ -2754,6 +2636,9 @@ function destroyMonitorMap() {
   monitorRoutes = [];
   monitorBuses = [];
   monitorStops = [];
+  monitorStaff = [];
+  monitorBusInventory = [];
+  monitorActiveTrips = [];
 
   selectedMonitorRouteId =
     null;

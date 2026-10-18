@@ -18,7 +18,7 @@ import {
   updateBusLocationRepo,
 } from "../../shared/js/repositories/buses.repo.js";
 
-import { getNearestStop } from "../../shared/js/eta.js";
+import { getDistanceKm, getEta, getNearestStop } from "../../shared/js/eta.js";
 
 let tripTimerInterval = null;
 let unsubscribeDropoffRequests = null;
@@ -26,6 +26,74 @@ let unsubscribeActiveTrip = null;
 let busLocationWatchId = null;
 let lastBusLocationWriteAt = 0;
 const BUS_LOCATION_WRITE_INTERVAL_MS = 1000;
+const STOP_ETA_CAPTURE_DISTANCE_KM = 3;
+const STOP_ARRIVAL_RADIUS_KM = 0.15;
+let stopEtaAnalytics = [];
+let stopEtaAnalyticsWrite = Promise.resolve();
+
+function orderedTripStops() {
+  const stops = [...(AppState.routeStops || [])].sort(
+    (a, b) => Number(a.order || 0) - Number(b.order || 0)
+  );
+  const fromIndex = stops.findIndex((stop) => stop.id === AppState.trip.directionFromId);
+  const toIndex = stops.findIndex((stop) => stop.id === AppState.trip.directionToId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [];
+  const step = fromIndex < toIndex ? 1 : -1;
+  const ordered = [];
+  for (let index = fromIndex; ; index += step) {
+    ordered.push(stops[index]);
+    if (index === toIndex) break;
+  }
+  return ordered.slice(1);
+}
+
+function trackStopEtaAndArrival(latitude, longitude, now) {
+  if (!AppState.trip.tripId) return;
+  const stops = orderedTripStops();
+  if (!stops.length) return;
+
+  const analytics = Array.isArray(stopEtaAnalytics) ? stopEtaAnalytics : [];
+  const nextStop = stops.find((stop) => !analytics.some(
+    (entry) => entry.stopId === stop.id && entry.actualArrivalAt
+  ));
+  if (!nextStop) return;
+
+  const distanceKm = getDistanceKm({ lat: latitude, lng: longitude }, nextStop);
+  if (distanceKm === null) return;
+  const existing = analytics.find((entry) => entry.stopId === nextStop.id);
+  let changed = false;
+
+  if (!existing && distanceKm <= STOP_ETA_CAPTURE_DISTANCE_KM && distanceKm > STOP_ARRIVAL_RADIUS_KM) {
+    const eta = getEta(AppState.bus, nextStop, now);
+    if (Number.isFinite(eta.minutes)) {
+      analytics.push({
+        stopId: nextStop.id,
+        stopName: nextStop.name || "Bus stop",
+        predictedArrivalAt: now + eta.minutes * 60_000,
+        predictionCapturedAt: now,
+        actualArrivalAt: null,
+        distanceAtPredictionKm: distanceKm,
+      });
+      changed = true;
+    }
+  }
+
+  const currentEntry = analytics.find((entry) => entry.stopId === nextStop.id);
+  if (currentEntry && !currentEntry.actualArrivalAt && distanceKm <= STOP_ARRIVAL_RADIUS_KM) {
+    currentEntry.actualArrivalAt = now;
+    changed = true;
+  }
+
+  if (changed) {
+    stopEtaAnalytics = analytics;
+    const tripId = AppState.trip.tripId;
+    const snapshot = analytics.map((entry) => ({ ...entry }));
+    stopEtaAnalyticsWrite = stopEtaAnalyticsWrite
+      .catch(() => {})
+      .then(() => updateTripRepo(tripId, { stopEtaAnalytics: snapshot }))
+      .catch((error) => console.error("Stop ETA analytics save failed:", error));
+  }
+}
 
 function recordHistory(kind, label) {
   if (typeof window.addHistory === "function") {
@@ -86,6 +154,7 @@ function startBusLocationTracking() {
       AppState.bus.lng = longitude;
       AppState.bus.speedKmh = speedKmh;
       AppState.bus.locationUpdatedAt = now;
+      trackStopEtaAndArrival(latitude, longitude, now);
       updateNearestStop(latitude, longitude);
       window.updateConductorEta?.();
       window.updateFloatingLiveMap?.();
@@ -202,6 +271,7 @@ async function startTrip() {
       directionToName: directionTo.name,
       directionLabel: `${directionFrom.name} → ${directionTo.name}`,
     };
+    stopEtaAnalytics = [];
 
     AppState.occupancy = {
       onboard: 0,
@@ -372,6 +442,9 @@ async function restoreActiveTrip() {
       directionTo: trip.directionToName || null,
       directionLabel: trip.directionLabel || "",
     };
+    stopEtaAnalytics = Array.isArray(trip.stopEtaAnalytics)
+      ? trip.stopEtaAnalytics.map((entry) => ({ ...entry }))
+      : [];
     listenToDropoffRequests(trip.id);
     if (window.startLiveOccupancySync) window.startLiveOccupancySync(trip.id);
     startBusLocationTracking();
@@ -420,6 +493,9 @@ function initActiveTripListener() {
         AppState.trip.directionToName = trip.directionToName || null;
         AppState.trip.directionTo = trip.directionToName || null;
         AppState.trip.directionLabel = trip.directionLabel || "";
+        stopEtaAnalytics = Array.isArray(trip.stopEtaAnalytics)
+          ? trip.stopEtaAnalytics.map((entry) => ({ ...entry }))
+          : [];
 
         AppState.occupancy.onboard = Number(trip.onboard) || 0;
         AppState.occupancy.totalIn = Number(trip.totalIn) || 0;

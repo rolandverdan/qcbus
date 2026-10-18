@@ -5,6 +5,8 @@
 
 let staffPage = 1;
 let currentStaffRole = 'all';
+let currentStaffSearch = '';
+let staffSearchTimeout = null;
 const STAFF_PAGE_SIZE = 10;
 
 Pages.staff = async function () {
@@ -22,26 +24,29 @@ Pages.staff = async function () {
   const admins = users.filter(
     user => user.role === 'admin'
   );
+  const commuters = users.filter(
+    user => user.role === 'commuter'
+  );
 
   return `
     <div class="space-y-4 slide-in">
 
       <!-- HEADER -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
         <div>
           <h2 class="font-semibold text-gray-800">
-            Account Manager
+            User Accounts
           </h2>
 
           <p class="text-xs text-gray-400 mt-0.5">
-            Manage administrators, conductors, and drivers
+            View commuter, administrator, conductor, and driver accounts
           </p>
         </div>
 
         <button
           onclick="openStaffModal()"
-          class="px-3 py-1.5 bg-qc-purple text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1"
+          class="self-start shrink-0 px-3 py-1.5 bg-qc-purple text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1 sm:self-auto"
         >
           <svg
             class="w-3.5 h-3.5"
@@ -62,21 +67,34 @@ Pages.staff = async function () {
 
       </div>
 
+      <label class="relative block">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+        <input type="search" id="userAccountSearch" value="${escapeHtml(currentStaffSearch)}" oninput="searchUserAccounts(this.value)" placeholder="Search by name, email, phone, or role" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-qc-purple" aria-label="Search user accounts">
+      </label>
+
       <!-- FILTERS -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-1 flex">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-1 flex flex-nowrap gap-1 overflow-x-auto">
 
         <button
           onclick="filterStaff('all')"
           data-stafftab="all"
-          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg bg-purple-50 text-qc-purple transition"
+          class="staff-tab flex-1 shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold rounded-lg bg-purple-50 text-qc-purple transition"
         >
-          All (${admins.length + conductors.length + drivers.length})
+          All (${users.length + staff.filter(member => !member.uid || !users.some(user => user.uid === member.uid)).length})
+        </button>
+
+        <button
+          onclick="filterStaff('commuter')"
+          data-stafftab="commuter"
+          class="staff-tab flex-1 shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+        >
+          Commuters (${commuters.length})
         </button>
 
         <button
           onclick="filterStaff('admin')"
           data-stafftab="admin"
-          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+          class="staff-tab flex-1 shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
         >
           Admins (${admins.length})
         </button>
@@ -84,7 +102,7 @@ Pages.staff = async function () {
         <button
           onclick="filterStaff('conductor')"
           data-stafftab="conductor"
-          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+          class="staff-tab flex-1 shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
         >
           Conductors (${conductors.length})
         </button>
@@ -92,7 +110,7 @@ Pages.staff = async function () {
         <button
           onclick="filterStaff('driver')"
           data-stafftab="driver"
-          class="staff-tab flex-1 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
+          class="staff-tab flex-1 shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold rounded-lg text-gray-500 transition"
         >
           Drivers (${drivers.length})
         </button>
@@ -101,7 +119,7 @@ Pages.staff = async function () {
 
       <!-- LIST -->
       <div id="staffList" class="space-y-3">
-        ${await renderStaffList()}
+        ${await renderStaffList(currentStaffRole)}
       </div>
 
     </div>
@@ -122,22 +140,24 @@ async function renderStaffList(role = 'all') {
   const accounts = [];
 
   // ------------------------------------------
-  // ADMINS
+  // Add every login profile, including commuter accounts. If a profile is
+  // linked to a conductor record, retain the staff ID for bus assignments.
   // ------------------------------------------
 
-  users
-    .filter(user => user.role === 'admin')
-    .forEach(user => {
+  users.forEach(user => {
+      const linkedStaff = staff.find(member => member.uid && member.uid === user.uid);
       accounts.push({
-        id: user.uid,
+        ...(linkedStaff || {}),
+        id: linkedStaff?.id || user.uid,
         uid: user.uid,
-        name: user.name || 'Unnamed Admin',
-        email: user.email || '',
-        phone: user.phone || '',
-        role: 'admin',
-        status: user.status || 'active',
+        userId: user.uid,
+        name: user.name || linkedStaff?.name || 'Unnamed User',
+        email: user.email || linkedStaff?.email || '',
+        phone: user.phone || linkedStaff?.phone || '',
+        role: linkedStaff?.role || user.role || 'commuter',
+        status: user.status || linkedStaff?.status || 'active',
         isUser: true,
-        isStaff: false,
+        isStaff: Boolean(linkedStaff),
       });
     });
 
@@ -145,7 +165,9 @@ async function renderStaffList(role = 'all') {
   // CONDUCTORS + DRIVERS
   // ------------------------------------------
 
-  staff.forEach(member => {
+  staff
+    .filter(member => !member.uid || !users.some(user => user.uid === member.uid))
+    .forEach(member => {
     accounts.push({
       ...member,
       isUser: member.role === 'conductor',
@@ -159,8 +181,13 @@ async function renderStaffList(role = 'all') {
       : accounts.filter(
           account => account.role === role
         );
+  const normalizedSearch = currentStaffSearch.trim().toLowerCase();
+  const searched = normalizedSearch
+    ? filtered.filter(account => [account.name, account.email, account.phone, account.role, account.status]
+        .some(value => String(value || '').toLowerCase().includes(normalizedSearch)))
+    : filtered;
 
-  if (filtered.length === 0) {
+  if (searched.length === 0) {
     return `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
 
@@ -169,16 +196,16 @@ async function renderStaffList(role = 'all') {
         </div>
 
         <p class="text-sm text-gray-500">
-          No ${role === 'all' ? 'accounts' : `${role}s`} yet
+          ${normalizedSearch ? 'No matching accounts found' : `No ${role === 'all' ? 'accounts' : `${role}s`} yet`}
         </p>
 
       </div>
     `;
   }
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / STAFF_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(searched.length / STAFF_PAGE_SIZE));
   staffPage = Math.min(staffPage, pageCount);
-  const visibleAccounts = filtered.slice(
+  const visibleAccounts = searched.slice(
     (staffPage - 1) * STAFF_PAGE_SIZE,
     staffPage * STAFF_PAGE_SIZE
   );
@@ -193,6 +220,8 @@ async function renderStaffList(role = 'all') {
 
     const isConductor =
       account.role === 'conductor';
+    const isCommuter =
+      account.role === 'commuter';
 
     const assignedBus = buses.find(
       bus =>
@@ -217,25 +246,31 @@ async function renderStaffList(role = 'all') {
         ? 'bg-qc-purple'
         : isDriver
           ? 'bg-qc-blue'
-          : 'bg-qc-green';
+          : isCommuter
+            ? 'bg-gray-500'
+            : 'bg-qc-green';
 
     const roleClass =
       isAdmin
         ? 'bg-purple-100 text-qc-purple'
         : isDriver
           ? 'bg-blue-100 text-qc-blue'
-          : 'bg-green-100 text-qc-green';
+          : isCommuter
+            ? 'bg-gray-100 text-gray-600'
+            : 'bg-green-100 text-qc-green';
 
     const roleLabel =
       isAdmin
         ? 'Admin'
         : isDriver
           ? 'Driver'
-          : 'Conductor';
+          : isConductor
+            ? 'Conductor'
+            : account.role.charAt(0).toUpperCase() + account.role.slice(1);
 
     return `
       <div
-        class="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex items-center gap-3"
+        class="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 grid grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3"
       >
 
         <!-- AVATAR -->
@@ -257,11 +292,11 @@ async function renderStaffList(role = 'all') {
             <span
               class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleClass}"
             >
-              ${roleLabel}
+              ${escapeHtml(roleLabel)}
             </span>
 
             ${
-              isAdmin || isConductor
+              isAdmin || isConductor || isCommuter
                 ? `
                   <span
                     class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${
@@ -320,29 +355,16 @@ async function renderStaffList(role = 'all') {
 
         </div>
 
-        <!-- ACTIONS -->
-        <button
-          onclick="openStaffActions('${account.id}', '${account.role}')"
-          class="p-1.5 hover:bg-gray-100 rounded-full transition"
-        >
-          <svg
-            class="w-5 h-5 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 5v.01M12 12v.01M12 19v.01"
-            />
-          </svg>
-        </button>
+        <!-- ACCOUNT ACTIONS -->
+        <div class="col-span-2 flex w-full justify-end gap-1 sm:col-span-1 sm:w-auto sm:flex-col md:flex-row">
+          <button onclick="viewUserAccount('${account.id}', '${account.role}')" class="min-h-9 flex-1 px-3 text-xs font-semibold text-qc-blue hover:bg-blue-50 rounded-md sm:flex-none sm:px-2 sm:text-[11px]">View</button>
+          <button onclick="${isCommuter ? `openUserProfileModal('${account.userId || account.uid}')` : `openStaffModal('${account.id}')`}" class="min-h-9 flex-1 px-3 text-xs font-semibold text-qc-purple hover:bg-purple-50 rounded-md sm:flex-none sm:px-2 sm:text-[11px]">Edit</button>
+          <button onclick="confirmDeleteStaff('${account.id}', '${account.role}', '${account.userId || account.uid || ''}')" class="min-h-9 flex-1 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-md sm:flex-none sm:px-2 sm:text-[11px]">Delete</button>
+        </div>
 
       </div>
     `;
-  }).join('') + window.renderAdminPagination(staffPage, filtered.length, 'setStaffPage');
+  }).join('') + window.renderAdminPagination(staffPage, searched.length, 'setStaffPage');
 }
 
 
@@ -353,6 +375,8 @@ async function renderStaffList(role = 'all') {
 async function filterStaff(role) {
   staffPage = 1;
   currentStaffRole = role;
+  const search = document.getElementById('userAccountSearch');
+  if (search) currentStaffSearch = search.value;
 
   document.querySelectorAll('.staff-tab').forEach(btn => {
 
@@ -370,6 +394,16 @@ async function filterStaff(role) {
   document.getElementById('staffList').innerHTML =
     await renderStaffList(role);
 }
+
+window.searchUserAccounts = async function (value) {
+  currentStaffSearch = value || '';
+  staffPage = 1;
+  clearTimeout(staffSearchTimeout);
+  staffSearchTimeout = setTimeout(async () => {
+    const list = document.getElementById('staffList');
+    if (list) list.innerHTML = await renderStaffList(currentStaffRole);
+  }, 220);
+};
 
 window.setStaffPage = async function (page) {
   staffPage = page;
@@ -1135,6 +1169,70 @@ document
 // ACCOUNT ACTIONS
 // ==================================================
 
+window.viewUserAccount = async function (id, role) {
+  const [users, staff, buses] = await Promise.all([
+    Store.getUsers(),
+    Store.getStaff(),
+    Store.getBuses(),
+  ]);
+  const staffMember = staff.find(member => member.id === id);
+  const user = users.find(profile => profile.uid === id || profile.uid === staffMember?.uid);
+  const account = { ...(staffMember || {}), ...(user || {}) };
+  if (!staffMember && !user) return;
+
+  const assignedBus = buses.find(bus =>
+    role === 'driver' ? bus.driverId === id : role === 'conductor' ? bus.conductorId === id : false
+  );
+  openModal(escapeHtml(account.name || 'User account'), `
+    <div class="space-y-3 text-sm">
+      <div><p class="text-xs text-gray-400">Account type</p><p class="font-medium text-gray-800">${escapeHtml(role)}</p></div>
+      <div><p class="text-xs text-gray-400">Email</p><p class="font-medium text-gray-800 break-all">${escapeHtml(account.email || 'No email')}</p></div>
+      <div><p class="text-xs text-gray-400">Phone</p><p class="font-medium text-gray-800">${escapeHtml(account.phone || 'No phone number')}</p></div>
+      <div><p class="text-xs text-gray-400">Status</p><p class="font-medium text-gray-800">${escapeHtml(account.status || 'Active')}</p></div>
+      ${assignedBus ? `<div><p class="text-xs text-gray-400">Assigned bus</p><p class="font-medium text-gray-800">${escapeHtml(assignedBus.code || assignedBus.id)}</p></div>` : ''}
+    </div>
+  `);
+};
+
+window.openUserProfileModal = async function (uid) {
+  const users = await Store.getUsers();
+  const user = users.find(profile => profile.uid === uid);
+  if (!user) return;
+
+  openModal('Edit Commuter', `
+    <form id="commuterAccountForm" class="space-y-4">
+      <label class="block text-xs font-medium text-gray-600">Full name
+        <input name="name" required value="${escapeHtml(user.name || '')}" class="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-qc-purple">
+      </label>
+      <label class="block text-xs font-medium text-gray-600">Email
+        <input type="email" value="${escapeHtml(user.email || '')}" disabled class="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-500">
+        <span class="block mt-1 text-[11px] text-gray-400">Email changes must be made through Firebase Authentication.</span>
+      </label>
+      <label class="block text-xs font-medium text-gray-600">Phone
+        <input name="phone" type="tel" maxlength="12" inputmode="numeric" value="${escapeHtml(user.phone || '')}" class="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-qc-purple">
+      </label>
+      <button type="submit" class="w-full py-2.5 bg-qc-purple text-white text-sm font-semibold rounded-xl">Save changes</button>
+    </form>
+  `);
+
+  document.getElementById('commuterAccountForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    try {
+      await Store.updateUserProfile(uid, {
+        name: String(formData.get('name') || '').trim(),
+        phone: String(formData.get('phone') || '').replace(/\D/g, '').slice(0, 12),
+      });
+      closeModal();
+      showToast('Commuter account updated', 'success');
+      await navigateTo('staff');
+    } catch (error) {
+      console.error('Commuter account update error:', error);
+      showToast('Failed to update account', 'error');
+    }
+  });
+};
+
 async function openStaffActions(
   id,
   role
@@ -1224,7 +1322,8 @@ async function openStaffActions(
 
 async function confirmDeleteStaff(
   id,
-  role
+  role,
+  userId = ''
 ) {
 
   closeModal();
@@ -1232,8 +1331,8 @@ async function confirmDeleteStaff(
   const ok =
     await confirmAction(
       'Delete Account?',
-      role === 'admin'
-        ? 'This will remove the admin profile.'
+      role === 'admin' || role === 'commuter' || (role === 'conductor' && userId)
+        ? 'This will mark the user profile inactive. Their Firebase sign-in will remain available.'
         : 'This will remove the staff record.',
       'Delete'
     );
@@ -1242,23 +1341,27 @@ async function confirmDeleteStaff(
 
   try {
 
-    if (role === 'admin') {
+    if (role === 'admin' || role === 'commuter' || (role === 'conductor' && userId)) {
 
       // Delete Firestore profile only.
       // Firebase Authentication account
       // remains until removed through
       // Firebase Auth/Admin tooling.
       await Store.updateUserProfile(
-        id,
+        userId || id,
         {
           status: 'inactive',
         }
       );
 
       showToast(
-        'Admin account deactivated',
+        'User account deactivated',
         'info'
       );
+
+      if (role === 'conductor') {
+        await Store.deleteStaff(id);
+      }
 
     } else {
 

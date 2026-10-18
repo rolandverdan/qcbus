@@ -388,8 +388,8 @@ async function showSystemNotification(
   }
 
   const notificationOptions = {
-    icon: "/images/qclogo2.png",
-    badge: "/images/qclogo2.png",
+    icon: "/images/buslogo.jpg",
+    badge: "/images/buslogo.jpg",
     vibrate: AppState.settings?.notificationSound === false ||
       AppState.settings?.notificationVibration === false
       ? []

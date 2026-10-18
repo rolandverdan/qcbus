@@ -10,8 +10,8 @@
     <title>QC Bus Tracker · Conductor</title>
 
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/images/buslogo.jpg">
+    <link rel="icon" href="/images/buslogo.jpg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/style.css">
 
@@ -59,9 +59,9 @@
 
     <div class="mb-6 animate-pulse">
       <img
-        src="/images/qclogo2.png"
+        src="/images/buslogo.jpg"
         alt="QCommute"
-        class="h-20 w-20 object-contain"
+        class="h-20 w-20 object-contain object-center"
       />
     </div>
 
@@ -91,7 +91,9 @@
     <header class="bg-gradient-to-br from-qc-blue to-qc-blue-accent text-white sticky top-0 z-40 shadow-md">
         <div class="px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-                <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
+                <span class="w-10 h-10 flex-shrink-0 overflow-hidden rounded-xl bg-white p-1 shadow-sm">
+                    <img src="../images/buslogo.jpg" alt="Quezon City" class="block w-full h-full object-contain object-center rounded-md">
+                </span>
                 <div class="leading-tight">
                     <h1 class="font-bold text-sm" id="pageTitle">Conductor Dashboard</h1>
                     <p class="text-[10px] text-white/75 tracking-wide" id="tripStatus">Quezon City</p>
@@ -259,7 +261,7 @@
             <!-- Logo + name -->
             <div class="text-center">
                 <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-qc-blue-accent rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-3 p-2">
-                    <img src="../images/qclogo2.png" alt="Quezon City" class="w-full h-full object-contain">
+                    <img src="../images/buslogo.jpg" alt="Quezon City" class="w-full h-full object-contain object-center">
                 </div>
 
                 <h2 class="text-xl font-bold text-gray-800">QCommute</h2>

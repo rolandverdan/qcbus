@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-conductor-v15';
+const CACHE_NAME = 'qc-conductor-v18';
 const urlsToCache = [
   './',
   './index.html',

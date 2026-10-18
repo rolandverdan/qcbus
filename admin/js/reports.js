@@ -26,6 +26,7 @@ import {
 
 let allReports = [];
 let activeFilter = "all";
+let reportsSearch = "";
 let reportsPage = 1;
 const REPORTS_PAGE_SIZE = 10;
 
@@ -117,7 +118,22 @@ async function loadReports() {
 window.Pages = window.Pages || {};
 
 window.Pages.reports = function () {
-  const filtered = filterReports(allReports);
+  const roleFiltered = filterReports(allReports);
+  const query = reportsSearch.trim().toLowerCase();
+  const filtered = query
+    ? roleFiltered.filter(report => [
+        report.role,
+        report.status,
+        report.busRoute,
+        report.category,
+        formatCategory(report.category),
+        report.description,
+        report.reporterName,
+        report.reporterEmail,
+        report.driverName,
+        report.conductorName,
+      ].some(value => String(value || '').toLowerCase().includes(query)))
+    : roleFiltered;
   const pageCount = Math.max(1, Math.ceil(filtered.length / REPORTS_PAGE_SIZE));
   reportsPage = Math.min(reportsPage, pageCount);
   const visibleReports = filtered.slice(
@@ -144,6 +160,11 @@ window.Pages.reports = function () {
         </div>
       </div>
 
+      <label class="relative block">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+        <input type="search" value="${escapeHtml(reportsSearch)}" oninput="searchReports(this.value)" placeholder="Search reports, route, reporter, or description" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-qc-purple" aria-label="Search reports">
+      </label>
+
       <!-- Filter chips -->
       <div class="flex gap-2 overflow-x-auto pb-1">
         ${renderFilterChip('all',       'All',       allReports.length)}
@@ -155,6 +176,7 @@ window.Pages.reports = function () {
       </div>
 
       <!-- Reports list -->
+      <div id="adminReportsResults">
       ${filtered.length === 0 ? `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <div class="w-14 h-14 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-3">
@@ -162,10 +184,11 @@ window.Pages.reports = function () {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
             </svg>
           </div>
-          <p class="text-sm text-gray-500">No reports ${activeFilter === 'all' ? 'yet' : 'in this category'}</p>
+          <p class="text-sm text-gray-500">${query ? 'No matching reports found' : `No reports ${activeFilter === 'all' ? 'yet' : 'in this category'}`}</p>
         </div>
       ` : visibleReports.map(r => renderReportCard(r)).join('')}
       ${window.renderAdminPagination(reportsPage, filtered.length, 'setReportsPage')}
+      </div>
 
     </div>
   `;
@@ -180,7 +203,7 @@ function renderFilterChip(key, label, count) {
     ? 'bg-qc-blue-accent text-white'
     : 'bg-white text-gray-700 border border-gray-200';
   return `
-    <button onclick="setReportFilter('${key}')"
+    <button onclick="setReportFilter('${key}')" data-report-filter="${key}" aria-pressed="${active}"
       class="${cls} flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition">
       ${label} (${count})
     </button>
@@ -319,12 +342,32 @@ function filterReports(list) {
 function setReportFilter(key) {
   activeFilter = key;
   reportsPage = 1;
-  window.navigateTo('reports');
+  document.querySelectorAll('[data-report-filter]').forEach(button => {
+    const active = button.dataset.reportFilter === key;
+    button.setAttribute('aria-pressed', String(active));
+    button.className = `${active ? 'bg-qc-blue-accent text-white' : 'bg-white text-gray-700 border border-gray-200'} flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition`;
+  });
+  refreshReportResults();
 }
+
+function refreshReportResults() {
+  const results = document.getElementById('adminReportsResults');
+  if (!results || window.AppState?.currentPage !== 'reports') return;
+  const page = document.createElement('div');
+  page.innerHTML = window.Pages.reports();
+  const nextResults = page.querySelector('#adminReportsResults');
+  if (nextResults) results.innerHTML = nextResults.innerHTML;
+}
+
+window.searchReports = function (value) {
+  reportsSearch = value || '';
+  reportsPage = 1;
+  refreshReportResults();
+};
 
 window.setReportsPage = function (page) {
   reportsPage = page;
-  window.navigateTo('reports');
+  refreshReportResults();
 };
 
 // ==================================================

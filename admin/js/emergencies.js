@@ -311,10 +311,11 @@ function renderEmergencyCard(item) {
     : null;
 
   return `
-    <article class="rounded-2xl border ${isActive ? 'border-red-200 bg-red-50/20' : 'border-gray-100 bg-white'} p-4 sm:p-5 shadow-sm transition hover:shadow-md relative overflow-hidden">
+    <details class="group rounded-2xl border ${isActive ? 'border-red-200 bg-red-50/20' : 'border-gray-100 bg-white'} p-4 sm:p-5 shadow-sm transition hover:shadow-md relative overflow-hidden">
       ${isActive ? `<div class="absolute top-0 left-0 right-0 h-1 bg-red-600"></div>` : ''}
 
       <!-- Top Header: Emergency Type, Status, and Timestamp -->
+      <summary class="list-none cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl ${config.iconBg} flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -346,8 +347,10 @@ function renderEmergencyCard(item) {
               RESOLVED
             </span>
           `}
+          <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg>
         </div>
       </div>
+      </summary>
 
       <!-- Core Details Grid -->
       <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 border-t border-gray-100 pt-4">
@@ -461,7 +464,7 @@ function renderEmergencyCard(item) {
           `}
         </div>
       </div>
-    </article>
+    </details>
   `;
 }
 

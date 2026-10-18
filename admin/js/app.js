@@ -39,6 +39,10 @@ window.renderAdminPagination = function (page, totalItems, handlerName) {
 // NAVIGATION
 // ==================================================
 async function navigateTo(page) {
+  if (AppState.currentPage === 'monitor' && page !== 'monitor') {
+    window.destroyMonitorMap?.();
+  }
+
   if (AppState.currentPage === 'tripLogs' && page !== 'tripLogs') {
     window.stopTripLogsListener?.();
   }
@@ -70,39 +74,43 @@ async function navigateTo(page) {
   const meta = {
     dashboard: {
       title: 'Admin Dashboard',
-      sub: 'Quezon City · Manage everything'
+      sub: 'Quezon City'
     },
     routes: {
       title: 'Routes',
-      sub: 'Quezon City · Bus routes'
+      sub: 'Quezon City'
     },
     buses: {
       title: 'Buses',
-      sub: 'Quezon City · Fleet & assignments'
+      sub: 'Quezon City'
     },
     staff: {
-      title: 'Staff',
-      sub: 'Quezon City · Drivers & conductors'
+      title: 'Users',
+      sub: 'Quezon City'
     },
     monitor: {
       title: 'Live Monitor',
-      sub: 'Quezon City · Real-time fleet'
+      sub: 'Quezon City'
+    },
+    etaAnalytics: {
+      title: 'ETA Analytics',
+      sub: 'Quezon City'
     },
     stops: {
       title: 'Stops',
-      sub: 'Quezon City · Route stops'
+      sub: 'Quezon City'
     },
     reports: {
       title: 'Reports',
-      sub: 'Quezon City · Commuter submissions'
+      sub: 'Quezon City'
     },
     tripLogs: {
       title: 'Trip Logs',
-      sub: 'Quezon City · Trip history & passenger counts'
+      sub: 'Quezon City'
     },
     emergencyLogs: {
       title: 'Emergency Logs',
-      sub: 'Quezon City · SOS alerts & incident records'
+      sub: 'Quezon City'
     },
   };
 
@@ -124,6 +132,10 @@ async function navigateTo(page) {
 
   if (page === 'monitor') {
     await initMonitorPage();
+  }
+
+  if (page === 'etaAnalytics') {
+    await window.initEtaAnalyticsPage?.();
   }
 
   if (page === 'tripLogs') {

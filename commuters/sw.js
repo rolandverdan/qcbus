@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-commuter-v11';
+const CACHE_NAME = 'qc-commuter-v42';
 const NOTIFICATION_PREFS_CACHE = 'qc-commuter-notification-prefs-v1';
 const urlsToCache = [
   './',
@@ -91,8 +91,8 @@ try {
 
         const notificationOptions = {
           body: data.body || 'You have a new notification.',
-          icon: '/images/qclogo2.png',
-          badge: '/images/qclogo2.png',
+          icon: '/images/buslogo.jpg',
+          badge: '/images/buslogo.jpg',
           vibrate: prefs.sound === false || prefs.vibration === false
             ? []
             : [180, 80, 180],

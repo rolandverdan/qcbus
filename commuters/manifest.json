@@ -12,24 +12,10 @@
   "categories": ["travel", "navigation"],
   "icons": [
     {
-      "src": "/images/qclogo2.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/images/qclogo2.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/images/qclogo2.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "narrow"
+      "src": "/images/buslogo.jpg",
+      "sizes": "710x685",
+      "type": "image/jpeg",
+      "purpose": "any"
     }
   ]
 }

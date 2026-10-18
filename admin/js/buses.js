@@ -1,13 +1,33 @@
 let busesPage = 1;
+let busesSearch = '';
+let busesData = [];
+let busRoutesData = [];
+let busStaffData = [];
 const BUSES_PAGE_SIZE = 10;
 
 Pages.buses = async function () {
-  const buses = await Store.getBuses();
-  const routes = await Store.getRoutes();
-  const staff = await Store.getStaff();
-  const pageCount = Math.max(1, Math.ceil(buses.length / BUSES_PAGE_SIZE));
+  [busesData, busRoutesData, busStaffData] = await Promise.all([
+    Store.getBuses(),
+    Store.getRoutes(),
+    Store.getStaff(),
+  ]);
+  return renderBusesPage();
+};
+
+function renderBusesPage() {
+  const query = busesSearch.trim().toLowerCase();
+  const filteredBuses = query
+    ? busesData.filter(bus => {
+        const route = busRoutesData.find(item => item.id === bus.routeId);
+        const driver = busStaffData.find(item => item.id === bus.driverId);
+        const conductor = busStaffData.find(item => item.id === bus.conductorId);
+        return [bus.code, bus.plateNumber, bus.status, route?.code, route?.name, driver?.name, conductor?.name]
+          .some(value => String(value || '').toLowerCase().includes(query));
+      })
+    : busesData;
+  const pageCount = Math.max(1, Math.ceil(filteredBuses.length / BUSES_PAGE_SIZE));
   busesPage = Math.min(busesPage, pageCount);
-  const visibleBuses = buses.slice(
+  const visibleBuses = filteredBuses.slice(
     (busesPage - 1) * BUSES_PAGE_SIZE,
     busesPage * BUSES_PAGE_SIZE
   );
@@ -15,7 +35,7 @@ Pages.buses = async function () {
   return `
     <div class="space-y-4 slide-in">
       <div class="flex items-center justify-between">
-        <h2 class="font-semibold text-gray-800">Fleet (${buses.length})</h2>
+        <h2 class="font-semibold text-gray-800">Fleet (${filteredBuses.length})</h2>
 
         <button onclick="openBusModal()" class="px-3 py-1.5 bg-qc-purple text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -25,7 +45,12 @@ Pages.buses = async function () {
         </button>
       </div>
 
-      ${buses.length === 0 ? `
+      <label class="relative block">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+        <input type="search" value="${escapeHtml(busesSearch)}" oninput="searchBuses(this.value)" placeholder="Search bus, plate, route, or staff" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-qc-purple" aria-label="Search buses">
+      </label>
+
+      ${busesData.length === 0 ? `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <p class="text-sm text-gray-500 mb-3">No buses registered</p>
 
@@ -33,17 +58,19 @@ Pages.buses = async function () {
             Register First Bus
           </button>
         </div>
+      ` : filteredBuses.length === 0 ? `
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-sm text-gray-500">No matching buses found</div>
       ` : visibleBuses.map(bus => {
         const route = bus.routeId
-          ? routes.find(r => r.id === bus.routeId)
+          ? busRoutesData.find(r => r.id === bus.routeId)
           : null;
 
         const driver = bus.driverId
-          ? staff.find(s => s.id === bus.driverId)
+          ? busStaffData.find(s => s.id === bus.driverId)
           : null;
 
         const conductor = bus.conductorId
-          ? staff.find(s => s.id === bus.conductorId)
+          ? busStaffData.find(s => s.id === bus.conductorId)
           : null;
 
         return `
@@ -116,9 +143,21 @@ Pages.buses = async function () {
           </div>
         `;
       }).join('')}
-      ${window.renderAdminPagination(busesPage, buses.length, 'setBusesPage')}
+      ${window.renderAdminPagination(busesPage, filteredBuses.length, 'setBusesPage')}
     </div>
   `;
+};
+
+window.searchBuses = function (value) {
+  busesSearch = value || '';
+  busesPage = 1;
+  const content = document.getElementById('content');
+  if (content && window.AppState?.currentPage === 'buses') {
+    content.innerHTML = renderBusesPage();
+    const input = content.querySelector('input[type="search"]');
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
 };
 
 window.setBusesPage = function (page) {

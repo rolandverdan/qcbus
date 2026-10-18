@@ -1,13 +1,34 @@
 let routesPage = 1;
+let routesSearch = '';
+let routesData = [];
+let routeBusesData = [];
+let routeStopsData = [];
 const ROUTES_PAGE_SIZE = 10;
 
 Pages.routes = async function () {
-  const routes = await Store.getRoutes();
-  const buses = await Store.getBuses();
-  const stops = await Store.getStops();
-  const pageCount = Math.max(1, Math.ceil(routes.length / ROUTES_PAGE_SIZE));
+  [routesData, routeBusesData, routeStopsData] = await Promise.all([
+    Store.getRoutes(),
+    Store.getBuses(),
+    Store.getStops(),
+  ]);
+  return renderRoutesPage();
+};
+
+function renderRoutesPage() {
+  const query = routesSearch.trim().toLowerCase();
+  const filteredRoutes = query
+    ? routesData.filter(route => {
+        const routeStopNames = routeStopsData
+          .filter(stop => stop.routeId === route.id)
+          .map(stop => stop.name)
+          .join(' ');
+        return [route.code, route.name, route.description, routeStopNames]
+          .some(value => String(value || '').toLowerCase().includes(query));
+      })
+    : routesData;
+  const pageCount = Math.max(1, Math.ceil(filteredRoutes.length / ROUTES_PAGE_SIZE));
   routesPage = Math.min(routesPage, pageCount);
-  const visibleRoutes = routes.slice(
+  const visibleRoutes = filteredRoutes.slice(
     (routesPage - 1) * ROUTES_PAGE_SIZE,
     routesPage * ROUTES_PAGE_SIZE
   );
@@ -25,7 +46,12 @@ Pages.routes = async function () {
         </button>
       </div>
 
-      ${routes.length === 0 ? `
+      <label class="relative block">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+        <input type="search" value="${escapeHtml(routesSearch)}" oninput="searchRoutes(this.value)" placeholder="Search routes, codes, or stops" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-qc-purple" aria-label="Search routes">
+      </label>
+
+      ${routesData.length === 0 ? `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <p class="text-sm text-gray-500 mb-3">No routes yet</p>
 
@@ -33,9 +59,11 @@ Pages.routes = async function () {
             Create First Route
           </button>
         </div>
+      ` : filteredRoutes.length === 0 ? `
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-sm text-gray-500">No matching routes found</div>
       ` : visibleRoutes.map(route => {
-        const routeStops = stops.filter(s => s.routeId === route.id).length;
-        const routeBuses = buses.filter(b => b.routeId === route.id).length;
+        const routeStops = routeStopsData.filter(s => s.routeId === route.id).length;
+        const routeBuses = routeBusesData.filter(b => b.routeId === route.id).length;
 
         return `
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -89,9 +117,21 @@ Pages.routes = async function () {
           </div>
         `;
       }).join('')}
-      ${window.renderAdminPagination(routesPage, routes.length, 'setRoutesPage')}
+      ${window.renderAdminPagination(routesPage, filteredRoutes.length, 'setRoutesPage')}
     </div>
   `;
+};
+
+window.searchRoutes = function (value) {
+  routesSearch = value || '';
+  routesPage = 1;
+  const content = document.getElementById('content');
+  if (content && window.AppState?.currentPage === 'routes') {
+    content.innerHTML = renderRoutesPage();
+    const input = content.querySelector('input[type="search"]');
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
 };
 
 window.setRoutesPage = function (page) {

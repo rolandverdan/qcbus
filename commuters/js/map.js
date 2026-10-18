@@ -1891,16 +1891,11 @@ function updateBusMarkers() {
   }
 
 
-  const buses =
-    selectedRouteId
-      ? AppState.buses.filter(
-          bus =>
-            bus.tripActive === true &&
-            bus.routeId === selectedRouteId
-        )
-      : AppState.buses.filter(
-          bus => bus.tripActive === true
-        );
+  const buses = selectedRouteId
+    ? AppState.buses.filter(
+        bus => bus.tripActive === true && bus.routeId === selectedRouteId
+      )
+    : [];
 
   const busesWithCoordinates = buses.flatMap(bus => {
     const coordinates = getBusCoordinates(bus);
@@ -2136,16 +2131,11 @@ function updateBusLegend() {
   }
 
 
-  const buses =
-    selectedRouteId
-      ? AppState.buses.filter(
-          bus =>
-            bus.tripActive === true &&
-            bus.routeId === selectedRouteId
-        )
-      : AppState.buses.filter(
-          bus => bus.tripActive === true
-        );
+  const buses = selectedRouteId
+    ? AppState.buses.filter(
+        bus => bus.tripActive === true && bus.routeId === selectedRouteId
+      )
+    : [];
 
 
   if (
@@ -2162,7 +2152,7 @@ function updateBusLegend() {
         ${
           selectedRouteId
             ? "No buses currently on this route."
-            : "No buses currently on an active trip."
+            : "Select a route to view active buses."
         }
       </p>
     `;

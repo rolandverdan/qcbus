@@ -154,7 +154,6 @@ function getCommuterGreeting() {
   return "Good evening,";
 }
 
-
 function getNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -1418,20 +1417,15 @@ const Pages = {
 
       <!-- Greeting -->
 
-      <div class="bg-gradient-to-r from-qc-blue to-blue-700 text-white rounded-xl p-4 shadow-lg">
-
-        <p class="text-sm opacity-90">
-          ${getCommuterGreeting()}
-        </p>
-
-        <h2 class="text-xl font-bold">
-          ${escapeHtml(AppState.user.name)}
-        </h2>
-
-        <p class="text-xs opacity-75 mt-1">
-          Track QC bus in real-time
-        </p>
-
+      <div class="relative isolate min-h-[152px] overflow-hidden bg-gradient-to-r from-qc-blue to-blue-700 text-white rounded-xl py-4 pl-4 pr-0 shadow-lg sm:min-h-[184px]">
+        <div aria-hidden="true" class="absolute inset-0 bg-left bg-no-repeat opacity-25" style="background-image:url('../images/qcircle.jpg');background-size:140% auto"></div>
+        <div class="relative z-10 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-lg opacity-90">${getCommuterGreeting()}</p>
+            <h2 class="truncate text-2xl font-bold leading-tight">${escapeHtml(AppState.user.name)}</h2>
+            <p class="mt-1 text-base opacity-75">Track QC bus in real-time</p>
+          </div>
+        </div>
       </div>
 
 

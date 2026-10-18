@@ -10,8 +10,8 @@
     <title>QC Bus Tracker · Admin</title>
 
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/images/buslogo.jpg">
+    <link rel="icon" href="/images/buslogo.jpg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="css/style.css">
@@ -49,7 +49,7 @@
     >
         <div class="flex flex-col items-center">
             <div class="mb-6 animate-pulse">
-                <img src="/images/qclogo2.png" alt="QCommute" class="h-16 w-16 sm:h-20 sm:w-20 object-contain" />
+                <img src="/images/buslogo.jpg" alt="QCommute" class="h-16 w-16 sm:h-20 sm:w-20 object-contain object-center" />
             </div>
             <h1 class="text-lg sm:text-xl font-bold tracking-tight text-qc-blue">QCommute</h1>
             <p class="mt-2 text-xs sm:text-sm text-gray-500">
@@ -89,7 +89,7 @@
             <div class="px-5 py-4 sm:py-5 border-b border-white/10 flex-shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 sm:w-11 sm:h-11 bg-white rounded-xl flex items-center justify-center p-1 shadow-md flex-shrink-0">
-                        <img src="../images/qclogo2.png" alt="Quezon City" class="w-full h-full object-contain" />
+                        <img src="../images/buslogo.jpg" alt="Quezon City" class="w-full h-full object-contain object-center" />
                     </div>
                     <div class="leading-tight min-w-0">
                         <p class="font-bold text-base tracking-tight truncate">QCommute</p>
@@ -130,7 +130,7 @@
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                     </svg>
-                    <span class="truncate">Staff</span>
+                    <span class="truncate">Users</span>
                 </button>
 
                 <button data-page="reports"
@@ -147,6 +147,14 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
                     <span class="truncate">Live Monitor</span>
+                </button>
+
+                <button data-page="etaAnalytics"
+                    class="nav-btn w-full flex flex-row items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left text-white/70 hover:bg-white/10 hover:text-white">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m0 14h17M7 15l4-4 3 2 6-7"/>
+                    </svg>
+                    <span class="truncate">ETA Analytics</span>
                 </button>
 
                 <button data-page="tripLogs"
@@ -255,7 +263,7 @@
 
                     <div class="flex-1 min-w-0">
                         <h1 class="font-bold text-sm sm:text-base text-gray-800 truncate" id="pageTitle">Admin Dashboard</h1>
-                        <p class="text-[10px] sm:text-xs text-gray-500 tracking-wide truncate" id="pageSub">Quezon City · Manage everything</p>
+                        <p class="text-[10px] sm:text-xs text-gray-500 tracking-wide truncate" id="pageSub">Quezon City</p>
                     </div>
 
                 </div>
@@ -346,6 +354,7 @@
     <script type="module" src="js/staff.js"></script>
     <script type="module" src="js/reports.js"></script>
     <script type="module" src="js/trips.js"></script>
+    <script type="module" src="js/analytics.js"></script>
     <script type="module" src="js/emergencies.js"></script>
 
     <!-- ========== SIDEBAR HELPERS ========== -->
