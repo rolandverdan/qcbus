@@ -1,10 +1,10 @@
 {
-  "id": "/qcbus",
+  "id": "/commuters/",
   "name": "QC Bus Tracker - Commuter",
   "short_name": "QC Bus",
   "description": "Real-time Quezon City bus tracking for commuters",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/commuters/index.html",
+  "scope": "/commuters/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1e40af",

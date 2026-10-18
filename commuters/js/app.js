@@ -2,7 +2,12 @@ import {
   requireRole,
 } from "../../shared/js/auth.js";
 
-import { auth } from "../../shared/js/firebase.js";
+import { auth, storage } from "../../shared/js/firebase.js";
+import {
+  getDownloadURL,
+  ref as storageRef,
+  uploadBytes,
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -73,6 +78,7 @@ const AppState = {
     name: profile?.name || user.displayName || "Commuter",
     email: profile?.email || user.email || "",
     phone: profile?.phone || user.phoneNumber || "",
+    photoURL: profile?.photoURL || user.photoURL || "",
     savedRoutes: Array.isArray(profile?.savedRoutes)
       ? profile.savedRoutes
       : [],
@@ -82,6 +88,8 @@ const AppState = {
 
   settings: {
     notifications: false,
+    notificationSound: true,
+    notificationVibration: true,
     darkMode: false,
   },
 
@@ -98,6 +106,9 @@ const AppState = {
     stopName: "",
   },
 };
+
+let pendingProfilePhoto = null;
+let pendingProfilePhotoPreviewUrl = "";
 
 window.AppState = AppState;
 
@@ -127,6 +138,20 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function getCommuterGreeting() {
+  const hourInManila = Number(
+    new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(new Date())
+  );
+
+  if (hourInManila >= 5 && hourInManila < 12) return "Good morning,";
+  if (hourInManila >= 12 && hourInManila < 18) return "Good afternoon,";
+  return "Good evening,";
 }
 
 
@@ -253,7 +278,6 @@ function updateCommuterDropoffEta() {
   const etaCard = document.getElementById("dropoffEtaCard");
   if (etaCard) etaCard.innerHTML = renderCommuterDropoffEta();
 }
-
 
 function getRouteLabel(route) {
   if (!route) {
@@ -659,8 +683,10 @@ function showSavedRouteToast(message, isError = false) {
   `;
 
   toast.innerHTML = `
-    <span>
-      ${isError ? "⚠️" : "✓"}
+    <span aria-hidden="true" class="shrink-0">
+      ${isError
+        ? '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 004.3 20h15.4a2 2 0 001.7-2.8L13.7 3.9a2 2 0 00-3.4 0z"/></svg>'
+        : '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 12 4 4L19 6"/></svg>'}
     </span>
 
     <span>
@@ -975,6 +1001,8 @@ function openEditProfile() {
     existingModal.remove();
   }
 
+  clearPendingProfilePhoto();
+
   const modal = document.createElement("div");
 
   modal.id = "editProfileModal";
@@ -983,7 +1011,7 @@ function openEditProfile() {
     "fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4";
 
   modal.innerHTML = `
-    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl">
+    <div class="bg-white w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl">
 
       <div class="p-5 border-b border-gray-100 flex items-center justify-between">
 
@@ -1009,6 +1037,31 @@ function openEditProfile() {
 
 
       <form id="editProfileForm" class="p-5 space-y-4">
+
+        <div class="flex flex-col items-center gap-2 pb-1">
+          <div class="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-qc-blue text-2xl font-bold">
+            <img
+              id="editProfilePhotoPreview"
+              src="${escapeHtml(AppState.user.photoURL || "")}"
+              alt="Profile photo preview"
+              class="${AppState.user.photoURL ? "" : "hidden"} absolute inset-0 h-full w-full object-cover"
+            />
+            <span id="editProfilePhotoInitials" class="${AppState.user.photoURL ? "hidden" : ""}">
+              ${escapeHtml(getInitials(AppState.user.name))}
+            </span>
+          </div>
+          <label for="editProfilePhotoInput" class="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            Choose profile photo
+          </label>
+          <input
+            id="editProfilePhotoInput"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="sr-only"
+            onchange="previewEditProfilePhoto(this)"
+          />
+          <p class="text-[11px] text-gray-400">JPG, PNG or WEBP · up to 5 MB</p>
+        </div>
 
         <div>
           <label class="block text-xs font-medium text-gray-600 mb-1">
@@ -1047,9 +1100,16 @@ function openEditProfile() {
           <input
             id="editProfilePhone"
             type="tel"
-            value="${escapeHtml(AppState.user.phone)}"
+            inputmode="numeric"
+            autocomplete="tel-national"
+            maxlength="12"
+            pattern="[0-9]{0,12}"
+            value="${escapeHtml(String(AppState.user.phone || "").replace(/\D/g, "").slice(0, 12))}"
+            oninput="sanitizeEditProfilePhone(this)"
+            aria-describedby="editProfilePhoneHint"
             class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
           />
+          <p id="editProfilePhoneHint" class="mt-1 text-[11px] text-gray-400">Numbers only, up to 12 digits.</p>
         </div>
 
 
@@ -1080,6 +1140,48 @@ function openEditProfile() {
   document.body.appendChild(modal);
 }
 
+function clearPendingProfilePhoto() {
+  pendingProfilePhoto = null;
+  if (pendingProfilePhotoPreviewUrl) {
+    URL.revokeObjectURL(pendingProfilePhotoPreviewUrl);
+    pendingProfilePhotoPreviewUrl = "";
+  }
+}
+
+function previewEditProfilePhoto(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const validTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!validTypes.includes(file.type)) {
+    input.value = "";
+    showSavedRouteToast("Choose a JPG, PNG, or WEBP image", true);
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    input.value = "";
+    showSavedRouteToast("Profile photos must be 5 MB or smaller", true);
+    return;
+  }
+
+  clearPendingProfilePhoto();
+  pendingProfilePhoto = file;
+  pendingProfilePhotoPreviewUrl = URL.createObjectURL(file);
+
+  const preview = document.getElementById("editProfilePhotoPreview");
+  const initials = document.getElementById("editProfilePhotoInitials");
+  if (preview) {
+    preview.src = pendingProfilePhotoPreviewUrl;
+    preview.classList.remove("hidden");
+  }
+  initials?.classList.add("hidden");
+}
+
+function sanitizeEditProfilePhone(input) {
+  input.value = input.value.replace(/\D/g, "").slice(0, 12);
+}
+
 
 function closeEditProfile() {
   const modal =
@@ -1088,6 +1190,7 @@ function closeEditProfile() {
   if (modal) {
     modal.remove();
   }
+  clearPendingProfilePhoto();
 }
 
 function openChangePassword() {
@@ -1198,13 +1301,18 @@ async function handleEditProfileSubmit(event) {
     document
       .getElementById("editProfilePhone")
       .value
-      .trim();
+      .replace(/\D/g, "");
 
   if (!name) {
     showSavedRouteToast(
       "Name cannot be empty",
       true
     );
+    return;
+  }
+
+  if (phone.length > 12) {
+    showSavedRouteToast("Phone number can have up to 12 digits", true);
     return;
   }
 
@@ -1218,16 +1326,30 @@ async function handleEditProfileSubmit(event) {
 
   try {
 
+    let photoURL = AppState.user.photoURL || "";
+    if (pendingProfilePhoto) {
+      const photoRef = storageRef(
+        storage,
+        `profilePictures/${AppState.user.uid}/avatar`
+      );
+      const uploadedPhoto = await uploadBytes(photoRef, pendingProfilePhoto, {
+        contentType: pendingProfilePhoto.type,
+      });
+      photoURL = await getDownloadURL(uploadedPhoto.ref);
+    }
+
     await updateUserProfile(
       AppState.user.uid,
       {
         name,
         phone,
+        ...(pendingProfilePhoto && { photoURL }),
       }
     );
 
     AppState.user.name = name;
     AppState.user.phone = phone;
+    if (pendingProfilePhoto) AppState.user.photoURL = photoURL;
 
     closeEditProfile();
 
@@ -1299,7 +1421,7 @@ const Pages = {
       <div class="bg-gradient-to-r from-qc-blue to-blue-700 text-white rounded-xl p-4 shadow-lg">
 
         <p class="text-sm opacity-90">
-          Good day,
+          ${getCommuterGreeting()}
         </p>
 
         <h2 class="text-xl font-bold">
@@ -2068,7 +2190,6 @@ const Pages = {
 
   map: () => `
     <div class="space-y-3 slide-in">
-
       <!-- Route Search Bar (Above Map) -->
       <div id="routePicker" class="relative z-30"></div>
 
@@ -2098,7 +2219,7 @@ const Pages = {
       </div>
 
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div id="activeBusMapCard" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
 
         <div class="flex items-center justify-between mb-2">
 
@@ -2471,9 +2592,6 @@ const Pages = {
               Push Notifications
             </p>
 
-            <p class="text-xs text-gray-500">
-              Get bus arrival alerts
-            </p>
           </div>
 
 
@@ -2499,13 +2617,45 @@ const Pages = {
         </div>
 
 
+        <div class="p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-800">Notification sound</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked="${AppState.settings.notificationSound !== false}"
+            aria-label="Notification sound"
+            onclick="toggleSetting('notificationSound')"
+            class="relative w-12 h-6 ${AppState.settings.notificationSound !== false ? "bg-qc-blue" : "bg-gray-300"} rounded-full transition"
+          >
+            <span class="absolute top-0.5 ${AppState.settings.notificationSound !== false ? "left-6" : "left-0.5"} w-5 h-5 bg-white rounded-full shadow transition-all"></span>
+          </button>
+        </div>
+
+        <div class="p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-800">Vibration</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked="${AppState.settings.notificationVibration !== false}"
+            aria-label="Notification vibration"
+            onclick="toggleSetting('notificationVibration')"
+            class="relative w-12 h-6 ${AppState.settings.notificationVibration !== false ? "bg-qc-blue" : "bg-gray-300"} rounded-full transition"
+          >
+            <span class="absolute top-0.5 ${AppState.settings.notificationVibration !== false ? "left-6" : "left-0.5"} w-5 h-5 bg-white rounded-full shadow transition-all"></span>
+          </button>
+        </div>
+
+
         <button
           onclick="sendTestNotification()"
           class="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition"
         >
           <span>
             <span class="block text-sm font-medium text-gray-800">Send Test Notification</span>
-            <span class="mt-0.5 block text-xs text-gray-500">Check that browser alerts are working</span>
           </span>
           <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -2520,9 +2670,6 @@ const Pages = {
               Dark Mode
             </p>
 
-            <p class="text-xs text-gray-500">
-              Easy on the eyes at night
-            </p>
           </div>
 
 
@@ -2604,14 +2751,10 @@ const Pages = {
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center">
 
-        <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-blue-500 rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-
-          ${escapeHtml(
-            getInitials(
-              AppState.user.name
-            )
-          )}
-
+        <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-blue-500 rounded-full mx-auto flex items-center justify-center overflow-hidden text-white text-2xl font-bold shadow-lg">
+          ${AppState.user.photoURL
+            ? `<img src="${escapeHtml(AppState.user.photoURL)}" alt="Profile photo" class="w-full h-full object-cover" />`
+            : escapeHtml(getInitials(AppState.user.name))}
         </div>
 
 
@@ -2882,6 +3025,7 @@ function navigateTo(page, updateHash = true, options = {}) {
 
 
   AppState.currentPage = page;
+  document.body.classList.toggle("commuter-map-page", page === "map");
 
   const content =
     document.getElementById("content");
@@ -3073,32 +3217,50 @@ async function toggleSetting(key) {
     )
   );
 
+  if (
+    key === "notifications" ||
+    key === "notificationSound" ||
+    key === "notificationVibration"
+  ) {
+    await window.syncNotificationPreferences?.();
+  }
+
 
   navigateTo("settings");
 }
 
 async function sendTestNotification() {
-  if (!("Notification" in window)) {
-    showSavedRouteToast("This browser does not support notifications", true);
+  const notificationId = await window.pushAppNotification?.(
+    "QCommute Test Alert",
+    "This is a test notification from QCommute.",
+    { type: "test" }
+  );
+
+  if (!notificationId) {
+    showSavedRouteToast("Could not add the test notification", true);
     return;
   }
 
-  let permission = Notification.permission;
-  if (permission === "default") {
-    const granted = await window.requestNotificationPermission?.();
-    permission = granted ? "granted" : Notification.permission;
+  if ("Notification" in window) {
+    let permission = Notification.permission;
+    if (permission === "default") {
+      const granted = await window.requestNotificationPermission?.();
+      permission = granted ? "granted" : Notification.permission;
+    }
+
+    if (permission === "granted") {
+      try {
+        await window.showSystemNotification?.("QCommute Test Alert", {
+          body: "Browser notifications are working on this device.",
+          tag: `qcommute-test-${notificationId}`,
+        });
+      } catch (error) {
+        console.warn("Could not display the browser test notification:", error);
+      }
+    }
   }
 
-  if (permission !== "granted") {
-    showSavedRouteToast("Allow notifications in your browser settings", true);
-    return;
-  }
-
-  await window.showSystemNotification?.("QCommute Test Alert", {
-    body: "Browser notifications are working on this device.",
-    tag: "qcommute-test-notification",
-  });
-  showSavedRouteToast("Test notification sent");
+  showSavedRouteToast("Test notification added to your inbox");
 }
 
 
@@ -3789,6 +3951,8 @@ async function initApp() {
       }
     }
 
+    window.syncNotificationPreferences?.();
+
 
     // ==============================================
     // START LIVE DATA
@@ -4062,6 +4226,8 @@ window.getNextStopEtaForBus = getNextStopEtaForBus;
 window.loadMyReports = loadMyReports;
 
 window.openEditProfile = openEditProfile;
+window.previewEditProfilePhoto = previewEditProfilePhoto;
+window.sanitizeEditProfilePhone = sanitizeEditProfilePhone;
 
 window.refreshCurrentPage = refreshCurrentPage;
 

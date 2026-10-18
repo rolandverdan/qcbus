@@ -94,7 +94,7 @@
                 <img src="../images/qclogo2.png" alt="Quezon City" class="w-9 h-9 object-contain rounded-lg bg-white/10 p-0.5">
                 <div class="leading-tight">
                     <h1 class="font-bold text-sm" id="pageTitle">Conductor Dashboard</h1>
-                    <p class="text-[10px] text-white/75 tracking-wide" id="tripStatus">Quezon City · No active trip</p>
+                    <p class="text-[10px] text-white/75 tracking-wide" id="tripStatus">Quezon City</p>
                 </div>
             </div>
 
@@ -155,7 +155,14 @@
             <h2>Live route map</h2>
             <p id="liveMapStopLabel">Waiting for location</p>
         </div>
-        <button id="liveMapClose" type="button" aria-label="Close live map" title="Close map">×</button>
+        <div class="flex items-center gap-2">
+            <button id="liveMapFullscreen" type="button" aria-label="Expand live map" title="Expand map" aria-pressed="false">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>
+            </button>
+            <button id="liveMapClose" type="button" aria-label="Close live map" title="Close map">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
     </div>
     <div id="liveMapCanvas" class="live-map-canvas"></div>
 </div>
@@ -188,28 +195,28 @@
 
         <div class="space-y-2 mb-4">
             <button onclick="triggerSOS('medical')" class="w-full p-3 flex items-center gap-3 bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition text-left">
-                <span class="text-xl">🚑</span>
+                <svg class="w-6 h-6 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 3v4m4-4v4M8 7h8l1 3h3a2 2 0 0 1 2 2v5h-3m-12 0H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3l1-2Zm1 10a2 2 0 1 1-4 0m12 0a2 2 0 1 1-4 0m-2-7v4m-2-2h4"/></svg>
                 <div>
                     <p class="text-sm font-semibold text-gray-800">Medical Emergency</p>
                     <p class="text-xs text-gray-500">Passenger needs medical help</p>
                 </div>
             </button>
             <button onclick="triggerSOS('crime')" class="w-full p-3 flex items-center gap-3 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-xl transition text-left">
-                <span class="text-xl">🚨</span>
+                <svg class="w-6 h-6 text-orange-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
                 <div>
                     <p class="text-sm font-semibold text-gray-800">Crime / Theft</p>
                     <p class="text-xs text-gray-500">Report a security incident</p>
                 </div>
             </button>
             <button onclick="triggerSOS('accident')" class="w-full p-3 flex items-center gap-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-xl transition text-left">
-                <span class="text-xl">💥</span>
+                <svg class="w-6 h-6 text-yellow-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3 3 20h18L12 3Zm0 6v4m0 3h.01"/></svg>
                 <div>
                     <p class="text-sm font-semibold text-gray-800">Road Accident</p>
                     <p class="text-xs text-gray-500">Collision or vehicle issue</p>
                 </div>
             </button>
             <button onclick="triggerSOS('other')" class="w-full p-3 flex items-center gap-3 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl transition text-left">
-                <span class="text-xl">⚠️</span>
+                <svg class="w-6 h-6 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
                 <div>
                     <p class="text-sm font-semibold text-gray-800">Other Emergency</p>
                     <p class="text-xs text-gray-500">Describe the situation</p>
@@ -277,21 +284,21 @@
                 </h4>
                 <div class="space-y-2 text-xs text-gray-700">
                     <div class="flex items-start gap-2">
-                        <span class="text-base shrink-0">🚌</span>
+                        <svg class="mt-0.5 h-4 w-4 shrink-0 text-qc-blue-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 16V7a2 2 0 012-2h11a2 2 0 012 2v9H3zm15-5h2l2 2v3h-4v-5zM7 19a2 2 0 100-4 2 2 0 000 4zm11 0a2 2 0 100-4 2 2 0 000 4z"/></svg>
                         <div>
                             <span class="font-semibold text-gray-800">Trip Management:</span>
                             <span>Select your route direction and tap "Start Trip". Tap "End Trip" upon completing the line run to record official trip statistics.</span>
                         </div>
                     </div>
                     <div class="flex items-start gap-2">
-                        <span class="text-base shrink-0">👥</span>
+                        <svg class="w-5 h-5 shrink-0 text-qc-blue-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m16-10a4 4 0 0 1 4 4v2m-7-13a4 4 0 1 1 0 8M4 7a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"/></svg>
                         <div>
                             <span class="font-semibold text-gray-800">Passenger Counting:</span>
                             <span>Use the large + / - buttons on the Counter tab, or use the Scanner tab for AI-assisted overhead doorway detection.</span>
                         </div>
                     </div>
                     <div class="flex items-start gap-2">
-                        <span class="text-base shrink-0">🚨</span>
+                        <svg class="w-5 h-5 shrink-0 text-qc-blue-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
                         <div>
                             <span class="font-semibold text-gray-800">Emergency SOS:</span>
                             <span>Tap the SOS button to immediately alert QC Command Center for medical, accident, crime, or breakdown incidents.</span>

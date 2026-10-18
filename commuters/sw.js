@@ -1,4 +1,5 @@
-const CACHE_NAME = 'qc-commuter-v7';
+const CACHE_NAME = 'qc-commuter-v11';
+const NOTIFICATION_PREFS_CACHE = 'qc-commuter-notification-prefs-v1';
 const urlsToCache = [
   './',
   './index.html',
@@ -27,7 +28,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== NOTIFICATION_PREFS_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -80,15 +81,36 @@ try {
     const data = payload.data || {};
     const title = data.title || 'QCommute';
 
-    self.registration.showNotification(title, {
-      body: data.body || 'You have a new notification.',
-      icon: '/images/qclogo2.png',
-      badge: '/images/qclogo2.png',
-      tag: data.notificationId || 'qc-notification',
-      data: {
-        url: data.url || '/commuters/index.html#notifications'
-      }
-    });
+    return caches.open(NOTIFICATION_PREFS_CACHE)
+      .then(async cache => {
+        const prefsUrl = new URL('./__notification-prefs__', self.registration.scope);
+        const prefsResponse = await cache.match(prefsUrl);
+        const prefs = prefsResponse ? await prefsResponse.json() : {};
+
+        if (prefs.enabled !== true) return;
+
+        const notificationOptions = {
+          body: data.body || 'You have a new notification.',
+          icon: '/images/qclogo2.png',
+          badge: '/images/qclogo2.png',
+          vibrate: prefs.sound === false || prefs.vibration === false
+            ? []
+            : [180, 80, 180],
+          silent: prefs.sound === false,
+          tag: data.notificationId || 'qc-notification',
+          data: {
+            url: data.url || '/commuters/index.html#notifications'
+          }
+        };
+
+        // Silent notifications cannot include a vibrate member, even when
+        // the vibration pattern is empty.
+        if (notificationOptions.silent) {
+          delete notificationOptions.vibrate;
+        }
+
+        return self.registration.showNotification(title, notificationOptions);
+      });
   });
 } catch (error) {
   console.warn('Firebase background messaging is unavailable:', error);

@@ -338,7 +338,7 @@ qs("#signupForm").addEventListener("submit", async (e) => {
     });
 
     showToast(
-      "Account created! Welcome 🎉",
+      "Account created! Welcome.",
       "success"
     );
 

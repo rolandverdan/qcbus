@@ -64,14 +64,16 @@
             Loading AI Model...
         </div>
         <button id="switchCamBtn" class="hidden bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg border border-slate-700 transition active:scale-95">
-            🔄 Switch Cam
+            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7v5h-5M4 17v-5h5m-3.5-3A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.5-3"/></svg>Switch Cam
         </button>
     </div>
 
     <!-- Scanner Line Adjustment Controls -->
-    <div class="w-full max-w-sm bg-slate-800/90 text-white rounded-2xl border border-slate-700 shadow-xl p-4 mt-3 mb-6 space-y-3 z-20">
-        <div class="flex items-center justify-between">
+    <div class="w-full max-w-sm bg-slate-800/90 text-white rounded-2xl border border-slate-700 shadow-xl p-4 mt-3 mb-6 space-y-2 z-20">
+        <div>
             <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Detection Line</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
             <!-- Quick Orientation Presets -->
             <div class="flex items-center bg-slate-900 p-1 rounded-xl text-xs font-semibold gap-1">
                 <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white">
@@ -81,6 +83,9 @@
                     Horizontal (—)
                 </button>
             </div>
+                <button type="button" onclick="resetScannerLine()" class="shrink-0 px-2.5 py-1 rounded-lg border border-slate-600 bg-slate-900 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] transition active:scale-95">
+                    Reset to default
+                </button>
         </div>
 
         <!-- Angle Adjustment Slider Bar -->
@@ -227,6 +232,16 @@
 
         window.toggleScannerDirection = function() {
             scannerConfig.inverted = !scannerConfig.inverted;
+            localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+            updateScannerControlsUI();
+        };
+
+        window.resetScannerLine = function() {
+            scannerConfig.angle = 90;
+            scannerConfig.offset = 0;
+            scannerConfig.inverted = false;
+            localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+            localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
             localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
             updateScannerControlsUI();
         };

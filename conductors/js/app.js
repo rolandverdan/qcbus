@@ -349,7 +349,7 @@ const Pages = {
       return `
         <div class="slide-in flex flex-col items-center justify-center py-16 text-center">
           <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <span class="text-3xl">📸</span>
+            <svg class="w-9 h-9 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
           </div>
           <h3 class="font-semibold text-gray-800 mb-1">No active trip</h3>
           <p class="text-sm text-gray-500 mb-4 max-w-[240px]">Start a trip first to use the AI Scanner.</p>
@@ -372,7 +372,7 @@ const Pages = {
             
             <div id="scannerOverlay" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm">
                 <button onclick="startAICamera()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition active:scale-95">
-                    📸 Start Camera
+                    <svg class="w-5 h-5 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>Start Camera
                 </button>
                 <p class="text-slate-400 mt-4 text-xs">Mount phone before starting</p>
             </div>
@@ -386,14 +386,16 @@ const Pages = {
                 Camera Off
             </div>
             <button id="switchCamBtn" onclick="switchAICamera()" class="hidden bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700 transition active:scale-95" title="Switch Camera">
-                🔄 Switch Camera
+                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7v5h-5M4 17v-5h5m-3.5-3A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.5-3"/></svg>Switch Camera
             </button>
         </div>
 
         <!-- Scanner Line Adjustment Controls -->
-        <div class="w-full max-w-sm bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
-            <div class="flex items-center justify-between">
+        <div class="w-full max-w-sm bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2">
+            <div>
                 <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">Detection Line</span>
+            </div>
+            <div class="flex items-center justify-between gap-2">
                 <!-- Quick Orientation Presets -->
                 <div class="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold gap-1">
                     <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900">
@@ -403,6 +405,9 @@ const Pages = {
                         Horizontal (—)
                     </button>
                 </div>
+                <button type="button" onclick="resetScannerLine()" class="shrink-0 px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold text-[11px] transition active:scale-95">
+                    Reset to default
+                </button>
             </div>
 
             <!-- Angle Adjustment Slider Bar -->
@@ -614,10 +619,10 @@ const Pages = {
             a.kind === 'trip' ? 'bg-gray-100' :
             a.kind === 'sos' ? 'bg-red-100' : 'bg-gray-100'
           }">
-            ${a.kind === 'in' ? '➕' : ''}
-            ${a.kind === 'out' ? '➖' : ''}
-            ${a.kind === 'trip' ? '🚌' : ''}
-            ${a.kind === 'sos' ? '🚨' : ''}
+            ${a.kind === 'in' ? '<svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m-7-7h14"/></svg>' : ''}
+            ${a.kind === 'out' ? '<svg class="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"/></svg>' : ''}
+            ${a.kind === 'trip' ? '<svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 13V6a1 1 0 0 1 1-1h9l3 4h4a1 1 0 0 1 1 1v8h-2m-12 0H5a2 2 0 1 1-4 0m4 0h9m3 0a2 2 0 1 1-4 0m-5-7h4m-4 3h4"/></svg>' : ''}
+            ${a.kind === 'sos' ? '<svg class="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' : ''}
           </div>
           <div class="flex-1">
             <p class="text-sm font-medium text-gray-800">${a.label}</p>
@@ -777,7 +782,7 @@ const Pages = {
               AppState.tripHistoryDateFilter
                 ? `
               <button onclick="setTripHistoryFilterPreset('all')" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 p-1" title="Clear date filter">
-                ✕
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 6 12 12M18 6 6 18"/></svg>
               </button>
             `
                 : ""
@@ -913,7 +918,7 @@ function renderTripHistoryCard(trip) {
   const directionDisplay = escapeTripText(
     trip.directionLabel ||
       (trip.directionFromName && trip.directionToName
-        ? `${trip.directionFromName} ➔ ${trip.directionToName}`
+        ? `${trip.directionFromName} to ${trip.directionToName}`
         : "Standard Direction")
   );
 
@@ -932,12 +937,14 @@ function renderTripHistoryCard(trip) {
       <div class="flex items-start justify-between gap-2">
         <div class="space-y-1">
           <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold inline-flex items-center gap-1 ${
               isActive
                 ? "bg-green-100 text-green-700 animate-pulse"
                 : "bg-gray-100 text-gray-700"
             }">
-              ${isActive ? "● Active Trip" : "✓ Completed"}
+              ${isActive
+                ? '<svg class="w-3 h-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" fill="currentColor"/></svg>Active Trip'
+                : '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m5 12 4 4L19 6"/></svg>Completed'}
             </span>
             <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-qc-blue-accent border border-blue-100">
               ${busBadge}
@@ -1248,11 +1255,11 @@ async function navigateTo(page) {
     tripHistory: 'Trip History',
   };
   const earlySubTitles = {
-    trip: AppState.trip.active ? 'Trip in progress' : 'Quezon City · No active trip',
-    counter: 'Quezon City · Passenger Counter',
-    alerts: 'Quezon City · Logs',
-    account: 'Quezon City · Account',
-    tripHistory: 'Quezon City · Official Trip Records',
+    trip: 'Quezon City',
+    counter: 'Quezon City',
+    alerts: 'Quezon City',
+    account: 'Quezon City',
+    tripHistory: 'Quezon City',
   };
   document.getElementById('pageTitle').textContent = earlyTitles[page] || 'Conductor';
   const earlySubEl = document.getElementById('tripStatus');
@@ -1284,11 +1291,11 @@ async function navigateTo(page) {
   document.getElementById('pageTitle').textContent = titles[page] || 'Conductor';
 
   const subTitles = {
-    trip:    AppState.trip.active ? 'Trip in progress' : 'Quezon City · No active trip',
-    counter: 'Quezon City · Passenger Counter',
-    alerts:  'Quezon City · Logs',
-    account: 'Quezon City · My Account',
-    tripHistory: 'Quezon City · Official Trip Records',
+    trip: 'Quezon City',
+    counter: 'Quezon City',
+    alerts: 'Quezon City',
+    account: 'Quezon City',
+    tripHistory: 'Quezon City',
   };
   const subEl = document.getElementById('tripStatus');
   if (subEl) subEl.textContent = subTitles[page] || 'Quezon City';

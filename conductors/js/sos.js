@@ -72,7 +72,7 @@ function showSOSAlarm(label) {
   overlay.innerHTML = `
     <div class="relative mb-6">
       <div class="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
-        <span class="text-5xl">🚨</span>
+        <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
       </div>
       <div class="absolute inset-0 rounded-full bg-white/40 animate-pulse-ring"></div>
     </div>

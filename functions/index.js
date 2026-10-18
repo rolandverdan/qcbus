@@ -34,7 +34,7 @@ exports.sendCommuterInboxNotification = onDocumentCreated(
 		const notification = event.data?.data();
 		const userId = notification?.userId;
 
-		if (!userId || notification.read) return;
+		if (!userId || notification.read || notification.type === "test") return;
 
 		const tokenSnapshot = await admin
 			.firestore()
@@ -56,21 +56,14 @@ exports.sendCommuterInboxNotification = onDocumentCreated(
 
 		const response = await admin.messaging().sendEachForMulticast({
 			tokens: tokenValues,
-			notification: {
+			data: {
 				title: notification.title || "QCommute",
 				body: notification.message || "You have a new notification.",
-			},
-			data: {
 				notificationId: event.params.notificationId,
 				type: notification.type || "general",
 				url: "https://qcommute-88bf5.web.app/commuters/index.html#notifications",
 			},
 			webpush: {
-				notification: {
-					icon: "https://qcommute-88bf5.web.app/images/qclogo2.png",
-					badge: "https://qcommute-88bf5.web.app/images/qclogo2.png",
-					tag: `qc-notification-${event.params.notificationId}`,
-				},
 				fcmOptions: {
 					link: "https://qcommute-88bf5.web.app/commuters/index.html#notifications",
 				},

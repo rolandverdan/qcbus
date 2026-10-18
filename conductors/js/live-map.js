@@ -223,10 +223,39 @@ function toggleLiveMap() {
   panel.classList.toggle("hidden", !isOpening);
   panel.setAttribute("aria-hidden", String(!isOpening));
 
+  if (!isOpening) {
+    panel.classList.remove("is-fullscreen");
+    updateLiveMapFullscreenButton(false);
+  }
+
   if (isOpening) {
+    panel.classList.remove("is-fullscreen");
+    updateLiveMapFullscreenButton(false);
     createLiveMap();
     requestAnimationFrame(() => liveMap?.resize());
   }
+}
+
+function updateLiveMapFullscreenButton(isFullscreen) {
+  const button = document.getElementById("liveMapFullscreen");
+  if (!button) return;
+
+  const label = isFullscreen ? "Restore live map size" : "Expand live map";
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(isFullscreen));
+  button.title = label;
+  button.innerHTML = isFullscreen
+    ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 3v3a2 2 0 0 1-2 2H3m13-5v3a2 2 0 0 0 2 2h3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3"/></svg>'
+    : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>';
+}
+
+function toggleLiveMapFullscreen() {
+  const panel = document.getElementById("liveMapPanel");
+  if (!panel || panel.classList.contains("hidden")) return;
+
+  const isFullscreen = panel.classList.toggle("is-fullscreen");
+  updateLiveMapFullscreenButton(isFullscreen);
+  requestAnimationFrame(() => liveMap?.resize());
 }
 
 function setLiveMapAvailability(isAvailable) {
@@ -237,12 +266,15 @@ function setLiveMapAvailability(isAvailable) {
   if (!isAvailable) {
     const panel = document.getElementById("liveMapPanel");
     panel?.classList.add("hidden");
+    panel?.classList.remove("is-fullscreen");
     panel?.setAttribute("aria-hidden", "true");
+    updateLiveMapFullscreenButton(false);
   }
 }
 
 document.getElementById("liveMapFab")?.addEventListener("click", toggleLiveMap);
 document.getElementById("liveMapClose")?.addEventListener("click", toggleLiveMap);
+document.getElementById("liveMapFullscreen")?.addEventListener("click", toggleLiveMapFullscreen);
 
 window.setLiveMapAvailability = setLiveMapAvailability;
 window.updateFloatingLiveMap = updateFloatingLiveMap;

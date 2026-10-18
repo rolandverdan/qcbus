@@ -123,6 +123,16 @@ window.toggleScannerDirection = function() {
     updateScannerControlsUI();
 };
 
+window.resetScannerLine = function() {
+    scannerConfig.angle = 90;
+    scannerConfig.offset = 0;
+    scannerConfig.inverted = false;
+    localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+    localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
+    localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+    updateScannerControlsUI();
+};
+
 // Pre-configure TensorFlow WebGL backend for maximum mobile performance & zero stutter
 async function configureTf() {
     if (window.tf) {

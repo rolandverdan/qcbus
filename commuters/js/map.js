@@ -43,6 +43,7 @@ let map = null;
 let busMarkers = [];
 let stopMarkers = [];
 let userMarker = null;
+const userLocationAnimation = { frame: null };
 let activeStopPopup = null;
 let userLocationWatchId = null;
 let displayedUserLocation = null;
@@ -61,6 +62,38 @@ function closeBusPopups(exceptPopup = null) {
 }
 
 let routeLayersInitialized = false;
+
+function animateMarkerTo(marker, animationState, target, duration = 900, onFrame = null) {
+  if (!marker) return;
+  if (animationState.frame !== null) {
+    cancelAnimationFrame(animationState.frame);
+    animationState.frame = null;
+  }
+
+  const from = marker.getLngLat();
+  const start = [from.lng, from.lat];
+  if (Math.abs(start[0] - target[0]) < 0.000001 && Math.abs(start[1] - target[1]) < 0.000001) {
+    return;
+  }
+
+  const startedAt = performance.now();
+  const step = now => {
+    const progress = Math.min((now - startedAt) / duration, 1);
+    const eased = progress * progress * (3 - 2 * progress);
+    const coordinates = [
+      start[0] + (target[0] - start[0]) * eased,
+      start[1] + (target[1] - start[1]) * eased,
+    ];
+    marker.setLngLat(coordinates);
+    onFrame?.(coordinates);
+    if (progress < 1) {
+      animationState.frame = requestAnimationFrame(step);
+    } else {
+      animationState.frame = null;
+    }
+  };
+  animationState.frame = requestAnimationFrame(step);
+}
 
 
 // ==================================================
@@ -471,8 +504,8 @@ function createRoutePicker() {
     <div class="relative">
       <!-- Search Input Bar Above Map -->
       <div class="relative flex items-center bg-white rounded-2xl border border-gray-200/90 shadow-sm focus-within:border-qc-blue focus-within:ring-2 focus-within:ring-qc-blue/10 transition">
-        <span class="absolute left-3.5 text-gray-400 text-sm pointer-events-none select-none">
-          🔍
+        <span class="absolute left-3.5 text-gray-400 pointer-events-none select-none" aria-hidden="true">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
         </span>
         <input
           id="routeSearchInput"
@@ -480,7 +513,7 @@ function createRoutePicker() {
           inputmode="search"
           autocomplete="off"
           spellcheck="false"
-          placeholder="Search route (e.g. Route 1, City Hall)..."
+          placeholder="Search route (e.g. R1,R2, City Hall)..."
           class="w-full pl-10 pr-16 py-2.5 text-sm bg-transparent rounded-2xl outline-none placeholder:text-gray-400 text-gray-800"
         />
         <button
@@ -490,22 +523,6 @@ function createRoutePicker() {
           aria-label="Clear route search"
         >
           Clear
-        </button>
-      </div>
-
-      <!-- Selected Route Badge (shown when a route is active on map) -->
-      <div id="selectedRouteBadge" class="hidden mt-2 flex items-center justify-between px-3.5 py-2 bg-blue-50/90 border border-blue-200/70 rounded-xl text-xs shadow-xs">
-        <div class="flex items-center gap-2 min-w-0">
-          <span id="selectedRouteDot" class="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-white shadow-sm"></span>
-          <span class="text-gray-500 font-medium">Route:</span>
-          <span id="selectedRouteName" class="font-bold text-qc-blue truncate"></span>
-        </div>
-        <button
-          type="button"
-          id="unselectRouteBtn"
-          class="flex items-center gap-1 px-3 py-1 bg-white hover:bg-gray-100 active:bg-gray-200 text-qc-blue font-bold text-xs rounded-lg border border-blue-200 shadow-2xs transition ml-2 flex-shrink-0"
-        >
-          All routes
         </button>
       </div>
 
@@ -566,23 +583,6 @@ function createRoutePicker() {
     });
   }
 
-  const unselectBtn =
-    document.getElementById(
-      "unselectRouteBtn"
-    );
-
-  if (unselectBtn) {
-    ["click", "touchstart", "touchend", "pointerdown"].forEach(evt => {
-      unselectBtn.addEventListener(evt, (e) => {
-        e.stopPropagation();
-        if (evt === "click") {
-          e.preventDefault();
-          clearSelectedRoute();
-        }
-      });
-    });
-  }
-
   // Close dropdown if user clicks outside of route picker
   document.addEventListener("click", (e) => {
     const picker = document.getElementById("routePicker");
@@ -613,43 +613,13 @@ function updateRoutePicker(
       "clearRouteButton"
     );
 
-  const selectedBadge =
-    document.getElementById(
-      "selectedRouteBadge"
-    );
-
-  const selectedDot =
-    document.getElementById(
-      "selectedRouteDot"
-    );
-
-  const selectedName =
-    document.getElementById(
-      "selectedRouteName"
-    );
-
-  const searchInput =
-    document.getElementById(
-      "routeSearchInput"
-    );
-
-  // Sync selected route badge
   const selectedRoute =
     selectedRouteId
       ? getRouteById(selectedRouteId)
       : null;
 
   if (selectedRoute) {
-    if (selectedBadge) selectedBadge.classList.remove("hidden");
-    if (selectedDot) selectedDot.style.background = getRouteColor(selectedRoute);
-    if (selectedName) {
-      selectedName.textContent = selectedRoute.code
-        ? `${selectedRoute.code}${selectedRoute.name ? " — " + selectedRoute.name : ""}`
-        : (selectedRoute.name || "Selected route");
-    }
     if (clearButton) clearButton.classList.remove("hidden");
-  } else {
-    if (selectedBadge) selectedBadge.classList.add("hidden");
   }
 
   if (!list) return;
@@ -986,15 +956,6 @@ function clearSelectedRoute() {
 
   if (clearButton) {
     clearButton.classList.add("hidden");
-  }
-
-  const selectedBadge =
-    document.getElementById(
-      "selectedRouteBadge"
-    );
-
-  if (selectedBadge) {
-    selectedBadge.classList.add("hidden");
   }
 
   updateRoutePicker();
@@ -1697,7 +1658,7 @@ function updateStopMarkers() {
                     color:#4b5563;
                   "
                 >
-                  📍 ${escapeHtml(
+                  <svg style="display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:3px" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1116 0z"/><circle cx="12" cy="10" r="2.5" stroke-width="1.8"/></svg>${escapeHtml(
                     stopPlace
                   )}
                 </div>
@@ -1949,8 +1910,9 @@ function updateBusMarkers() {
     busesWithCoordinates.map(({ bus }) => bus.id)
   );
 
-  busMarkers = busMarkers.filter(({ busId, marker, popup }) => {
+  busMarkers = busMarkers.filter(({ busId, marker, popup, animation }) => {
     if (visibleBusIds.has(busId)) return true;
+    if (animation?.frame !== null && animation?.frame !== undefined) cancelAnimationFrame(animation.frame);
     popup.remove();
     marker.remove();
     return false;
@@ -2073,7 +2035,9 @@ function updateBusMarkers() {
     const existing = busMarkers.find(entry => entry.busId === bus.id);
 
     if (existing) {
-      existing.marker.setLngLat(coordinates);
+      animateMarkerTo(existing.marker, existing.animation, coordinates, 900, position => {
+        if (existing.popup.isOpen()) existing.popup.setLngLat(position);
+      });
       const markerElement = existing.marker.getElement();
       markerElement.innerHTML = getMarkerContent(bus);
       markerElement.setAttribute(
@@ -2144,7 +2108,7 @@ function updateBusMarkers() {
       );
     });
 
-    busMarkers.push({ busId: bus.id, marker, popup });
+    busMarkers.push({ busId: bus.id, marker, popup, animation: { frame: null } });
   });
 }
 
@@ -2358,7 +2322,7 @@ function getUserLocation() {
       const distanceFromDisplayedKm = displayedUserLocation
         ? getDistanceKm(displayedUserLocation, nextLocation)
         : null;
-      const minimumMovementMeters = Math.max(15, accuracy * 0.5);
+      const minimumMovementMeters = Math.max(3, Math.min(8, accuracy * 0.15));
 
       AppState.userLocation = {
         ...nextLocation,
@@ -2402,7 +2366,7 @@ function getUserLocation() {
         distanceFromDisplayedKm === null ||
         distanceFromDisplayedKm * 1000 >= minimumMovementMeters
       ) {
-        userMarker.setLngLat([longitude, latitude]);
+        animateMarkerTo(userMarker, userLocationAnimation, [longitude, latitude], 700);
         displayedUserLocation = nextLocation;
       }
 
@@ -2422,8 +2386,8 @@ function getUserLocation() {
       if (centerButton && !AppState.nearbyLocation) centerButton.disabled = true;
     },
     {
-      enableHighAccuracy: false,
-      maximumAge: 15000,
+      enableHighAccuracy: true,
+      maximumAge: 1000,
       timeout: 15000,
     }
   );
@@ -2435,6 +2399,10 @@ function getUserLocation() {
 // ==================================================
 
 function destroyMap() {
+  if (userLocationAnimation.frame !== null) {
+    cancelAnimationFrame(userLocationAnimation.frame);
+    userLocationAnimation.frame = null;
+  }
   if (userLocationWatchId !== null && navigator.geolocation) {
     navigator.geolocation.clearWatch(userLocationWatchId);
     userLocationWatchId = null;
@@ -2453,7 +2421,8 @@ function destroyMap() {
   }
 
   busMarkers.forEach(
-    ({ marker, popup }) => {
+    ({ marker, popup, animation }) => {
+      if (animation?.frame !== null && animation?.frame !== undefined) cancelAnimationFrame(animation.frame);
       popup.remove();
       marker.remove()
     }

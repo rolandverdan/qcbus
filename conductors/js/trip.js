@@ -25,6 +25,7 @@ let unsubscribeDropoffRequests = null;
 let unsubscribeActiveTrip = null;
 let busLocationWatchId = null;
 let lastBusLocationWriteAt = 0;
+const BUS_LOCATION_WRITE_INTERVAL_MS = 1000;
 
 function recordHistory(kind, label) {
   if (typeof window.addHistory === "function") {
@@ -72,6 +73,7 @@ function startBusLocationTracking() {
     return;
   }
 
+  lastBusLocationWriteAt = 0;
   busLocationWatchId = navigator.geolocation.watchPosition(
     async (position) => {
       const { latitude, longitude, speed } = position.coords;
@@ -88,7 +90,7 @@ function startBusLocationTracking() {
       window.updateConductorEta?.();
       window.updateFloatingLiveMap?.();
 
-      if (now - lastBusLocationWriteAt < 10000) return;
+      if (now - lastBusLocationWriteAt < BUS_LOCATION_WRITE_INTERVAL_MS) return;
       lastBusLocationWriteAt = now;
 
       try {
@@ -108,7 +110,7 @@ function startBusLocationTracking() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 5000,
+      maximumAge: 0,
       timeout: 15000,
     }
   );
@@ -302,9 +304,7 @@ function updateTripStatus() {
 
   if (!el) return;
 
-  el.textContent = AppState.trip.active
-    ? 'Trip in progress'
-    : 'Quezon City · No active trip';
+  el.textContent = 'Quezon City';
 }
 
 // ---------- Timer ----------

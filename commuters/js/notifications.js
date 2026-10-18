@@ -29,9 +29,97 @@ const notificationsCollection =
   collection(db, "notifications");
 const FCM_VAPID_KEY = "BPBmKHBkWhjPVe_unCqoxdh8w8_dxNmT2lQp7iDDKYnu3KzOH0VZIa6O3p-eCxFlG0iLraIUx771lyk0EgmCYgk"; // Firebase Console > Cloud Messaging > Web Push certificates
 const PUSH_DEVICE_ID_KEY = "qcBusPushDeviceId";
+const NOTIFICATION_PREFS_CACHE = "qc-commuter-notification-prefs-v1";
 
 let unsubscribeNotificationFeed = null;
 let foregroundMessageListener = null;
+let notificationAudioContext = null;
+const recentNotificationFeedback = new Map();
+
+function prepareNotificationAudio() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  try {
+    notificationAudioContext ||= new AudioContextClass();
+    if (notificationAudioContext.state === "suspended") {
+      notificationAudioContext.resume().catch(() => {});
+    }
+  } catch (error) {
+    console.warn("Notification sound is unavailable:", error);
+  }
+}
+
+window.addEventListener("pointerdown", prepareNotificationAudio, { once: true });
+window.addEventListener("keydown", prepareNotificationAudio, { once: true });
+
+function playNotificationSound() {
+  if (
+    !AppState.settings?.notifications ||
+    AppState.settings.notificationSound === false ||
+    document.visibilityState !== "visible"
+  ) return;
+
+  prepareNotificationAudio();
+  const context = notificationAudioContext;
+  if (!context || context.state !== "running") return;
+
+  const now = context.currentTime;
+  [880, 1174].forEach((frequency, index) => {
+    const start = now + index * 0.13;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.19);
+  });
+}
+
+function vibrateForNotification() {
+  if (
+    !AppState.settings?.notifications ||
+    AppState.settings.notificationVibration === false
+  ) return;
+  navigator.vibrate?.([180, 80, 180]);
+}
+
+async function syncNotificationPreferences() {
+  if (!("caches" in window)) return;
+
+  try {
+    const cache = await caches.open(NOTIFICATION_PREFS_CACHE);
+    const key = new URL("../__notification-prefs__", import.meta.url);
+    await cache.put(key, new Response(JSON.stringify({
+      enabled: AppState.settings.notifications === true,
+      sound: AppState.settings.notificationSound !== false,
+      vibration: AppState.settings.notificationVibration !== false,
+    }), { headers: { "Content-Type": "application/json" } }));
+  } catch (error) {
+    console.warn("Could not save notification preferences for background alerts:", error);
+  }
+}
+
+function notifyUserOfNotification(title, message, { vibrate = true } = {}) {
+  if (!AppState.settings?.notifications) return;
+
+  const key = `${title || ""}:${message || ""}`;
+  const now = Date.now();
+  if (now - (recentNotificationFeedback.get(key) || 0) < 5000) return;
+  recentNotificationFeedback.set(key, now);
+
+  for (const [recentKey, timestamp] of recentNotificationFeedback) {
+    if (now - timestamp > 10000) recentNotificationFeedback.delete(recentKey);
+  }
+
+  playNotificationSound();
+  if (vibrate) vibrateForNotification();
+}
 
 function getPushDeviceId() {
   let deviceId = localStorage.getItem(PUSH_DEVICE_ID_KEY);
@@ -91,10 +179,13 @@ async function registerPushNotifications() {
       foregroundMessageListener = onMessage(messaging, (payload) => {
         const title = payload.notification?.title || payload.data?.title;
         const body = payload.notification?.body || payload.data?.body;
-        if (title) {
+        if (title && AppState.settings?.notifications) {
+          notifyUserOfNotification(title, body, { vibrate: false });
           showSystemNotification(title, {
             body: body || "",
             tag: payload.data?.notificationId || title,
+            silent: true,
+            vibrate: [],
             data: { url: "/commuters/index.html#notifications" },
           });
         }
@@ -257,6 +348,7 @@ async function evaluateDropoffAlerts() {
 // =====================================================
 
 async function requestNotificationPermission() {
+  prepareNotificationAudio();
   if (!("Notification" in window)) {
     return false;
   }
@@ -283,6 +375,10 @@ async function showSystemNotification(
   title,
   options = {}
 ) {
+  if (!AppState.settings?.notifications) {
+    return;
+  }
+
   if (!("Notification" in window)) {
     return;
   }
@@ -294,12 +390,22 @@ async function showSystemNotification(
   const notificationOptions = {
     icon: "/images/qclogo2.png",
     badge: "/images/qclogo2.png",
-    vibrate: [200, 100, 200],
+    vibrate: AppState.settings?.notificationSound === false ||
+      AppState.settings?.notificationVibration === false
+      ? []
+      : [180, 80, 180],
+    silent: AppState.settings?.notificationSound === false,
     data: {
       url: "/commuters/index.html#notifications",
     },
     ...options,
   };
+
+  // The Notifications API rejects `silent: true` when a `vibrate` member is
+  // present, including an empty pattern. Omit it entirely for silent alerts.
+  if (notificationOptions.silent) {
+    delete notificationOptions.vibrate;
+  }
 
   if ("serviceWorker" in navigator) {
     try {
@@ -357,9 +463,24 @@ async function loadNotifications() {
       unsubscribeNotificationFeed();
     }
 
+    let isInitialNotificationSnapshot = true;
     unsubscribeNotificationFeed = onSnapshot(
       q,
       (snapshot) => {
+        const newNotifications = isInitialNotificationSnapshot
+          ? []
+          : snapshot.docChanges()
+              .filter((change) => change.type === "added")
+              .map((change) => change.doc.data());
+        isInitialNotificationSnapshot = false;
+
+        newNotifications.forEach((notification) => {
+          notifyUserOfNotification(
+            notification.title || "Notification",
+            notification.message || ""
+          );
+        });
+
         AppState.notifications = snapshot.docs.map(
         (notificationDoc) => {
           const data =
@@ -500,6 +621,10 @@ async function pushAppNotification(
 
       time: "Just now",
     });
+
+    if (options.type !== "test") {
+      notifyUserOfNotification(title, message);
+    }
 
     updateNotifBadge();
 
@@ -788,5 +913,8 @@ window.notifyBusUpdate =
 
 window.evaluateDropoffAlerts =
   evaluateDropoffAlerts;
+
+window.syncNotificationPreferences =
+  syncNotificationPreferences;
 
 setInterval(evaluateDropoffAlerts, 30000);
