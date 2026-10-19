@@ -25,11 +25,11 @@ function createLoader() {
   loaderElement.innerHTML = `
     <div class="flex flex-col items-center">
 
-      <div class="mb-6 animate-pulse">
+      <div class="mb-6">
         <img
-          src="/images/qclogo2.png"
+          src="/images/newloadinglogo.gif"
           alt="QC Bus"
-          class="h-20 w-20 object-contain"
+          class="h-32 w-32 sm:h-40 sm:w-40 rounded-full bg-transparent object-cover object-center"
         />
       </div>
 

@@ -193,6 +193,10 @@ body.dark-mode #app {
 body.dark-mode #content {
   background-color: #111d2b;
 }
+body.dark-mode .commuter-logo-tile {
+  background-color: #24364a !important;
+  background-image: none !important;
+}
 body.dark-mode .bg-white,
 body.dark-mode .bg-gray-50,
 body.dark-mode .bg-gray-100 {

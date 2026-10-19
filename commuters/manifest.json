@@ -12,9 +12,9 @@
   "categories": ["travel", "navigation"],
   "icons": [
     {
-      "src": "/images/buslogo.jpg",
+      "src": "/images/newlogo.png",
       "sizes": "710x685",
-      "type": "image/jpeg",
+      "type": "image/png",
       "purpose": "any"
     }
   ]

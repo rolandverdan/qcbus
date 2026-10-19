@@ -9,6 +9,6 @@
   "theme_color": "#16a34a",
   "orientation": "portrait",
   "icons": [
-    { "src": "/images/buslogo.jpg", "sizes": "710x685", "type": "image/jpeg", "purpose": "any" }
+    { "src": "/images/newlogo.png", "sizes": "710x685", "type": "image/png", "purpose": "any" }
   ]
 }

@@ -91,8 +91,8 @@ try {
 
         const notificationOptions = {
           body: data.body || 'You have a new notification.',
-          icon: '/images/buslogo.jpg',
-          badge: '/images/buslogo.jpg',
+          icon: '/images/newlogo.png',
+          badge: '/images/newlogo.png',
           vibrate: prefs.sound === false || prefs.vibration === false
             ? []
             : [180, 80, 180],

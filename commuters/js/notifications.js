@@ -388,8 +388,8 @@ async function showSystemNotification(
   }
 
   const notificationOptions = {
-    icon: "/images/buslogo.jpg",
-    badge: "/images/buslogo.jpg",
+    icon: "/images/newlogo.png",
+    badge: "/images/newlogo.png",
     vibrate: AppState.settings?.notificationSound === false ||
       AppState.settings?.notificationVibration === false
       ? []
