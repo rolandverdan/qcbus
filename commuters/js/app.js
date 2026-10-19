@@ -2,12 +2,7 @@ import {
   requireRole,
 } from "../../shared/js/auth.js";
 
-import { auth, storage } from "../../shared/js/firebase.js";
-import {
-  getDownloadURL,
-  ref as storageRef,
-  uploadBytes,
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
+import { auth } from "../../shared/js/firebase.js";
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -17,6 +12,7 @@ import {
 
 import {
   collection,
+  doc,
   getDocs,
   onSnapshot,
   query,
@@ -111,6 +107,31 @@ let pendingProfilePhoto = null;
 let pendingProfilePhotoPreviewUrl = "";
 
 window.AppState = AppState;
+
+// ==================================================
+// LIVE PROFILE SYNC — reflects name/phone/photo changes instantly
+// ==================================================
+onSnapshot(
+  doc(db, "users", user.uid),
+  (snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const next = {
+      name: data.name || user.displayName || "Commuter",
+      email: data.email || user.email || "",
+      phone: data.phone || "",
+      photoURL: data.photoURL || user.photoURL || "",
+    };
+    const changed = Object.keys(next).some((k) => AppState.user[k] !== next[k]);
+    if (!changed) return;
+    Object.assign(AppState.user, next);
+    // Don't clobber the edit form while the user is typing in it
+    if (!document.getElementById("editProfileModal")) {
+      refreshCurrentPage({ refreshRoutes: false });
+    }
+  },
+  (error) => console.error("Live profile sync failed:", error)
+);
 
 
 // ==================================================
@@ -868,6 +889,16 @@ function refreshCurrentPage({ refreshHome = true, refreshRoutes = true } = {}) {
     return;
   }
 
+  if (AppState.currentPage === "account") {
+    const content = document.getElementById("content");
+    const scrollY = window.scrollY;
+    content.innerHTML = Pages.account();
+    content.firstElementChild?.classList.remove("slide-in");
+    window.scrollTo(0, scrollY);
+
+    return;
+  }
+
   if (AppState.currentPage === "map") {
     if (
       typeof window.updateBusMarkers ===
@@ -1140,14 +1171,41 @@ function openEditProfile() {
 }
 
 function clearPendingProfilePhoto() {
+  // pendingProfilePhoto now holds an 80x80 Base64 JPEG data URL (no Storage needed)
   pendingProfilePhoto = null;
-  if (pendingProfilePhotoPreviewUrl) {
-    URL.revokeObjectURL(pendingProfilePhotoPreviewUrl);
-    pendingProfilePhotoPreviewUrl = "";
-  }
+  pendingProfilePhotoPreviewUrl = "";
 }
 
-function previewEditProfilePhoto(input) {
+function processProfilePicture(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = 80;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const scale = Math.max(size / img.width, size / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const dx = (size - scaledWidth) / 2;
+        const dy = (size - scaledHeight) / 2;
+
+        ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, scaledWidth, scaledHeight);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = reject;
+      img.src = event.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function previewEditProfilePhoto(input) {
   const file = input.files?.[0];
   if (!file) return;
 
@@ -1164,14 +1222,24 @@ function previewEditProfilePhoto(input) {
     return;
   }
 
+  let base64;
+  try {
+    base64 = await processProfilePicture(file);
+  } catch (error) {
+    console.error("Failed to process profile picture:", error);
+    input.value = "";
+    showSavedRouteToast("Could not read that image", true);
+    return;
+  }
+
   clearPendingProfilePhoto();
-  pendingProfilePhoto = file;
-  pendingProfilePhotoPreviewUrl = URL.createObjectURL(file);
+  pendingProfilePhoto = base64;
+  pendingProfilePhotoPreviewUrl = base64;
 
   const preview = document.getElementById("editProfilePhotoPreview");
   const initials = document.getElementById("editProfilePhotoInitials");
   if (preview) {
-    preview.src = pendingProfilePhotoPreviewUrl;
+    preview.src = base64;
     preview.classList.remove("hidden");
   }
   initials?.classList.add("hidden");
@@ -1327,14 +1395,8 @@ async function handleEditProfileSubmit(event) {
 
     let photoURL = AppState.user.photoURL || "";
     if (pendingProfilePhoto) {
-      const photoRef = storageRef(
-        storage,
-        `profilePictures/${AppState.user.uid}/avatar`
-      );
-      const uploadedPhoto = await uploadBytes(photoRef, pendingProfilePhoto, {
-        contentType: pendingProfilePhoto.type,
-      });
-      photoURL = await getDownloadURL(uploadedPhoto.ref);
+      // ~3–5 KB Base64 string, safely under Firestore's 1 MiB doc limit
+      photoURL = pendingProfilePhoto;
     }
 
     await updateUserProfile(
