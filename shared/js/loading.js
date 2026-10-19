@@ -28,13 +28,13 @@ function createLoader() {
       <div class="mb-6">
         <img
           src="/images/newloadinglogo.gif"
-          alt="QC Bus"
+          alt="QCommute"
           class="h-32 w-32 sm:h-40 sm:w-40 rounded-full bg-transparent object-cover object-center"
         />
       </div>
 
       <h1 class="text-xl font-bold tracking-tight text-qc-blue">
-        QC Bus
+        QCommute
       </h1>
 
       <p class="mt-2 text-sm text-gray-500">

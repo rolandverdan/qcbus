@@ -3,6 +3,14 @@ import { signOutUser } from "../../shared/js/repositories/auth.repo.js";
 import "../../shared/js/loading.js";
 
 import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { db } from "../../shared/js/firebase.js";
+
+import {
   getBusByConductorIdRepo,
 } from "../../shared/js/repositories/buses.repo.js";
 
@@ -1448,6 +1456,10 @@ async function logout() {
   }
 }
 
+let unsubscribeConductorBus = null;
+let unsubscribeConductorRoutes = null;
+let unsubscribeConductorStops = null;
+
 async function loadConductorData() {
   const staff = await import(
     "../../shared/js/repositories/staff.repo.js"
@@ -1462,67 +1474,151 @@ async function loadConductorData() {
     );
   }
 
-  const bus =
-    await getBusByConductorIdRepo(staffMember.id);
-
-  if (!bus) {
-    AppState.conductor.name =
-      staffMember.name || profile.name || 'Conductor';
-
-    AppState.conductor.id =
-      staffMember.id;
-
-    AppState.conductor.email =
-      staffMember.email || user.email || '';
-
-    return;
-  }
-
-  const routes = await getRoutesRepo();
-  const stops = await getStopsRepo();
-
-  const route = bus.routeId
-    ? routes.find(r => r.id === bus.routeId)
-    : null;
-
   AppState.conductor.name =
     staffMember.name || profile.name || 'Conductor';
-
   AppState.conductor.id =
     staffMember.id;
-
   AppState.conductor.email =
     staffMember.email || user.email || '';
 
-  AppState.bus = {
-    id: bus.code || bus.id,
-    documentId: bus.id,
-    staffId: staffMember.id,
-    routeId: bus.routeId || null,
-    routeGeometry: route?.geometry || null,
-    route: route
-      ? `${route.code} · ${route.name}`
-      : 'No route assigned',
-    plateNumber: bus.plateNumber || '',
-    capacity: Number(bus.capacity) || 45,
-    lat: bus.lat !== null && bus.lat !== undefined && Number.isFinite(Number(bus.lat))
-      ? Number(bus.lat)
-      : null,
-    lng: bus.lng !== null && bus.lng !== undefined && Number.isFinite(Number(bus.lng))
-      ? Number(bus.lng)
-      : null,
-    speedKmh: bus.speedKmh !== null && bus.speedKmh !== undefined && Number.isFinite(Number(bus.speedKmh))
-      ? Number(bus.speedKmh)
-      : null,
-    locationUpdatedAt: bus.locationUpdatedAt || null,
+  let latestBus = await getBusByConductorIdRepo(staffMember.id);
+  let latestRoutes = await getRoutesRepo();
+  let latestStops = await getStopsRepo();
+
+  const applyConductorBusRouteStops = (isRealtimeUpdate = false) => {
+    if (!latestBus) {
+      AppState.bus = {
+        id: null,
+        documentId: null,
+        route: 'No route assigned',
+        routeId: null,
+        routeGeometry: null,
+        plateNumber: '',
+        capacity: 45,
+        staffId: staffMember.id,
+        lat: null,
+        lng: null,
+        speedKmh: null,
+        locationUpdatedAt: null,
+      };
+      AppState.routeStops = [];
+      if (isRealtimeUpdate) {
+        window.refreshConductorLiveMapRoute?.();
+        window.updateFloatingLiveMap?.();
+        refreshCurrentPage();
+      }
+      return;
+    }
+
+    const route = latestBus.routeId
+      ? latestRoutes.find((r) => r.id === latestBus.routeId)
+      : null;
+
+    const prevRouteId = AppState.bus.routeId;
+    const prevBusDocId = AppState.bus.documentId;
+
+    const remoteLat =
+      latestBus.lat !== null &&
+      latestBus.lat !== undefined &&
+      Number.isFinite(Number(latestBus.lat))
+        ? Number(latestBus.lat)
+        : null;
+    const remoteLng =
+      latestBus.lng !== null &&
+      latestBus.lng !== undefined &&
+      Number.isFinite(Number(latestBus.lng))
+        ? Number(latestBus.lng)
+        : null;
+    const remoteSpeed =
+      latestBus.speedKmh !== null &&
+      latestBus.speedKmh !== undefined &&
+      Number.isFinite(Number(latestBus.speedKmh))
+        ? Number(latestBus.speedKmh)
+        : null;
+
+    AppState.bus = {
+      id: latestBus.code || latestBus.id,
+      documentId: latestBus.id,
+      staffId: staffMember.id,
+      routeId: latestBus.routeId || null,
+      routeGeometry: route?.geometry || null,
+      route: route
+        ? `${route.code} · ${route.name}`
+        : 'No route assigned',
+      plateNumber: latestBus.plateNumber || '',
+      capacity: Number(latestBus.capacity) || 45,
+      lat: remoteLat ?? AppState.bus.lat ?? null,
+      lng: remoteLng ?? AppState.bus.lng ?? null,
+      speedKmh: remoteSpeed ?? AppState.bus.speedKmh ?? null,
+      locationUpdatedAt: latestBus.locationUpdatedAt || AppState.bus.locationUpdatedAt || null,
+    };
+
+    AppState.routeStops = latestStops
+      .filter((stop) => stop.routeId === AppState.bus.routeId)
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+
+    AppState.occupancy.capacity = AppState.bus.capacity;
+
+    if (isRealtimeUpdate) {
+      if (prevBusDocId !== AppState.bus.documentId && window.initActiveTripListener) {
+        window.initActiveTripListener();
+      }
+      if (AppState.trip.active && AppState.bus.documentId) {
+        window.startBusLocationTracking?.();
+      }
+      window.refreshConductorLiveMapRoute?.();
+      window.updateFloatingLiveMap?.();
+      window.updateConductorEta?.();
+      if (prevRouteId !== AppState.bus.routeId && AppState.currentPage === "trip" && !AppState.trip.active) {
+        navigateTo("trip");
+      } else {
+        refreshCurrentPage();
+      }
+    }
   };
 
-  AppState.routeStops = stops
-    .filter((stop) => stop.routeId === AppState.bus.routeId)
-    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  applyConductorBusRouteStops(false);
 
-  AppState.occupancy.capacity =
-    AppState.bus.capacity;
+  if (unsubscribeConductorBus) unsubscribeConductorBus();
+  if (unsubscribeConductorRoutes) unsubscribeConductorRoutes();
+  if (unsubscribeConductorStops) unsubscribeConductorStops();
+
+  unsubscribeConductorBus = onSnapshot(
+    query(collection(db, "buses"), where("conductorId", "==", staffMember.id)),
+    (snapshot) => {
+      const docs = snapshot.docs.map((busDoc) => ({
+        id: busDoc.id,
+        ...busDoc.data(),
+      }));
+      latestBus = docs[0] || null;
+      applyConductorBusRouteStops(true);
+    },
+    (error) => console.error("Conductor bus listener error:", error)
+  );
+
+  unsubscribeConductorRoutes = onSnapshot(
+    collection(db, "routes"),
+    (snapshot) => {
+      latestRoutes = snapshot.docs.map((routeDoc) => ({
+        id: routeDoc.id,
+        ...routeDoc.data(),
+      }));
+      applyConductorBusRouteStops(true);
+    },
+    (error) => console.error("Conductor routes listener error:", error)
+  );
+
+  unsubscribeConductorStops = onSnapshot(
+    collection(db, "stops"),
+    (snapshot) => {
+      latestStops = snapshot.docs.map((stopDoc) => ({
+        id: stopDoc.id,
+        ...stopDoc.data(),
+      }));
+      applyConductorBusRouteStops(true);
+    },
+    (error) => console.error("Conductor stops listener error:", error)
+  );
 }
 
 // ==================================================

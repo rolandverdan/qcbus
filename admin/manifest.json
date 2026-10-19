@@ -1,14 +1,32 @@
 {
-  "name": "QC Bus Admin",
-  "short_name": "QC Admin",
-  "description": "Manage routes, buses, staff and monitor fleet for QC Bus Tracker",
+  "id": "/admin/",
+  "name": "QCommute Admin",
+  "short_name": "QCommute Admin",
+  "description": "Manage routes, buses, staff and monitor fleet for QCommute",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#7c3aed",
+  "theme_color": "#0D3B54",
   "orientation": "portrait",
   "icons": [
-    { "src": "/images/newlogo.png", "sizes": "710x685", "type": "image/png", "purpose": "any" }
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/newlogo.png",
+      "sizes": "2048x2048",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }

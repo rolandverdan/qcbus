@@ -145,6 +145,7 @@ function startBusLocationTracking() {
   busLocationWatchId = navigator.geolocation.watchPosition(
     async (position) => {
       const { latitude, longitude, speed } = position.coords;
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
       const now = Date.now();
       const speedKmh = Number.isFinite(speed) && speed >= 0
         ? speed * 3.6
@@ -159,6 +160,7 @@ function startBusLocationTracking() {
       window.updateConductorEta?.();
       window.updateFloatingLiveMap?.();
 
+      if (!AppState.bus.documentId) return;
       if (now - lastBusLocationWriteAt < BUS_LOCATION_WRITE_INTERVAL_MS) return;
       lastBusLocationWriteAt = now;
 
@@ -173,14 +175,16 @@ function startBusLocationTracking() {
       }
     },
     (error) => {
-      console.error("Bus location tracking failed:", error);
-      showToast("Allow location access to share live ETA", "warn");
-      stopBusLocationTracking();
+      console.warn("Bus location tracking error:", error);
+      if (error && error.code === error.PERMISSION_DENIED) {
+        showToast("Allow location access to share live ETA", "warn");
+        stopBusLocationTracking();
+      }
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
+      maximumAge: 2000,
+      timeout: 20000,
     }
   );
 }
@@ -201,6 +205,7 @@ function listenToDropoffRequests(tripId) {
 
   AppState.dropoffRequests = [];
   AppState.currentAlightStopId = null;
+  window.updateFloatingLiveMap?.();
   if (!tripId) return;
 
   unsubscribeDropoffRequests = listenToTripDropoffRequestsRepo(
@@ -209,6 +214,7 @@ function listenToDropoffRequests(tripId) {
       AppState.dropoffRequests = requests;
 
       window.refreshConductorPage?.();
+      window.updateFloatingLiveMap?.();
     },
     (error) => console.error("Drop-off count listener failed:", error)
   );
@@ -283,7 +289,19 @@ async function startTrip() {
     listenToDropoffRequests(trip.id);
     if (window.startLiveOccupancySync) window.startLiveOccupancySync(trip.id);
     startBusLocationTracking();
+    if (
+      AppState.bus.documentId &&
+      Number.isFinite(Number(AppState.bus.lat)) &&
+      Number.isFinite(Number(AppState.bus.lng))
+    ) {
+      updateBusLocationRepo(AppState.bus.documentId, {
+        lat: AppState.bus.lat,
+        lng: AppState.bus.lng,
+        speedKmh: AppState.bus.speedKmh || 0,
+      }).catch((err) => console.warn("Initial bus location sync failed:", err));
+    }
     setLiveMapAvailable(true);
+    window.updateFloatingLiveMap?.();
 
     recordHistory(
       'trip',
@@ -509,8 +527,9 @@ function initActiveTripListener() {
           setLiveMapAvailable(true);
           updateTripStatus();
           startTripTimer();
-          window.refreshConductorPage?.();
         }
+        window.refreshConductorPage?.();
+        window.updateFloatingLiveMap?.();
       } else {
         if (AppState.trip.active) {
           AppState.trip.active = false;
@@ -541,3 +560,6 @@ window.stopTripTimer = stopTripTimer;
 window.saveTripOccupancy = saveTripOccupancy;
 window.addHistory = recordHistory;
 window.updateTripStatus = updateTripStatus;
+window.startBusLocationTracking = startBusLocationTracking;
+window.stopBusLocationTracking = stopBusLocationTracking;
+

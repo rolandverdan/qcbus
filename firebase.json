@@ -3,12 +3,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "storage": {
-    "rules": "storage.rules"
-  },
   "hosting": {
     "public": ".",
-    "rewrites": [
+    "redirects": [
       {
         "source": "/",
         "destination": "/landing-page-folder/index.html",

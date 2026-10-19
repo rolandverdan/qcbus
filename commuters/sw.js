@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-commuter-v42';
+const CACHE_NAME = 'qc-commuter-v44';
 const NOTIFICATION_PREFS_CACHE = 'qc-commuter-notification-prefs-v1';
 const urlsToCache = [
   './',

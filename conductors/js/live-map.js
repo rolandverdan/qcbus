@@ -9,15 +9,62 @@ if (!document.querySelector("link[data-live-maplibre]")) {
 }
 
 let liveMap = null;
+let isLiveMapLoaded = false;
 let busMarker = null;
+let busPopup = null;
+let busMarkerAnimation = { frame: null };
 let stopMarkers = [];
+let lastStopsSignature = "";
+let hasCenteredOnBus = false;
+let hasUserMovedLiveMap = false;
 
 function getCoordinates(point) {
   const lat = Number(point?.lat ?? point?.latitude);
   const lng = Number(point?.lng ?? point?.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng)
-    ? [lng, lat]
-    : null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat === 0 && lng === 0) return null;
+  return [lng, lat];
+}
+
+function normalizeGeometryCoords(geometry) {
+  if (!geometry || typeof geometry !== "object") return null;
+
+  const fixPair = (coord) => {
+    if (!Array.isArray(coord) || coord.length < 2) return coord;
+    const c0 = Number(coord[0]);
+    const c1 = Number(coord[1]);
+    if (!Number.isFinite(c0) || !Number.isFinite(c1)) return coord;
+    if (c0 < 50 && c1 > 100) return [c1, c0];
+    return [c0, c1];
+  };
+
+  if (geometry.type === "LineString" && Array.isArray(geometry.coordinates)) {
+    return {
+      ...geometry,
+      coordinates: geometry.coordinates.map(fixPair),
+    };
+  }
+  if (geometry.type === "MultiLineString" && Array.isArray(geometry.coordinates)) {
+    return {
+      ...geometry,
+      coordinates: geometry.coordinates.map((line) =>
+        Array.isArray(line) ? line.map(fixPair) : line
+      ),
+    };
+  }
+  if (geometry.type === "Feature" && geometry.geometry) {
+    return {
+      ...geometry,
+      geometry: normalizeGeometryCoords(geometry.geometry),
+    };
+  }
+  if (geometry.type === "FeatureCollection" && Array.isArray(geometry.features)) {
+    return {
+      ...geometry,
+      features: geometry.features.map((f) => normalizeGeometryCoords(f)),
+    };
+  }
+  return geometry;
 }
 
 function getRouteGeometry() {
@@ -29,9 +76,15 @@ function getRouteGeometry() {
       ? JSON.parse(rawGeometry)
       : rawGeometry;
 
-    if (parsed.type === "FeatureCollection") return parsed;
-    if (parsed.type === "Feature") return parsed;
-    if (parsed.type && parsed.coordinates) return parsed;
+    if (parsed.type === "FeatureCollection") return normalizeGeometryCoords(parsed);
+    if (parsed.type === "Feature") return normalizeGeometryCoords(parsed);
+    if (parsed.type && parsed.coordinates) {
+      return {
+        type: "Feature",
+        properties: {},
+        geometry: normalizeGeometryCoords(parsed),
+      };
+    }
   } catch (error) {
     console.warn("Unable to parse conductor route geometry:", error);
   }
@@ -66,15 +119,91 @@ function getInitialCenter() {
   return firstStop || [121.0494, 14.6517];
 }
 
-function addRouteAndStops() {
-  if (!liveMap) return;
+function animateBusMarkerTo(marker, animation, targetCoordinates, durationMs = 800) {
+  const startLngLat = marker.getLngLat();
+  if (!startLngLat) {
+    marker.setLngLat(targetCoordinates);
+    return;
+  }
 
-  const route = getRouteGeometry() || getFallbackRoute();
-  if (route) {
+  const startLng = startLngLat.lng;
+  const startLat = startLngLat.lat;
+  const [targetLng, targetLat] = targetCoordinates;
+
+  if (Math.abs(targetLng - startLng) < 0.000001 && Math.abs(targetLat - startLat) < 0.000001) {
+    marker.setLngLat(targetCoordinates);
+    return;
+  }
+
+  if (animation.frame !== null) {
+    cancelAnimationFrame(animation.frame);
+  }
+
+  const startTime = performance.now();
+  const step = (now) => {
+    const progress = Math.min(1, (now - startTime) / durationMs);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const nextPosition = [
+      startLng + (targetLng - startLng) * eased,
+      startLat + (targetLat - startLat) * eased,
+    ];
+    marker.setLngLat(nextPosition);
+    if (busPopup?.isOpen()) {
+      busPopup.setLngLat(nextPosition);
+    }
+
+    if (progress < 1) {
+      animation.frame = requestAnimationFrame(step);
+    } else {
+      animation.frame = null;
+    }
+  };
+
+  animation.frame = requestAnimationFrame(step);
+}
+
+function getStopExpectedCount(stopId, stopName) {
+  const requests = window.AppState?.dropoffRequests || [];
+  return requests.filter((req) => {
+    if (req.status === "alighted") return false;
+    if (stopId && req.stopId === stopId) return true;
+    if (!req.stopId && stopName && req.stopName === stopName) return true;
+    return false;
+  }).length;
+}
+
+function renderStopPopupHtml(stop, index) {
+  const stopName = stop.name || `Stop ${index + 1}`;
+  const expectedCount = getStopExpectedCount(stop.id, stopName);
+  return `
+    <div style="font-size:13px;font-weight:700;color:#1f2937">
+      ${escapeStopName(stopName)}
+    </div>
+    <div style="font-size:11px;color:${expectedCount > 0 ? "#1d4ed8" : "#6b7280"};font-weight:${expectedCount > 0 ? "700" : "500"};margin-top:2px">
+      ${expectedCount > 0 ? `${expectedCount} passenger${expectedCount === 1 ? "" : "s"} alighting` : `Stop #${index + 1}`}
+    </div>
+  `;
+}
+
+function syncRouteSourceAndLayer() {
+  if (!liveMap || !isLiveMapLoaded) return;
+
+  const route = getRouteGeometry() || getFallbackRoute() || {
+    type: "FeatureCollection",
+    features: [],
+  };
+
+  const existingSource = liveMap.getSource("conductor-route");
+  if (existingSource) {
+    existingSource.setData(route);
+  } else {
     liveMap.addSource("conductor-route", {
       type: "geojson",
       data: route,
     });
+  }
+
+  if (!liveMap.getLayer("conductor-route-line")) {
     liveMap.addLayer({
       id: "conductor-route-line",
       type: "line",
@@ -90,36 +219,70 @@ function addRouteAndStops() {
       },
     });
   }
+}
 
-  stopMarkers = (window.AppState?.routeStops || []).flatMap((stop, index) => {
-    const coordinates = getCoordinates(stop);
-    if (!coordinates) return [];
+function syncStopMarkers() {
+  if (!liveMap || !isLiveMapLoaded) return;
 
-    const element = document.createElement("div");
-    element.className = "live-map-stop-marker";
-    element.textContent = String(index + 1);
-    element.title = stop.name || `Stop ${index + 1}`;
+  const stops = window.AppState?.routeStops || [];
+  const signature = stops
+    .map((stop, idx) => {
+      const coords = getCoordinates(stop);
+      return `${stop.id || idx}|${stop.name || ""}|${coords ? `${coords[0]},${coords[1]}` : "null"}`;
+    })
+    .join(";");
 
-    const popup = new maplibregl.Popup({
-      offset: 14,
-      closeButton: false,
-      closeOnClick: true,
-    }).setHTML(`
-      <div style="font-size:13px;font-weight:700;color:#1f2937">
-        ${escapeStopName(stop.name || `Stop ${index + 1}`)}
-      </div>
-    `);
+  if (signature !== lastStopsSignature) {
+    lastStopsSignature = signature;
+    stopMarkers.forEach(({ marker, popup }) => {
+      popup?.remove();
+      marker.remove();
+    });
 
-    const marker = new maplibregl.Marker({ element })
-      .setLngLat(coordinates)
-      .setPopup(popup)
-      .addTo(liveMap);
+    stopMarkers = stops.flatMap((stop, index) => {
+      const coordinates = getCoordinates(stop);
+      if (!coordinates) return [];
 
-    return [{ id: stop.id, marker, element }];
-  });
+      const element = document.createElement("div");
+      element.className = "live-map-stop-marker";
+      element.textContent = String(index + 1);
+      element.title = stop.name || `Stop ${index + 1}`;
 
+      const popup = new maplibregl.Popup({
+        offset: 14,
+        closeButton: false,
+        closeOnClick: true,
+      }).setHTML(renderStopPopupHtml(stop, index));
+
+      const marker = new maplibregl.Marker({ element })
+        .setLngLat(coordinates)
+        .setPopup(popup)
+        .addTo(liveMap);
+
+      return [{ id: stop.id, stop, index, marker, popup, element }];
+    });
+  } else {
+    stopMarkers.forEach(({ stop, index, popup }) => {
+      popup?.setHTML(renderStopPopupHtml(stop, index));
+    });
+  }
+}
+
+function addRouteAndStops() {
+  if (!liveMap) return;
+  isLiveMapLoaded = true;
+
+  syncRouteSourceAndLayer();
+  syncStopMarkers();
   updateFloatingLiveMap();
   fitMapToRoute();
+}
+
+function refreshConductorLiveMapRoute() {
+  if (!liveMap || !isLiveMapLoaded) return;
+  syncRouteSourceAndLayer();
+  syncStopMarkers();
+  updateFloatingLiveMap();
 }
 
 function escapeStopName(value) {
@@ -152,6 +315,21 @@ function fitMapToRoute() {
   }
 }
 
+function renderBusPopupHtml() {
+  const state = window.AppState;
+  const busId = state?.bus?.id || "Bus";
+  const onboard = Number(state?.occupancy?.onboard) || 0;
+  const capacity = Number(state?.occupancy?.capacity || state?.bus?.capacity) || 45;
+  const speed = Number(state?.bus?.speedKmh);
+  return `
+    <div style="font-size:12px;color:#1f2937;min-width:130px">
+      <div style="font-weight:700;font-size:13px;color:#115272">${escapeStopName(busId)}</div>
+      <div style="margin-top:2px">Onboard: <strong>${onboard}/${capacity}</strong></div>
+      ${Number.isFinite(speed) ? `<div style="margin-top:2px">Speed: <strong>${Math.round(speed)} km/h</strong></div>` : ""}
+    </div>
+  `;
+}
+
 function ensureBusMarker() {
   if (!liveMap || busMarker) return;
 
@@ -163,7 +341,13 @@ function ensureBusMarker() {
     </svg>
   `;
 
-  busMarker = new maplibregl.Marker({ element, anchor: "center" });
+  busPopup = new maplibregl.Popup({
+    offset: 16,
+    closeButton: false,
+    closeOnClick: true,
+  }).setHTML(renderBusPopupHtml());
+
+  busMarker = new maplibregl.Marker({ element, anchor: "center" }).setPopup(busPopup);
 }
 
 function updateFloatingLiveMap() {
@@ -175,11 +359,28 @@ function updateFloatingLiveMap() {
   );
   const label = document.getElementById("liveMapStopLabel");
   if (label) {
-    label.textContent = stop?.name || "Nearest stop unavailable";
+    if (stop) {
+      const expected = getStopExpectedCount(stop.id, stop.name);
+      label.textContent = expected > 0
+        ? `${stop.name} · ${expected} alighting`
+        : stop.name;
+    } else {
+      label.textContent = "Nearest stop unavailable";
+    }
   }
 
-  stopMarkers.forEach(({ id, element }) => {
-    element.classList.toggle("is-nearest", id === state.currentAlightStopId);
+  if (liveMap && isLiveMapLoaded) {
+    syncStopMarkers();
+  }
+
+  stopMarkers.forEach(({ id, stop: routeStop, index, element, popup }) => {
+    const isNearest = id === state.currentAlightStopId;
+    const expected = getStopExpectedCount(id, routeStop?.name);
+    element.classList.toggle("is-nearest", isNearest);
+    element.title = expected > 0
+      ? `${routeStop?.name || `Stop ${index + 1}`} (${expected} alighting)`
+      : routeStop?.name || `Stop ${index + 1}`;
+    popup?.setHTML(renderStopPopupHtml(routeStop, index));
   });
 
   if (!liveMap) return;
@@ -188,22 +389,54 @@ function updateFloatingLiveMap() {
   if (!coordinates) return;
 
   ensureBusMarker();
-  busMarker.setLngLat(coordinates);
-  if (!busMarker.getElement().isConnected) busMarker.addTo(liveMap);
+  busPopup?.setHTML(renderBusPopupHtml());
+
+  if (!busMarker.getElement().isConnected) {
+    busMarker.setLngLat(coordinates).addTo(liveMap);
+  } else {
+    animateBusMarkerTo(busMarker, busMarkerAnimation, coordinates, 800);
+  }
+
+  if (!hasCenteredOnBus) {
+    hasCenteredOnBus = true;
+    if (!hasUserMovedLiveMap && isLiveMapLoaded) {
+      fitMapToRoute();
+    }
+  }
 }
 
 function createLiveMap() {
+  const container = document.getElementById("liveMapCanvas");
+  if (!container) return;
+
+  if (liveMap && liveMap.getContainer() !== container) {
+    if (busMarkerAnimation.frame !== null) {
+      cancelAnimationFrame(busMarkerAnimation.frame);
+      busMarkerAnimation.frame = null;
+    }
+    liveMap.remove();
+    liveMap = null;
+    isLiveMapLoaded = false;
+    busMarker = null;
+    busPopup = null;
+    stopMarkers = [];
+    lastStopsSignature = "";
+  }
+
   if (liveMap) {
     liveMap.resize();
-    updateFloatingLiveMap();
+    refreshConductorLiveMapRoute();
     return;
   }
+
+  hasCenteredOnBus = Boolean(getCoordinates(window.AppState?.bus));
+  hasUserMovedLiveMap = false;
 
   liveMap = new maplibregl.Map({
     container: "liveMapCanvas",
     style: "https://tiles.openfreemap.org/styles/liberty",
     center: getInitialCenter(),
-    zoom: 12,
+    zoom: 13,
     attributionControl: false,
   });
 
@@ -211,6 +444,16 @@ function createLiveMap() {
     new maplibregl.NavigationControl({ showCompass: false }),
     "bottom-right"
   );
+
+  liveMap.on("dragstart", () => {
+    hasUserMovedLiveMap = true;
+  });
+
+  liveMap.on("zoomstart", (event) => {
+    if (event.originalEvent) {
+      hasUserMovedLiveMap = true;
+    }
+  });
 
   liveMap.on("load", addRouteAndStops);
 }
@@ -232,7 +475,10 @@ function toggleLiveMap() {
     panel.classList.remove("is-fullscreen");
     updateLiveMapFullscreenButton(false);
     createLiveMap();
-    requestAnimationFrame(() => liveMap?.resize());
+    requestAnimationFrame(() => {
+      liveMap?.resize();
+      updateFloatingLiveMap();
+    });
   }
 }
 
@@ -278,4 +524,6 @@ document.getElementById("liveMapFullscreen")?.addEventListener("click", toggleLi
 
 window.setLiveMapAvailability = setLiveMapAvailability;
 window.updateFloatingLiveMap = updateFloatingLiveMap;
+window.refreshConductorLiveMapRoute = refreshConductorLiveMapRoute;
 setLiveMapAvailability(window.__liveMapAvailable === true);
+

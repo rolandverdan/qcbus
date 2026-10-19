@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-admin-v9';
+const CACHE_NAME = 'qc-admin-v10';
 const urlsToCache = [
   './',
   './index.html',

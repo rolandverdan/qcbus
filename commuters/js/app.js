@@ -3020,7 +3020,7 @@ function navigateTo(page, updateHash = true, options = {}) {
   if (pageTitle) {
     pageTitle.textContent =
       titles[page] ||
-      "QC Bus Tracker";
+      "QCommute";
   }
 
 

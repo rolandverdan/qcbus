@@ -45,6 +45,9 @@ let stopMarkers = [];
 let userMarker = null;
 const userLocationAnimation = { frame: null };
 let activeStopPopup = null;
+let refreshActiveStopPopup = null;
+let lastStopMarkersSignature = "";
+let isMapLoaded = false;
 let userLocationWatchId = null;
 let displayedUserLocation = null;
 let hasUserMovedMap = false;
@@ -279,6 +282,10 @@ function initMap() {
   if (!container) return;
 
 
+  if (map && map.getContainer() !== container) {
+    destroyMap();
+  }
+
   createRoutePicker();
 
   if (map) {
@@ -288,12 +295,17 @@ function initMap() {
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
+    if (userLocationWatchId === null) {
+      getUserLocation();
+    }
 
     return;
   }
 
 
   routeLayersInitialized = false;
+  isMapLoaded = false;
+  lastStopMarkersSignature = "";
 
 
   map = new maplibregl.Map({
@@ -329,14 +341,18 @@ function initMap() {
   map.on("touchstart", markMapAsUserMoved);
   map.on("rotate", updateBusMarkers);
 
+  // Immediately place HTML markers (buses & user location) even before vector tiles finish loading
+  updateBusMarkers();
+  updateBusLegend();
+  getUserLocation();
 
   map.on("load", () => {
     if (!map) return;
+    isMapLoaded = true;
 
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
-    getUserLocation();
 
     if (pendingSelectedRouteId) {
       const routeId = pendingSelectedRouteId;
@@ -843,12 +859,12 @@ function selectRoute(routeId) {
   if (map) {
     centerMapOnRoute(route);
 
-    if (map.isStyleLoaded()) {
+    if (isMapLoaded) {
       updateRouteLayers();
       updateBusMarkers();
       updateBusLegend();
     } else {
-      map.once("styledata", () => {
+      map.once("load", () => {
         updateRouteLayers();
         updateBusMarkers();
         updateBusLegend();
@@ -1027,9 +1043,7 @@ function getAllRouteFeatures() {
 // ==================================================
 
 function updateRouteLayers() {
-  if (!map) return;
-
-  if (!map.isStyleLoaded()) {
+  if (!map || !isMapLoaded) {
     return;
   }
 
@@ -1415,6 +1429,13 @@ function updateRouteLayers() {
 
   // Remove stops
 
+  if (activeStopPopup) {
+    activeStopPopup.remove();
+    activeStopPopup = null;
+  }
+  refreshActiveStopPopup = null;
+  lastStopMarkersSignature = "";
+
   stopMarkers.forEach(
     marker => marker.remove()
   );
@@ -1430,24 +1451,19 @@ function updateRouteLayers() {
 function updateStopMarkers() {
   if (!map) return;
 
-  if (activeStopPopup) {
-    activeStopPopup.remove();
-    activeStopPopup = null;
-  }
-
-
-  // Remove previous stop markers
-
-  stopMarkers.forEach(
-    marker => marker.remove()
-  );
-
-  stopMarkers = [];
-
-
   // No selected route = no stops
 
   if (!selectedRouteId) {
+    if (activeStopPopup) {
+      activeStopPopup.remove();
+      activeStopPopup = null;
+    }
+    refreshActiveStopPopup = null;
+    lastStopMarkersSignature = "";
+    stopMarkers.forEach(
+      marker => marker.remove()
+    );
+    stopMarkers = [];
     return;
   }
 
@@ -1461,20 +1477,36 @@ function updateStopMarkers() {
       selectedRouteId
     );
 
+  const signature = `${selectedRouteId}:${stops.map((stop, idx) => {
+    const coords = getStopCoordinates(stop);
+    const name = stop.name || stop.stopName || `Stop ${idx + 1}`;
+    const place = stop.location || stop.address || stop.place || "";
+    return `${stop.id || idx}|${name}|${place}|${coords ? `${coords[0]},${coords[1]}` : "null"}`;
+  }).join(";")}`;
 
-  console.log(
-    "Stops for selected route:",
-    selectedRouteId,
-    stops
+  if (signature === lastStopMarkersSignature && stopMarkers.length > 0) {
+    refreshActiveStopPopup?.();
+    return;
+  }
+
+  lastStopMarkersSignature = signature;
+
+  if (activeStopPopup) {
+    activeStopPopup.remove();
+    activeStopPopup = null;
+  }
+  refreshActiveStopPopup = null;
+
+  // Remove previous stop markers
+
+  stopMarkers.forEach(
+    marker => marker.remove()
   );
+
+  stopMarkers = [];
 
 
   if (!stops.length) {
-    console.log(
-      "No stops found for route:",
-      selectedRouteId
-    );
-
     return;
   }
 
@@ -1576,98 +1608,9 @@ function updateStopMarkers() {
       popup.on("close", () => {
         if (activeStopPopup === popup) {
           activeStopPopup = null;
+          refreshActiveStopPopup = null;
         }
       });
-
-
-      popup.setHTML(`
-        <div
-          style="
-            min-width:180px;
-            padding:2px;
-          "
-        >
-
-          <div
-            style="
-              display:flex;
-              align-items:center;
-              gap:9px;
-              margin-bottom:8px;
-            "
-          >
-
-            <div
-              style="
-                width:30px;
-                height:30px;
-                border-radius:50%;
-                background:#2563eb;
-                color:#ffffff;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                font-weight:700;
-                font-size:12px;
-                flex-shrink:0;
-              "
-            >
-              ${index + 1}
-            </div>
-
-
-            <div>
-
-              <div
-                style="
-                  font-size:14px;
-                  font-weight:700;
-                  color:#111827;
-                  line-height:1.2;
-                "
-              >
-                ${escapeHtml(
-                  stopName
-                )}
-              </div>
-
-
-              <div
-                style="
-                  font-size:11px;
-                  color:#6b7280;
-                  margin-top:2px;
-                "
-              >
-                Bus Stop ${index + 1}
-              </div>
-
-            </div>
-
-          </div>
-
-
-          ${
-            stopPlace
-              ? `
-                <div
-                  style="
-                    border-top:1px solid #e5e7eb;
-                    padding-top:8px;
-                    font-size:12px;
-                    color:#4b5563;
-                  "
-                >
-                  <svg style="display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:3px" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1116 0z"/><circle cx="12" cy="10" r="2.5" stroke-width="1.8"/></svg>${escapeHtml(
-                    stopPlace
-                  )}
-                </div>
-              `
-              : ""
-          }
-
-        </div>
-      `);
 
 
       // ----------------------------------------------
@@ -1695,11 +1638,13 @@ function updateStopMarkers() {
       // ----------------------------------------------
       // Confirm drop-off from the stop popup
       // ----------------------------------------------
-      element.addEventListener("click", event => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        closeBusPopups();
+      const mountStopPopupContent = () => {
+        if (!popup.isOpen()) return;
+        const existingPopupEl = popup.getElement();
+        const activeSelect = existingPopupEl?.querySelector("#dropoffTripSelect");
+        if (activeSelect && document.activeElement === activeSelect) {
+          return;
+        }
 
         const trips = (AppState.activeTrips || []).filter(
           trip => trip.status === "active" && trip.routeId === selectedRouteId
@@ -1786,14 +1731,10 @@ function updateStopMarkers() {
           </div>
         `;
 
-        if (activeStopPopup) {
-          activeStopPopup.remove();
-        }
-
-        activeStopPopup = popup;
-        popup.setLngLat([lng, lat]).setHTML(renderStopPopup()).addTo(map);
+        popup.setHTML(renderStopPopup());
 
         const popupElement = popup.getElement();
+        if (!popupElement) return;
         const confirmButton = popupElement.querySelector("#confirmDropoffButton");
         const tripSelect = popupElement.querySelector("#dropoffTripSelect");
 
@@ -1847,6 +1788,22 @@ function updateStopMarkers() {
             confirmButton.textContent = "Confirm this stop";
           }
         });
+      };
+
+      element.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closeBusPopups();
+
+        if (activeStopPopup) {
+          activeStopPopup.remove();
+        }
+
+        activeStopPopup = popup;
+        refreshActiveStopPopup = mountStopPopupContent;
+        popup.setLngLat([lng, lat]).setHTML("<div></div>").addTo(map);
+        mountStopPopupContent();
       });
 
 
@@ -1895,7 +1852,9 @@ function updateBusMarkers() {
     ? AppState.buses.filter(
         bus => bus.tripActive === true && bus.routeId === selectedRouteId
       )
-    : [];
+    : AppState.buses.filter(
+        bus => bus.tripActive === true
+      );
 
   const busesWithCoordinates = buses.flatMap(bus => {
     const coordinates = getBusCoordinates(bus);
@@ -2072,6 +2031,7 @@ function updateBusMarkers() {
         if (activeStopPopup) {
           activeStopPopup.remove();
           activeStopPopup = null;
+          refreshActiveStopPopup = null;
         }
         popup.setLngLat(marker.getLngLat()).addTo(map);
       }
@@ -2105,6 +2065,8 @@ function updateBusMarkers() {
 
     busMarkers.push({ busId: bus.id, marker, popup, animation: { frame: null } });
   });
+
+  refreshActiveStopPopup?.();
 }
 
 
@@ -2135,7 +2097,9 @@ function updateBusLegend() {
     ? AppState.buses.filter(
         bus => bus.tripActive === true && bus.routeId === selectedRouteId
       )
-    : [];
+    : AppState.buses.filter(
+        bus => bus.tripActive === true
+      );
 
 
   if (
@@ -2152,7 +2116,7 @@ function updateBusLegend() {
         ${
           selectedRouteId
             ? "No buses currently on this route."
-            : "Select a route to view active buses."
+            : "No active buses currently on trip."
         }
       </p>
     `;
@@ -2319,6 +2283,11 @@ function getUserLocation() {
         accuracy,
         updatedAt: Date.now(),
       };
+      AppState.nearbyLocation = {
+        ...nextLocation,
+        accuracy,
+        updatedAt: Date.now(),
+      };
       const centerButton = document.getElementById("centerMapButton");
       if (centerButton) centerButton.disabled = false;
       if (!userMarker) {
@@ -2369,6 +2338,9 @@ function getUserLocation() {
           });
         }
       }
+
+      refreshActiveStopPopup?.();
+      window.updateCommuterDropoffEta?.();
     },
     error => {
       console.warn("Unable to get commuter location:", error.message);
@@ -2409,6 +2381,8 @@ function destroyMap() {
     activeStopPopup.remove();
     activeStopPopup = null;
   }
+  refreshActiveStopPopup = null;
+  lastStopMarkersSignature = "";
 
   busMarkers.forEach(
     ({ marker, popup, animation }) => {
@@ -2457,6 +2431,7 @@ function destroyMap() {
   pendingSelectedRouteId = null;
 
   routeLayersInitialized = false;
+  isMapLoaded = false;
 }
 
 
