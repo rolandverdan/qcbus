@@ -347,7 +347,7 @@ const Pages = {
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm">
           <p id="tripAlightedCount" class="text-lg font-bold text-qc-blue-accent">${AppState.occupancy.totalOut}</p>
-          <p class="text-[10px] text-gray-500 uppercase tracking-wide">Alighted</p>
+          <p class="text-[10px] text-gray-500 uppercase tracking-wide">Got Off</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm">
           <p id="tripOnboardTotal" class="text-lg font-bold text-gray-700">${AppState.occupancy.onboard}</p>
@@ -536,7 +536,7 @@ const Pages = {
       <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">Expected remaining to alight</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-blue-800">Expected to get off</p>
             <p class="mt-1 text-xs text-blue-700">${expectedDropoffs ? `Across ${dropoffCounts.length} ${dropoffCounts.length === 1 ? "stop" : "stops"}` : "No passengers remaining"}</p>
           </div>
         <span id="expectedDropoffTotal" class="text-3xl font-bold leading-none text-qc-blue-accent">${expectedDropoffs}</span>
@@ -608,7 +608,7 @@ const Pages = {
           <p id="counterTotalIn" class="text-2xl font-bold text-qc-green">${totalIn}</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p class="text-xs text-gray-500 mb-1">Total Alighted</p>
+          <p class="text-xs text-gray-500 mb-1">Total Got Off</p>
           <p id="counterTotalOut" class="text-2xl font-bold text-qc-blue-accent">${totalOut}</p>
         </div>
       </div>
@@ -1052,7 +1052,7 @@ function renderTripHistoryCard(trip) {
           <p class="text-base font-bold text-qc-green">${totalIn}</p>
         </div>
         <div class="p-2 rounded-xl bg-blue-50/70 border border-blue-100/60">
-          <p class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Alighted</p>
+          <p class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Got Off</p>
           <p class="text-base font-bold text-qc-blue-accent">${totalOut}</p>
         </div>
         <div class="p-2 rounded-xl bg-purple-50/70 border border-purple-100/60">

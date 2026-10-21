@@ -199,7 +199,7 @@ function renderStopPopupHtml(stop, index) {
       ${escapeStopName(stopName)}
     </div>
     <div style="font-size:11px;color:${expectedCount > 0 ? "#1d4ed8" : "#6b7280"};font-weight:${expectedCount > 0 ? "700" : "500"};margin-top:2px">
-      ${expectedCount > 0 ? `${expectedCount} passenger${expectedCount === 1 ? "" : "s"} alighting` : `Stop #${index + 1}`}
+      ${expectedCount > 0 ? `${expectedCount} passenger${expectedCount === 1 ? "" : "s"} getting off` : `Stop #${index + 1}`}
     </div>
   `;
 }
@@ -393,7 +393,7 @@ function updateFloatingLiveMap() {
     if (stop) {
       const expected = getStopExpectedCount(stop.id, stop.name);
       label.textContent = expected > 0
-        ? `${stop.name} · ${expected} alighting${speedSuffix}`
+        ? `${stop.name} · ${expected} getting off${speedSuffix}`
         : `${stop.name}${speedSuffix}`;
     } else {
       label.textContent = speedSuffix ? `Live GPS active${speedSuffix}` : "Nearest stop unavailable";
@@ -409,7 +409,7 @@ function updateFloatingLiveMap() {
     const expected = getStopExpectedCount(id, routeStop?.name);
     element.classList.toggle("is-nearest", isNearest);
     element.title = expected > 0
-      ? `${routeStop?.name || `Stop ${index + 1}`} (${expected} alighting)`
+      ? `${routeStop?.name || `Stop ${index + 1}`} (${expected} getting off)`
       : routeStop?.name || `Stop ${index + 1}`;
     popup?.setHTML(renderStopPopupHtml(routeStop, index));
   });

@@ -1527,6 +1527,7 @@ function updateStopMarkers() {
   }).join(";")}`;
 
   if (signature === lastStopMarkersSignature && stopMarkers.length > 0) {
+    refreshStopMarkerAlightingBadges();
     refreshActiveStopPopup?.();
     return;
   }
@@ -1606,9 +1607,34 @@ function updateStopMarkers() {
       element.className =
         "route-stop-marker";
 
+      element.dataset.stopId = stop.id || '';
+      element.dataset.stopName = stopName;
+
 
       element.textContent =
         index + 1;
+
+      const alightingBadge = document.createElement('span');
+      alightingBadge.dataset.dropoffBadge = 'true';
+      alightingBadge.style.cssText = `
+        position: absolute;
+        top: -10px;
+        right: -12px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: #15803d;
+        color: #ffffff;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      `;
+      element.appendChild(alightingBadge);
 
 
       element.title =
@@ -1710,6 +1736,13 @@ function updateStopMarkers() {
             eta: getEta(bus, stop),
           };
         });
+        const alightingSummary = trips.map((trip) => {
+          const busName = (AppState.buses || []).find(
+            activeBus => activeBus.tripId === trip.id
+          )?.code || trip.busCode || trip.busId || 'Bus';
+          const count = window.getExpectedDropoffCount?.(trip.id, stop.id) || 0;
+          return { busName, count };
+        });
         const selectedTripId = eligibleTrips.some(
           trip => trip.id === AppState.dropoff?.tripId
         )
@@ -1730,6 +1763,17 @@ function updateStopMarkers() {
               </div>
             </div>
             ${stopPlace ? `<div style="border-top:1px solid #e5e7eb; padding-top:8px; font-size:12px; color:#4b5563;">${escapeHtml(stopPlace)}</div>` : ""}
+            ${alightingSummary.length ? `
+              <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:8px;">
+                <div style="font-size:11px; font-weight:600; color:#4b5563; margin-bottom:4px;">Passengers expected to get off here</div>
+                ${alightingSummary.map(({ busName, count }) => `
+                  <div style="display:flex; justify-content:space-between; gap:10px; font-size:11px; color:#4b5563; margin-top:3px;">
+                    <span>${escapeHtml(busName)}</span>
+                    <span style="font-weight:600; text-align:right; color:${count ? '#15803d' : '#6b7280'};">${count ? `${count} expected` : 'No one expected'}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
             ${tripEtas.length ? `
               <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:8px;">
                 <div style="font-size:11px; font-weight:600; color:#4b5563; margin-bottom:4px;">Bus arrival estimates</div>
@@ -1870,7 +1914,29 @@ function updateStopMarkers() {
       );
     }
   );
+
+  refreshStopMarkerAlightingBadges();
 }
+
+function refreshStopMarkerAlightingBadges() {
+  stopMarkers.forEach((marker) => {
+    const element = marker.getElement();
+    const stopId = element.dataset.stopId;
+    const count = (AppState.activeTrips || [])
+      .filter((trip) => trip.status === 'active' && trip.routeId === selectedRouteId)
+      .reduce((sum, trip) => sum + (window.getExpectedDropoffCount?.(trip.id, stopId) || 0), 0);
+    const badge = element.querySelector('[data-dropoff-badge]');
+    if (!badge) return;
+    badge.textContent = count > 9 ? '9+' : String(count);
+    badge.style.display = count ? 'flex' : 'none';
+    element.title = `${element.dataset.stopName || 'Bus stop'}${count ? ` (${count} expected to get off)` : ' (no passengers expected to get off)'}`;
+  });
+}
+
+window.refreshStopDropoffIndicators = () => {
+  refreshStopMarkerAlightingBadges();
+  refreshActiveStopPopup?.();
+};
 
 
 // ==================================================
@@ -2342,6 +2408,7 @@ function centerMapOnCommuter() {
 }
 
 function getUserLocation() {
+  if (AppState.settings.locationEnabled === false) return;
   if (!navigator.geolocation) {
     console.warn("Commuter location is unavailable in this browser.");
     return;
@@ -2349,7 +2416,7 @@ function getUserLocation() {
 
   userLocationWatchId = navigator.geolocation.watchPosition(
     pos => {
-      if (!map) return;
+      if (!map || AppState.settings.locationEnabled === false) return;
 
       const {
         latitude,
@@ -2456,6 +2523,31 @@ function getUserLocation() {
       timeout: 15000,
     }
   );
+}
+
+function startMapLocationTracking() {
+  if (AppState.settings.locationEnabled === false || userLocationWatchId !== null) return;
+  getUserLocation();
+}
+
+function stopMapLocationTracking() {
+  if (userLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(userLocationWatchId);
+    userLocationWatchId = null;
+  }
+  if (userLocationAnimation.frame !== null) {
+    cancelAnimationFrame(userLocationAnimation.frame);
+    userLocationAnimation.frame = null;
+  }
+  userMarker?.remove();
+  userMarker = null;
+  displayedUserLocation = null;
+  hasCenteredOnUser = false;
+  AppState.userLocation = null;
+  const centerButton = document.getElementById("centerMapButton");
+  if (centerButton) centerButton.disabled = !AppState.nearbyLocation;
+  refreshActiveStopPopup?.();
+  window.updateCommuterDropoffEta?.();
 }
 
 
@@ -2569,3 +2661,6 @@ window.centerMapOnCommuter =
 
 window.destroyMap =
   destroyMap;
+
+window.startMapLocationTracking = startMapLocationTracking;
+window.stopMapLocationTracking = stopMapLocationTracking;

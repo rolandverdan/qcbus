@@ -45,6 +45,7 @@ import {
 
 import {
   listenToDropoffRequestRepo,
+  listenToTripDropoffRequestsRepo,
   saveDropoffRequestRepo,
 } from "../../shared/js/repositories/dropoffs.repo.js";
 
@@ -85,6 +86,7 @@ const AppState = {
   notifications: [],
 
   settings: {
+    locationEnabled: true,
     notifications: false,
     notificationSound: true,
     notificationVibration: true,
@@ -97,6 +99,7 @@ const AppState = {
   nearbyLocation: null,
   nearbyLocationError: "",
   activeTrips: [],
+  dropoffCountsByTrip: {},
   userLocation: null,
   dropoff: {
     tripId: null,
@@ -136,6 +139,7 @@ function requestCommuterLocationPermission() {
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
+      if (AppState.settings.locationEnabled === false) return;
       AppState.locationPermissionState = "granted";
       const nextLoc = {
         lat: position.coords.latitude,
@@ -173,7 +177,7 @@ function requestCommuterLocationPermission() {
 }
 
 // ==================================================
-// LIVE PROFILE SYNC — reflects name/phone/photo changes instantly
+// LIVE PROFILE SYNC — reflects profile and saved-route changes instantly
 // ==================================================
 onSnapshot(
   doc(db, "users", user.uid),
@@ -185,6 +189,7 @@ onSnapshot(
       email: data.email || user.email || "",
       phone: data.phone || "",
       photoURL: data.photoURL || user.photoURL || "",
+      savedRoutes: Array.isArray(data.savedRoutes) ? data.savedRoutes : [],
     };
     const changed = Object.keys(next).some((k) => AppState.user[k] !== next[k]);
     if (!changed) return;
@@ -207,6 +212,7 @@ let unsubscribeStops = null;
 let unsubscribeBuses = null;
 let unsubscribeTrips = null;
 let unsubscribeMyDropoff = null;
+const unsubscribeTripDropoffs = new Map();
 
 let rawBuses = [];
 let nearbyLocationWatchId = null;
@@ -554,6 +560,7 @@ function isDropoffStopAheadForTrip(trip, stop) {
 }
 
 function startNearbyBusDetection() {
+  if (AppState.settings.locationEnabled === false) return;
   if (!navigator.geolocation) {
     AppState.nearbyLocationError = "Location is not supported by this browser.";
     refreshCurrentPage();
@@ -564,6 +571,7 @@ function startNearbyBusDetection() {
   AppState.nearbyLocationError = "";
   nearbyLocationWatchId = navigator.geolocation.watchPosition(
     (position) => {
+      if (AppState.settings.locationEnabled === false) return;
       AppState.nearbyLocation = {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
@@ -2699,36 +2707,18 @@ const Pages = {
         <div class="p-4 flex items-center justify-between gap-3">
           <div>
             <p class="text-sm font-medium text-gray-800">
-              Phone Location Access
-            </p>
-            <p class="text-xs text-gray-400 mt-0.5">
-              ${
-                AppState.locationPermissionState === "granted" || AppState.nearbyLocation
-                  ? "Location permission is active for nearby buses & map"
-                  : AppState.locationPermissionState === "denied"
-                  ? "Blocked in browser · Tap to retry or allow in site settings"
-                  : "Allow QCommute to use your phone's GPS location"
-              }
+              Location
             </p>
           </div>
           <button
             type="button"
-            onclick="requestCommuterLocationPermission()"
-            class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
-              AppState.locationPermissionState === "granted" || AppState.nearbyLocation
-                ? "bg-green-100 text-green-700 hover:bg-green-200"
-                : AppState.locationPermissionState === "denied"
-                ? "bg-red-100 text-red-700 hover:bg-red-200"
-                : "bg-qc-blue text-white hover:bg-qc-blue-accent shadow-sm"
-            }"
+            onclick="toggleLocationSetting()"
+            role="switch"
+            aria-label="Use phone location"
+            aria-checked="${AppState.settings.locationEnabled !== false}"
+            class="relative h-7 w-12 shrink-0 rounded-full transition ${AppState.settings.locationEnabled !== false ? "bg-qc-blue" : "bg-gray-300"}"
           >
-            ${
-              AppState.locationPermissionState === "granted" || AppState.nearbyLocation
-                ? "Location Active"
-                : AppState.locationPermissionState === "denied"
-                ? "Retry Permission"
-                : "Allow Location"
-            }
+            <span class="absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${AppState.settings.locationEnabled !== false ? "left-6" : "left-1"}"></span>
           </button>
         </div>
 
@@ -3263,7 +3253,7 @@ function navigateTo(page, updateHash = true, options = {}) {
     }, 100);
   }
 
-  if (page === "home" && nearbyLocationWatchId === null && !AppState.nearbyLocationError) {
+  if (page === "home" && AppState.settings.locationEnabled !== false && nearbyLocationWatchId === null && !AppState.nearbyLocationError) {
     startNearbyBusDetection();
   }
 
@@ -3374,6 +3364,22 @@ async function toggleSetting(key) {
 
 
   navigateTo("settings");
+}
+
+function toggleLocationSetting() {
+  const enable = AppState.settings.locationEnabled === false;
+  AppState.settings.locationEnabled = enable;
+  localStorage.setItem("qcSettings", JSON.stringify(AppState.settings));
+
+  if (enable) {
+    navigateTo("settings", false, { scrollToTop: false });
+    requestCommuterLocationPermission();
+    return;
+  }
+
+  stopNearbyBusDetection();
+  window.stopMapLocationTracking?.();
+  navigateTo("settings", false, { scrollToTop: false });
 }
 
 async function sendTestNotification() {
@@ -3979,6 +3985,8 @@ function listenToActiveTrips() {
             })
           );
 
+        syncTripDropoffListeners();
+
         if (
           AppState.dropoff.tripId &&
           !AppState.activeTrips.some(
@@ -4022,6 +4030,40 @@ function listenToActiveTrips() {
     );
 }
 
+function syncTripDropoffListeners() {
+  const activeTripIds = new Set(AppState.activeTrips.map((trip) => trip.id));
+
+  for (const [tripId, unsubscribe] of unsubscribeTripDropoffs) {
+    if (activeTripIds.has(tripId)) continue;
+    unsubscribe();
+    unsubscribeTripDropoffs.delete(tripId);
+    delete AppState.dropoffCountsByTrip[tripId];
+  }
+
+  for (const trip of AppState.activeTrips) {
+    if (unsubscribeTripDropoffs.has(trip.id)) continue;
+    const unsubscribe = listenToTripDropoffRequestsRepo(
+      trip.id,
+      (requests) => {
+        const counts = {};
+        requests.forEach((request) => {
+          if (request.status === "alighted" || !request.stopId) return;
+          counts[request.stopId] = (counts[request.stopId] || 0) + 1;
+        });
+        AppState.dropoffCountsByTrip[trip.id] = counts;
+        window.refreshStopDropoffIndicators?.();
+      },
+      (error) => console.error(`Drop-off count listener failed for trip ${trip.id}:`, error)
+    );
+    unsubscribeTripDropoffs.set(trip.id, unsubscribe);
+  }
+
+  window.refreshStopDropoffIndicators?.();
+}
+
+window.getExpectedDropoffCount = (tripId, stopId) =>
+  Number(AppState.dropoffCountsByTrip[tripId]?.[stopId]) || 0;
+
 
 // ==================================================
 // CLEANUP
@@ -4053,6 +4095,10 @@ function stopAllListeners() {
     unsubscribeMyDropoff();
     unsubscribeMyDropoff = null;
   }
+
+  unsubscribeTripDropoffs.forEach((unsubscribe) => unsubscribe());
+  unsubscribeTripDropoffs.clear();
+  AppState.dropoffCountsByTrip = {};
 }
 
 
@@ -4352,6 +4398,7 @@ window.toggleSavedRoute = toggleSavedRoute;
 window.setRouteFilter = setRouteFilter;
 window.setRouteSearchQuery = setRouteSearchQuery;
 window.requestCommuterLocationPermission = requestCommuterLocationPermission;
+window.toggleLocationSetting = toggleLocationSetting;
 window.updateCommuterDropoffEta = updateCommuterDropoffEta;
 window.openChangePassword = openChangePassword;
 window.closeChangePassword = closeChangePassword;

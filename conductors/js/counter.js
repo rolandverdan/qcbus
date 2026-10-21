@@ -60,7 +60,7 @@ async function addPassenger(direction, amount = 1) {
 
     recordHistory(
       'out',
-      `−${removed} alighted (${occ.onboard}/${occ.capacity})`
+      `−${removed} got off (${occ.onboard}/${occ.capacity})`
     );
 
     if (AppState.currentAlightStopId) {
@@ -92,7 +92,7 @@ async function addPassenger(direction, amount = 1) {
   }
 
   if (dropoffSyncFailed) {
-    showToast('Alight counted, but expected drop-offs could not sync', 'warn');
+    showToast('Passengers counted as getting off, but expected drop-offs could not sync', 'warn');
   }
 
   // Buzz feedback

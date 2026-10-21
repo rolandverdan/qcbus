@@ -191,7 +191,7 @@ function renderTripCard(trip) {
         <div>
           <p class="text-[11px] text-gray-400">Passenger counts</p>
           <p class="mt-0.5 text-xs font-medium text-gray-700">
-            ${passengerCount} boarded · ${totalOut} alighted · ${onboard} onboard
+            ${passengerCount} boarded · ${totalOut} got off · ${onboard} onboard
           </p>
         </div>
       </div>

@@ -45,7 +45,7 @@ export async function createUserProfile(user, data = {}) {
     provider: data.provider || "password",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 // ==================================================
