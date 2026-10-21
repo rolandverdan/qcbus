@@ -10,17 +10,17 @@
   "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "https://qcommute-88bf5.web.app/images/icon-192.png",
+      "src": "https://qcommute-88bf5.web.app/images/icon-512.png",
       "type": "image/png",
-      "sizes": "192x192",
+      "sizes": "512x512",
       "isSquare": true,
       "isPng": true,
       "isWebp": false,
       "isJpg": false,
-      "width": 192,
-      "is512x512": false,
+      "width": 512,
+      "is512x512": true,
       "is256x256": false,
-      "is192x192": true
+      "is192x192": false
     }
   ]
 }
