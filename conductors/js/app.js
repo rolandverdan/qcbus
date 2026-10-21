@@ -74,6 +74,7 @@ const AppState = {
     name: profile.name || user.displayName || 'Conductor',
     id: profile.uid || user.uid,
     email: user.email || '',
+    photoURL: profile.photoURL || user.photoURL || '',
   },
   bus: {
     id: null,
@@ -197,10 +198,14 @@ function formatTripDuration(startedAt) {
   return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
-function addHistory(kind, label) {
+function addHistory(kind, label, stopName = '') {
+  const currentStop = AppState.routeStops.find(
+    stop => stop.id === AppState.currentAlightStopId
+  );
   const item = {
     kind,
     label,
+    stopName: stopName || ((kind === 'in' || kind === 'out') ? (currentStop?.name || 'Stop not detected') : ''),
     time: Date.now(),
   };
   if (!Array.isArray(AppState.history)) {
@@ -646,8 +651,10 @@ const Pages = {
   account: () => `
     <div class="space-y-4 slide-in">
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
-        <div class="w-20 h-20 bg-gradient-to-br from-qc-blue to-qc-blue-accent rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              ${(AppState.conductor.name || 'Conductor')
+        <div class="relative w-20 h-20 overflow-hidden bg-gradient-to-br from-qc-blue to-qc-blue-accent rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+          ${AppState.conductor.photoURL
+            ? `<img src="${escapeTripText(AppState.conductor.photoURL)}" alt="Conductor profile photo" class="absolute inset-0 w-full h-full object-cover" />`
+            : (AppState.conductor.name || 'Conductor')
         .split(' ')
         .map(n => n[0])
         .join('')
@@ -655,7 +662,7 @@ const Pages = {
         .toUpperCase()}
         </div>
         <h2 class="font-semibold text-gray-800 mt-3">${AppState.conductor.name}</h2>
-        <p class="text-xs text-gray-500">${AppState.conductor.id}</p>
+        <p class="text-xs text-gray-500">${escapeTripText(AppState.conductor.email || '')}</p>
         <span class="inline-block mt-2 px-3 py-1 bg-blue-50 text-qc-blue-accent rounded-full text-xs font-semibold">Conductor · On Duty</span>
       </div>
 
@@ -1241,9 +1248,12 @@ function renderActivityList() {
     return `<p class="text-xs text-gray-400 text-center py-4">No activity yet</p>`;
   }
   return recent.map(a => `
-    <div class="flex items-center justify-between text-xs py-1.5 border-b border-gray-50 last:border-0">
-      <span class="text-gray-700">${a.label}</span>
-      <span class="text-gray-400">${new Date(a.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+    <div class="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-gray-50 last:border-0">
+      <div class="min-w-0">
+        <span class="text-gray-700">${escapeTripText(a.label || '')}</span>
+        ${a.stopName ? `<p class="mt-0.5 text-[10px] text-gray-400">Stop: ${escapeTripText(a.stopName)}</p>` : ''}
+      </div>
+      <span class="shrink-0 text-gray-400">${new Date(a.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
     </div>
   `).join('');
 }
@@ -1342,6 +1352,8 @@ function refreshCurrentPage() {
   }
 
   if (page === "counter") {
+    const activityList = content.querySelector("#activityList");
+    if (activityList) activityList.innerHTML = renderActivityList();
     const total = content.querySelector("#expectedDropoffTotal");
     const counts = getDropoffCounts();
     const requestList = content.querySelector("#dropoffRequestsList");
@@ -1480,6 +1492,8 @@ async function loadConductorData() {
     staffMember.id;
   AppState.conductor.email =
     staffMember.email || user.email || '';
+  AppState.conductor.photoURL =
+    profile.photoURL || staffMember.photoURL || user.photoURL || '';
 
   let latestBus = await getBusByConductorIdRepo(staffMember.id);
   let latestRoutes = await getRoutesRepo();

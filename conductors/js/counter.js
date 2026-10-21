@@ -7,11 +7,11 @@ import {
 
 let counterRefreshInterval = null;
 
-function recordHistory(kind, label) {
+function recordHistory(kind, label, stopName = '') {
   if (typeof window.addHistory === "function") {
-    return window.addHistory(kind, label);
+    return window.addHistory(kind, label, stopName);
   }
-  const item = { kind, label, time: Date.now() };
+  const item = { kind, label, stopName, time: Date.now() };
   if (!Array.isArray(window.AppState?.history)) {
     if (window.AppState) window.AppState.history = [];
   }
@@ -26,6 +26,10 @@ async function addPassenger(direction, amount = 1) {
   }
 
   const occ = AppState.occupancy;
+  const currentStop = AppState.routeStops.find(
+    stop => stop.id === AppState.currentAlightStopId
+  );
+  const stopName = currentStop?.name || 'Stop not detected';
   let dropoffSyncFailed = false;
 
   if (direction === 'in') {
@@ -42,7 +46,8 @@ async function addPassenger(direction, amount = 1) {
 
     recordHistory(
       'in',
-      `+${added} boarded (${occ.onboard}/${occ.capacity})`
+      `+${added} boarded (${occ.onboard}/${occ.capacity})`,
+      stopName
     );
 
   } else {

@@ -50,6 +50,7 @@ export async function addStaffRepo(data) {
     name: data.name || "",
     email: (data.email || "").toLowerCase().trim(),
     phone: data.phone || "",
+    photoURL: data.photoURL || "",
 
     role: data.role,
 

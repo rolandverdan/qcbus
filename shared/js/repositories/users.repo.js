@@ -39,6 +39,7 @@ export async function createUserProfile(user, data = {}) {
     name: data.name || user.displayName || "",
     email: (user.email || "").toLowerCase(),
     phone: data.phone || user.phoneNumber || "",
+    photoURL: data.photoURL || user.photoURL || "",
     role: data.role || "commuter",
     status: data.status || "active",
     provider: data.provider || "password",
@@ -71,6 +72,7 @@ export async function createLoginAccountRepo({
   password,
   name,
   phone = "",
+  photoURL = "",
   role,
 }) {
   const normalizedEmail = email.toLowerCase().trim();
@@ -93,6 +95,7 @@ export async function createLoginAccountRepo({
   await createUserProfile(user, {
     name,
     phone,
+    photoURL,
     role,
     provider: "password",
     status: "active",
@@ -103,6 +106,7 @@ export async function createLoginAccountRepo({
     email: normalizedEmail,
     name,
     phone,
+    photoURL,
     role,
     status: "active",
   };

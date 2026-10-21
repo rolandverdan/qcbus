@@ -1132,14 +1132,15 @@ function openEditProfile() {
             type="tel"
             inputmode="numeric"
             autocomplete="tel-national"
+            minlength="11"
             maxlength="12"
-            pattern="[0-9]{0,12}"
+            pattern="[0-9]{11,12}"
             value="${escapeHtml(String(AppState.user.phone || "").replace(/\D/g, "").slice(0, 12))}"
             oninput="sanitizeEditProfilePhone(this)"
             aria-describedby="editProfilePhoneHint"
             class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-qc-blue"
           />
-          <p id="editProfilePhoneHint" class="mt-1 text-[11px] text-gray-400">Numbers only, up to 12 digits.</p>
+          <p id="editProfilePhoneHint" class="mt-1 text-[11px] text-gray-400">Enter 11 or 12 digits.</p>
         </div>
 
 
@@ -1378,8 +1379,8 @@ async function handleEditProfileSubmit(event) {
     return;
   }
 
-  if (phone.length > 12) {
-    showSavedRouteToast("Phone number can have up to 12 digits", true);
+  if (phone.length > 0 && (phone.length < 11 || phone.length > 12)) {
+    showSavedRouteToast("Phone number must be 11 or 12 digits", true);
     return;
   }
 

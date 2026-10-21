@@ -48,6 +48,11 @@ async function navigateTo(page) {
   }
 
   AppState.currentPage = page;
+  try {
+    localStorage.setItem('qcAdminCurrentPage', page);
+  } catch (error) {
+    console.warn('Could not save the current admin page:', error);
+  }
 
   // Stop map if leaving a map page
   if (AppState.map && !['stops', 'monitor'].includes(page)) {
@@ -280,7 +285,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.addEventListener('click', () => navigateTo(btn.dataset.page))
   );
 
-  await navigateTo('dashboard');
+  let initialPage = 'dashboard';
+  try {
+    const savedPage = localStorage.getItem('qcAdminCurrentPage');
+    if (savedPage && Pages[savedPage]) initialPage = savedPage;
+  } catch (error) {
+    console.warn('Could not restore the last admin page:', error);
+  }
+  await navigateTo(initialPage);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

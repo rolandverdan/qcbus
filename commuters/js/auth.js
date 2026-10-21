@@ -303,9 +303,14 @@ qs("#signupForm").addEventListener("submit", async (e) => {
 
   const name = data.get("name").trim();
   const email = data.get("email").trim().toLowerCase();
-  const phone = data.get("phone").trim();
+  const phone = data.get("phone").replace(/\D/g, "");
   const password = data.get("password");
   const confirm = data.get("confirmPassword");
+
+  if (phone.length < 11 || phone.length > 12) {
+    showToast("Mobile number must be 11 or 12 digits", "error");
+    return;
+  }
 
   if (password !== confirm) {
     showToast(
@@ -352,6 +357,10 @@ qs("#signupForm").addEventListener("submit", async (e) => {
       "error"
     );
   }
+});
+
+qs('#signupForm input[name="phone"]')?.addEventListener('input', event => {
+  event.target.value = event.target.value.replace(/\D/g, '').slice(0, 12);
 });
 
 // ==================================================

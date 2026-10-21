@@ -9,6 +9,32 @@ let currentStaffSearch = '';
 let staffSearchTimeout = null;
 const STAFF_PAGE_SIZE = 10;
 
+function processStaffProfilePicture(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = event => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 80;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        context.drawImage(image, 0, 0, image.width, image.height,
+          (size - width) / 2, (size - height) / 2, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      image.onerror = reject;
+      image.src = event.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 Pages.staff = async function () {
   const staff = await Store.getStaff();
   const users = await Store.getUsers();
@@ -154,6 +180,7 @@ async function renderStaffList(role = 'all') {
         name: user.name || linkedStaff?.name || 'Unnamed User',
         email: user.email || linkedStaff?.email || '',
         phone: user.phone || linkedStaff?.phone || '',
+        photoURL: user.photoURL || linkedStaff?.photoURL || '',
         role: linkedStaff?.role || user.role || 'commuter',
         status: user.status || linkedStaff?.status || 'active',
         isUser: true,
@@ -277,7 +304,9 @@ async function renderStaffList(role = 'all') {
         <div
           class="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0 ${avatarClass}"
         >
-          ${escapeHtml(initials)}
+          ${account.photoURL
+            ? `<img src="${escapeHtml(account.photoURL)}" alt="${escapeHtml(account.name)} profile photo" class="w-full h-full object-cover rounded-full" />`
+            : escapeHtml(initials)}
         </div>
 
         <!-- INFO -->
@@ -423,6 +452,7 @@ async function openStaffModal(
 
   const staff = await Store.getStaff();
   const users = await Store.getUsers();
+  let pendingProfilePhoto = null;
 
   let member = null;
 
@@ -440,10 +470,9 @@ async function openStaffModal(
         member => member.id === id
       );
 
-    const user =
-      users.find(
-        user => user.uid === id
-      );
+    const user = users.find(user =>
+      user.uid === id || user.uid === staffMember?.uid
+    );
 
     if (staffMember) {
       member = staffMember;
@@ -451,12 +480,13 @@ async function openStaffModal(
 
     if (user) {
       member = {
+        ...(staffMember || {}),
         ...user,
-        id: user.uid,
+        id: staffMember?.id || user.uid,
         isUser: true,
       };
 
-      isAdmin = true;
+      isAdmin = user.uid === id;
     }
 
     isEdit = !!member;
@@ -583,13 +613,24 @@ async function openStaffModal(
         </div>
 
 
+        <!-- PROFILE PHOTO -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-purple-50 text-qc-purple text-2xl font-bold">
+            <img id="staffProfilePhotoPreview" src="${escapeHtml(member?.photoURL || '')}" alt="Profile photo preview" class="${member?.photoURL ? '' : 'hidden'} absolute inset-0 h-full w-full object-cover" />
+            <span id="staffProfilePhotoInitials" class="${member?.photoURL ? 'hidden' : ''}">${escapeHtml((member?.name || 'U').split(/\s+/).filter(Boolean).map(part => part[0]).slice(0, 2).join('').toUpperCase())}</span>
+          </div>
+          <label for="staffProfilePhotoInput" class="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Choose profile photo</label>
+          <input id="staffProfilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" />
+          <p class="text-[11px] text-gray-400">JPG, PNG or WEBP · up to 5 MB</p>
+        </div>
+
         <!-- NAME -->
         <div>
 
           <label
             class="block text-xs font-medium text-gray-600 mb-1.5"
           >
-            Full Name
+            Full Name <span class="text-red-500" aria-hidden="true">*</span>
           </label>
 
           <input
@@ -609,17 +650,13 @@ async function openStaffModal(
           <label
             class="block text-xs font-medium text-gray-600 mb-1.5"
           >
-            Email
+            Email <span id="staffEmailRequiredMark" class="text-red-500 ${role === 'driver' ? 'hidden' : ''}" aria-hidden="true">*</span>
           </label>
 
           <input
             name="email"
             type="email"
-            ${
-              role === 'driver'
-                ? ''
-                : 'required'
-            }
+            ${role === 'driver' ? '' : 'required'}
             placeholder="juan@qcbus.ph"
             value="${escapeHtml(member?.email || '')}"
             class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
@@ -644,14 +681,19 @@ async function openStaffModal(
           <label
             class="block text-xs font-medium text-gray-600 mb-1.5"
           >
-            Mobile Number
+            Mobile Number <span class="text-red-500" aria-hidden="true">*</span>
           </label>
 
           <input
             name="phone"
             type="tel"
+            inputmode="numeric"
+            minlength="11"
+            maxlength="12"
+            pattern="[0-9]{11,12}"
+            required
             placeholder="912 345 6789"
-            value="${escapeHtml(member?.phone || '')}"
+            value="${escapeHtml(String(member?.phone || '').replace(/\D/g, '').slice(0, 12))}"
             class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-qc-purple outline-none"
           >
 
@@ -667,7 +709,7 @@ async function openStaffModal(
                 <label
                   class="block text-xs font-medium text-gray-600 mb-1.5"
                 >
-                  Password
+                  Password <span class="text-red-500" aria-hidden="true">*</span>
                 </label>
 
                 <input
@@ -686,7 +728,7 @@ async function openStaffModal(
                 <label
                   class="block text-xs font-medium text-gray-600 mb-1.5"
                 >
-                  Confirm Password
+                  Confirm Password <span class="text-red-500" aria-hidden="true">*</span>
                 </label>
 
                 <input
@@ -797,6 +839,12 @@ const syncFields = () => {
       'driverFields'
     );
 
+  const isDriver = checked === 'driver';
+  const emailInput = document.querySelector('input[name="email"]');
+  const emailRequiredMark = document.getElementById('staffEmailRequiredMark');
+  if (emailInput) emailInput.required = !isDriver;
+  emailRequiredMark?.classList.toggle('hidden', isDriver);
+
   if (driverFields) {
     driverFields.style.display =
       checked === 'driver'
@@ -855,6 +903,35 @@ document
   });
 
   const staffForm = document.getElementById('staffForm');
+  const staffPhoneInput = staffForm.querySelector('input[name="phone"]');
+  staffPhoneInput.addEventListener('input', () => {
+    staffPhoneInput.value = staffPhoneInput.value.replace(/\D/g, '').slice(0, 12);
+  });
+
+  document.getElementById('staffProfilePhotoInput').addEventListener('change', async event => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      input.value = '';
+      showToast('Choose a JPG, PNG, or WEBP image', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      input.value = '';
+      showToast('Profile photos must be 5 MB or smaller', 'error');
+      return;
+    }
+    try {
+      pendingProfilePhoto = await processStaffProfilePicture(file);
+      document.getElementById('staffProfilePhotoPreview').src = pendingProfilePhoto;
+      document.getElementById('staffProfilePhotoPreview').classList.remove('hidden');
+      document.getElementById('staffProfilePhotoInitials').classList.add('hidden');
+    } catch (error) {
+      console.error('Failed to process staff profile photo:', error);
+      showToast('Could not read that image', 'error');
+    }
+  });
 
   staffForm.addEventListener('input', () => {
     staffForm.dataset.dirty = 'true';
@@ -899,6 +976,7 @@ document
           Object.fromEntries(
             new FormData(e.target)
           );
+        data.phone = String(data.phone || '').replace(/\D/g, '');
 
         const selectedRole =
           data.role;
@@ -910,6 +988,11 @@ document
           (data.email || '')
             .toLowerCase()
             .trim();
+
+        if (data.phone.length < 11 || data.phone.length > 12) {
+          showToast('Mobile number must be 11 or 12 digits', 'error');
+          return;
+        }
 
         try {
 
@@ -961,6 +1044,7 @@ document
               {
                 name,
                 phone: data.phone || '',
+                ...(pendingProfilePhoto && { photoURL: pendingProfilePhoto }),
               }
             );
 
@@ -986,6 +1070,7 @@ document
                 phone: data.phone || '',
                 licenseNumber:
                   data.licenseNumber || '',
+                ...(pendingProfilePhoto && { photoURL: pendingProfilePhoto }),
               }
             );
 
@@ -1001,6 +1086,7 @@ document
                   name,
                   email,
                   phone: data.phone || '',
+                  ...(pendingProfilePhoto && { photoURL: pendingProfilePhoto }),
                 }
               );
 
@@ -1070,6 +1156,7 @@ document
                 name,
                 phone: data.phone || '',
                 role: selectedRole,
+                photoURL: pendingProfilePhoto || '',
               });
 
             // Conductor gets a staff profile too.
@@ -1084,6 +1171,7 @@ document
                 phone: data.phone || '',
                 role: 'conductor',
                 licenseNumber: '',
+                photoURL: pendingProfilePhoto || '',
               });
 
             }
@@ -1132,6 +1220,7 @@ document
               role: 'driver',
               licenseNumber:
                 data.licenseNumber || '',
+              photoURL: pendingProfilePhoto || '',
             });
 
             showToast(
@@ -1209,7 +1298,7 @@ window.openUserProfileModal = async function (uid) {
         <span class="block mt-1 text-[11px] text-gray-400">Email changes must be made through Firebase Authentication.</span>
       </label>
       <label class="block text-xs font-medium text-gray-600">Phone
-        <input name="phone" type="tel" maxlength="12" inputmode="numeric" value="${escapeHtml(user.phone || '')}" class="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-qc-purple">
+        <input name="phone" type="tel" minlength="11" maxlength="12" pattern="[0-9]{11,12}" inputmode="numeric" required value="${escapeHtml(String(user.phone || '').replace(/\D/g, '').slice(0, 12))}" class="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-qc-purple">
       </label>
       <button type="submit" class="w-full py-2.5 bg-qc-purple text-white text-sm font-semibold rounded-xl">Save changes</button>
     </form>
@@ -1218,10 +1307,15 @@ window.openUserProfileModal = async function (uid) {
   document.getElementById('commuterAccountForm')?.addEventListener('submit', async event => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    const phone = String(formData.get('phone') || '').replace(/\D/g, '');
+    if (phone.length < 11 || phone.length > 12) {
+      showToast('Mobile number must be 11 or 12 digits', 'error');
+      return;
+    }
     try {
       await Store.updateUserProfile(uid, {
         name: String(formData.get('name') || '').trim(),
-        phone: String(formData.get('phone') || '').replace(/\D/g, '').slice(0, 12),
+        phone,
       });
       closeModal();
       showToast('Commuter account updated', 'success');
@@ -1230,6 +1324,9 @@ window.openUserProfileModal = async function (uid) {
       console.error('Commuter account update error:', error);
       showToast('Failed to update account', 'error');
     }
+  });
+  document.querySelector('#commuterAccountForm input[name="phone"]')?.addEventListener('input', event => {
+    event.target.value = event.target.value.replace(/\D/g, '').slice(0, 12);
   });
 };
 
