@@ -109,8 +109,27 @@ function getFallbackRoute() {
   };
 }
 
+function getBusLiveCoordinates(state = window.AppState) {
+  const busCoords = getCoordinates(state?.bus);
+  if (busCoords) return busCoords;
+
+  const localGpsCoords = getCoordinates(window.__conductorLocalGps);
+  if (localGpsCoords) return localGpsCoords;
+
+  if (state?.trip?.active) {
+    const stops = state?.routeStops || [];
+    const fromStop = state?.trip?.directionFromId
+      ? stops.find((s) => s.id === state.trip.directionFromId)
+      : stops[0];
+    const stopCoords = getCoordinates(fromStop || stops[0]);
+    if (stopCoords) return stopCoords;
+  }
+
+  return null;
+}
+
 function getInitialCenter() {
-  const busCoordinates = getCoordinates(window.AppState?.bus);
+  const busCoordinates = getBusLiveCoordinates(window.AppState);
   if (busCoordinates) return busCoordinates;
 
   const firstStop = (window.AppState?.routeStops || [])
@@ -186,43 +205,51 @@ function renderStopPopupHtml(stop, index) {
 }
 
 function syncRouteSourceAndLayer() {
-  if (!liveMap || !isLiveMapLoaded) return;
+  if (!liveMap) return;
+  if (!isLiveMapLoaded && typeof liveMap.isStyleLoaded === "function" && !liveMap.isStyleLoaded()) {
+    return;
+  }
 
   const route = getRouteGeometry() || getFallbackRoute() || {
     type: "FeatureCollection",
     features: [],
   };
 
-  const existingSource = liveMap.getSource("conductor-route");
-  if (existingSource) {
-    existingSource.setData(route);
-  } else {
-    liveMap.addSource("conductor-route", {
-      type: "geojson",
-      data: route,
-    });
-  }
+  try {
+    const existingSource = liveMap.getSource("conductor-route");
+    if (existingSource) {
+      existingSource.setData(route);
+    } else {
+      liveMap.addSource("conductor-route", {
+        type: "geojson",
+        data: route,
+      });
+    }
 
-  if (!liveMap.getLayer("conductor-route-line")) {
-    liveMap.addLayer({
-      id: "conductor-route-line",
-      type: "line",
-      source: "conductor-route",
-      layout: {
-        "line-cap": "round",
-        "line-join": "round",
-      },
-      paint: {
-        "line-color": "#115272",
-        "line-width": 5,
-        "line-opacity": 0.9,
-      },
-    });
+    if (!liveMap.getLayer("conductor-route-line")) {
+      liveMap.addLayer({
+        id: "conductor-route-line",
+        type: "line",
+        source: "conductor-route",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#115272",
+          "line-width": 5,
+          "line-opacity": 0.9,
+        },
+      });
+    }
+    isLiveMapLoaded = true;
+  } catch (err) {
+    // Style still initializing; styledata/load listener will retry
   }
 }
 
 function syncStopMarkers() {
-  if (!liveMap || !isLiveMapLoaded) return;
+  if (!liveMap) return;
 
   const stops = window.AppState?.routeStops || [];
   const signature = stops
@@ -275,13 +302,15 @@ function addRouteAndStops() {
   syncRouteSourceAndLayer();
   syncStopMarkers();
   updateFloatingLiveMap();
-  fitMapToRoute();
+  if (!hasUserMovedLiveMap) {
+    fitMapToRoute();
+  }
 }
 
 function refreshConductorLiveMapRoute() {
-  if (!liveMap || !isLiveMapLoaded) return;
-  syncRouteSourceAndLayer();
+  if (!liveMap) return;
   syncStopMarkers();
+  syncRouteSourceAndLayer();
   updateFloatingLiveMap();
 }
 
@@ -303,7 +332,7 @@ function fitMapToRoute() {
     if (coordinates) bounds.extend(coordinates);
   });
 
-  const busCoordinates = getCoordinates(window.AppState?.bus);
+  const busCoordinates = getBusLiveCoordinates(window.AppState);
   if (busCoordinates) bounds.extend(busCoordinates);
 
   if (!bounds.isEmpty()) {
@@ -359,17 +388,19 @@ function updateFloatingLiveMap() {
   );
   const label = document.getElementById("liveMapStopLabel");
   if (label) {
+    const speed = Number(state?.bus?.speedKmh);
+    const speedSuffix = Number.isFinite(speed) ? ` · ${Math.round(speed)} km/h` : "";
     if (stop) {
       const expected = getStopExpectedCount(stop.id, stop.name);
       label.textContent = expected > 0
-        ? `${stop.name} · ${expected} alighting`
-        : stop.name;
+        ? `${stop.name} · ${expected} alighting${speedSuffix}`
+        : `${stop.name}${speedSuffix}`;
     } else {
-      label.textContent = "Nearest stop unavailable";
+      label.textContent = speedSuffix ? `Live GPS active${speedSuffix}` : "Nearest stop unavailable";
     }
   }
 
-  if (liveMap && isLiveMapLoaded) {
+  if (liveMap) {
     syncStopMarkers();
   }
 
@@ -385,22 +416,36 @@ function updateFloatingLiveMap() {
 
   if (!liveMap) return;
 
-  const coordinates = getCoordinates(state.bus);
+  const coordinates = getBusLiveCoordinates(state);
   if (!coordinates) return;
 
   ensureBusMarker();
   busPopup?.setHTML(renderBusPopupHtml());
 
+  const prevLngLat = busMarker.getLngLat();
   if (!busMarker.getElement().isConnected) {
     busMarker.setLngLat(coordinates).addTo(liveMap);
   } else {
-    animateBusMarkerTo(busMarker, busMarkerAnimation, coordinates, 800);
+    animateBusMarkerTo(busMarker, busMarkerAnimation, coordinates, 750);
   }
+
+  const panel = document.getElementById("liveMapPanel");
+  const isPanelVisible = panel && !panel.classList.contains("hidden");
 
   if (!hasCenteredOnBus) {
     hasCenteredOnBus = true;
-    if (!hasUserMovedLiveMap && isLiveMapLoaded) {
+    if (!hasUserMovedLiveMap) {
       fitMapToRoute();
+    }
+  } else if (isPanelVisible && !hasUserMovedLiveMap && prevLngLat) {
+    const moved =
+      Math.abs(prevLngLat.lng - coordinates[0]) > 0.00001 ||
+      Math.abs(prevLngLat.lat - coordinates[1]) > 0.00001;
+    if (moved) {
+      liveMap.easeTo({
+        center: coordinates,
+        duration: 750,
+      });
     }
   }
 }
@@ -429,14 +474,14 @@ function createLiveMap() {
     return;
   }
 
-  hasCenteredOnBus = Boolean(getCoordinates(window.AppState?.bus));
+  hasCenteredOnBus = Boolean(getBusLiveCoordinates(window.AppState));
   hasUserMovedLiveMap = false;
 
   liveMap = new maplibregl.Map({
     container: "liveMapCanvas",
     style: "https://tiles.openfreemap.org/styles/liberty",
     center: getInitialCenter(),
-    zoom: 13,
+    zoom: 14,
     attributionControl: false,
   });
 
@@ -455,7 +500,18 @@ function createLiveMap() {
     }
   });
 
+  liveMap.on("styledata", () => {
+    if (!isLiveMapLoaded && liveMap?.isStyleLoaded()) {
+      addRouteAndStops();
+    }
+  });
+
   liveMap.on("load", addRouteAndStops);
+
+  // Immediately render HTML stop markers and bus marker without waiting for vector tiles
+  syncStopMarkers();
+  updateFloatingLiveMap();
+  fitMapToRoute();
 }
 
 function toggleLiveMap() {
@@ -474,10 +530,12 @@ function toggleLiveMap() {
   if (isOpening) {
     panel.classList.remove("is-fullscreen");
     updateLiveMapFullscreenButton(false);
+    hasUserMovedLiveMap = false;
+    window.requestConductorDevicePosition?.(true);
     createLiveMap();
     requestAnimationFrame(() => {
       liveMap?.resize();
-      updateFloatingLiveMap();
+      refreshConductorLiveMapRoute();
     });
   }
 }

@@ -68,6 +68,8 @@ const { user, profile } = session;
 const AppState = {
   currentPage: "home",
   routeFilter: "all",
+  routeSearchQuery: "",
+  locationPermissionState: "prompt",
 
   user: {
     uid: user.uid,
@@ -107,6 +109,68 @@ let pendingProfilePhoto = null;
 let pendingProfilePhotoPreviewUrl = "";
 
 window.AppState = AppState;
+
+async function initCommuterLocationPermissionObserver() {
+  if (!("permissions" in navigator) || typeof navigator.permissions?.query !== "function") {
+    return;
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    AppState.locationPermissionState = status.state;
+    status.onchange = () => {
+      AppState.locationPermissionState = status.state;
+      if (AppState.currentPage === "settings") {
+        refreshCurrentPage({ refreshHome: false, refreshRoutes: false });
+      }
+    };
+  } catch (err) {
+    // Ignore on browsers that don't support geolocation permission query
+  }
+}
+
+function requestCommuterLocationPermission() {
+  if (!navigator.geolocation) {
+    showSavedRouteToast("Location is not supported by this browser", true);
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      AppState.locationPermissionState = "granted";
+      const nextLoc = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        updatedAt: Date.now(),
+      };
+      AppState.nearbyLocation = nextLoc;
+      AppState.userLocation = nextLoc;
+      AppState.nearbyLocationError = "";
+      startNearbyBusDetection();
+      showSavedRouteToast("Phone location access enabled");
+      if (AppState.currentPage === "settings") {
+        navigateTo("settings", false, { scrollToTop: false });
+      } else {
+        refreshCurrentPage();
+      }
+    },
+    (error) => {
+      if (error.code === error.PERMISSION_DENIED) {
+        AppState.locationPermissionState = "denied";
+        showSavedRouteToast(
+          "Location access is blocked. Please allow location in your browser/site settings.",
+          true
+        );
+      } else {
+        showSavedRouteToast("Unable to read phone location right now. Please try again.", true);
+      }
+      if (AppState.currentPage === "settings") {
+        navigateTo("settings", false, { scrollToTop: false });
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+  );
+}
 
 // ==================================================
 // LIVE PROFILE SYNC — reflects name/phone/photo changes instantly
@@ -225,17 +289,24 @@ function getBusByCode(busCode) {
 }
 
 
-function getActiveTripForBus(busId, busCode) {
+function getActiveTripForBus(busId, busCode, conductorId = null) {
+  const normId = busId ? String(busId).trim().toLowerCase() : "";
+  const normCode = busCode ? String(busCode).trim().toLowerCase() : "";
+  const normConductor = conductorId ? String(conductorId).trim() : "";
+
   return (
-    AppState.activeTrips.find(
-      (trip) =>
-        trip.status === "active" &&
-        [trip.busId, trip.busCode].some(
-          tripBusId =>
-            tripBusId &&
-            (tripBusId === busId || tripBusId === busCode)
-        )
-    ) || null
+    AppState.activeTrips.find((trip) => {
+      if (trip.status !== "active") return false;
+      const tripIds = [trip.busId, trip.busCode]
+        .filter(Boolean)
+        .map((v) => String(v).trim().toLowerCase());
+      if (normId && tripIds.includes(normId)) return true;
+      if (normCode && tripIds.includes(normCode)) return true;
+      if (normConductor && trip.conductorId && String(trip.conductorId).trim() === normConductor) {
+        return true;
+      }
+      return false;
+    }) || null
   );
 }
 
@@ -550,15 +621,88 @@ function isRouteSaved(routeId) {
     : false;
 }
 
+function normalizeRouteQueryText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[—–\-·•,._/()]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function doesRouteMatchQuery(route, rawQuery) {
+  const normalizedQuery = normalizeRouteQueryText(rawQuery);
+  if (!normalizedQuery) return true;
+
+  const stops = getStopsByRoute(route.id);
+  const stopNames = stops
+    .map((s) => `${s.name || s.stopName || ""} ${s.location || s.address || ""}`)
+    .join(" ");
+
+  const busesOnRoute = AppState.buses
+    .filter((b) => b.routeId === route.id)
+    .map((b) => `${b.code || ""} ${b.id || ""} ${b.directionLabel || ""}`)
+    .join(" ");
+
+  const codeDigits = String(route.code || "").replace(/\D+/g, "");
+  const routeAliases = codeDigits
+    ? `route ${codeDigits} r${codeDigits} r-${codeDigits} rt ${codeDigits} rt${codeDigits}`
+    : "";
+
+  const searchable = normalizeRouteQueryText(`
+    ${route.id || ""}
+    ${route.code || ""}
+    ${routeAliases}
+    ${route.name || ""}
+    ${route.description || ""}
+    ${stopNames}
+    ${busesOnRoute}
+  `);
+
+  if (searchable.includes(normalizedQuery)) return true;
+
+  const parts = String(rawQuery)
+    .split(/[,;]+/)
+    .map((p) => normalizeRouteQueryText(p))
+    .filter(Boolean);
+  if (parts.length > 1) {
+    return parts.some((p) => searchable.includes(p));
+  }
+
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  return tokens.length > 0 && tokens.every((t) => searchable.includes(t));
+}
+
 function getFilteredRoutes() {
-  return AppState.routeFilter === "favorites"
-    ? AppState.routes.filter((route) => AppState.user.savedRoutes.includes(route.id))
-    : AppState.routes;
+  const base =
+    AppState.routeFilter === "favorites"
+      ? AppState.routes.filter((route) => AppState.user.savedRoutes.includes(route.id))
+      : AppState.routes;
+
+  if (!AppState.routeSearchQuery) return base;
+  return base.filter((route) => doesRouteMatchQuery(route, AppState.routeSearchQuery));
 }
 
 function setRouteFilter(filter) {
   AppState.routeFilter = filter === "favorites" ? "favorites" : "all";
   navigateTo("routes", false);
+}
+
+function setRouteSearchQuery(query) {
+  AppState.routeSearchQuery = String(query ?? "");
+  const content = document.getElementById("content");
+  if (!content || AppState.currentPage !== "routes") return;
+
+  const scrollY = window.scrollY;
+  content.innerHTML = Pages.routes();
+  content.firstElementChild?.classList.remove("slide-in");
+  window.scrollTo(0, scrollY);
+
+  const input = document.getElementById("routesPageSearchInput");
+  if (input) {
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  }
 }
 
 
@@ -731,7 +875,8 @@ function rebuildBuses() {
     const activeTrip =
       getActiveTripForBus(
         rawBus.id,
-        rawBus.code
+        rawBus.code,
+        rawBus.conductorId
       );
 
     const routeId =
@@ -1883,6 +2028,32 @@ const Pages = {
       </div>
 
 
+      <div class="relative flex items-center bg-white rounded-xl border border-gray-200 shadow-sm focus-within:border-qc-blue focus-within:ring-2 focus-within:ring-qc-blue/10 transition">
+        <span class="absolute left-3.5 text-gray-400 pointer-events-none select-none" aria-hidden="true">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="m16 16 4 4"/></svg>
+        </span>
+        <input
+          id="routesPageSearchInput"
+          type="text"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          value="${escapeHtml(AppState.routeSearchQuery || "")}"
+          oninput="setRouteSearchQuery(this.value)"
+          placeholder="Search route, stop, or bus (e.g. R1, Route 1, City Hall)..."
+          class="w-full pl-10 pr-16 py-2.5 text-sm bg-transparent rounded-xl outline-none placeholder:text-gray-400 text-gray-800"
+        />
+        ${AppState.routeSearchQuery ? `
+          <button
+            type="button"
+            onclick="setRouteSearchQuery('')"
+            class="absolute right-2.5 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:text-qc-blue bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+          >
+            Clear
+          </button>
+        ` : ""}
+      </div>
+
       <div class="flex gap-2" role="group" aria-label="Filter routes">
         <button
           onclick="setRouteFilter('all')"
@@ -2096,11 +2267,23 @@ const Pages = {
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
 
               <p class="text-sm text-gray-400">
-                ${AppState.routeFilter === "favorites" ? "No favorite routes yet. Star a route to find it here." : "No routes available."}
+                ${
+                  AppState.routeSearchQuery
+                    ? `No routes found matching "${escapeHtml(AppState.routeSearchQuery)}".`
+                    : AppState.routeFilter === "favorites"
+                      ? "No favorite routes yet. Star a route to find it here."
+                      : "No routes available."
+                }
               </p>
 
               <p class="text-xs text-gray-300 mt-1">
-                ${AppState.routeFilter === "favorites" ? "Switch to All routes and star a route to add it here." : "Routes created by the administrator will appear here."}
+                ${
+                  AppState.routeSearchQuery
+                    ? "Try searching by route code (e.g. R1 or Route 1) or stop name."
+                    : AppState.routeFilter === "favorites"
+                      ? "Switch to All routes and star a route to add it here."
+                      : "Routes created by the administrator will appear here."
+                }
               </p>
 
             </div>
@@ -2511,6 +2694,42 @@ const Pages = {
 
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-100">
+
+        <div class="p-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-800">
+              Phone Location Access
+            </p>
+            <p class="text-xs text-gray-400 mt-0.5">
+              ${
+                AppState.locationPermissionState === "granted" || AppState.nearbyLocation
+                  ? "Location permission is active for nearby buses & map"
+                  : AppState.locationPermissionState === "denied"
+                  ? "Blocked in browser · Tap to retry or allow in site settings"
+                  : "Allow QCommute to use your phone's GPS location"
+              }
+            </p>
+          </div>
+          <button
+            type="button"
+            onclick="requestCommuterLocationPermission()"
+            class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+              AppState.locationPermissionState === "granted" || AppState.nearbyLocation
+                ? "bg-green-100 text-green-700 hover:bg-green-200"
+                : AppState.locationPermissionState === "denied"
+                ? "bg-red-100 text-red-700 hover:bg-red-200"
+                : "bg-qc-blue text-white hover:bg-qc-blue-accent shadow-sm"
+            }"
+          >
+            ${
+              AppState.locationPermissionState === "granted" || AppState.nearbyLocation
+                ? "Location Active"
+                : AppState.locationPermissionState === "denied"
+                ? "Retry Permission"
+                : "Allow Location"
+            }
+          </button>
+        </div>
 
         <div class="p-4 flex items-center justify-between">
 
@@ -3590,6 +3809,7 @@ function listenToStops() {
         );
 
 
+        rebuildBuses();
         refreshCurrentPage();
       },
 
@@ -3842,6 +4062,7 @@ function stopAllListeners() {
 async function initApp() {
 
   showLoading();
+  initCommuterLocationPermissionObserver();
 
   try {
 
@@ -4056,12 +4277,18 @@ async function initApp() {
     if (
       "serviceWorker" in navigator
     ) {
+      let refreshingSw = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshingSw) return;
+        refreshingSw = true;
+        window.location.reload();
+      });
 
       navigator.serviceWorker
-        .register("./sw.js")
+        .register("./sw.js", { updateViaCache: "none" })
         .then(
           (registration) => {
-
+            registration.update();
             console.log(
               "SW registered:",
               registration.scope
@@ -4122,6 +4349,9 @@ if (
 
 window.toggleSavedRoute = toggleSavedRoute;
 window.setRouteFilter = setRouteFilter;
+window.setRouteSearchQuery = setRouteSearchQuery;
+window.requestCommuterLocationPermission = requestCommuterLocationPermission;
+window.updateCommuterDropoffEta = updateCommuterDropoffEta;
 window.openChangePassword = openChangePassword;
 window.closeChangePassword = closeChangePassword;
 

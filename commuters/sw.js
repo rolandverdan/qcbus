@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-commuter-v44';
+const CACHE_NAME = 'qc-commuter-v50';
 const NOTIFICATION_PREFS_CACHE = 'qc-commuter-notification-prefs-v1';
 const urlsToCache = [
   './',
@@ -34,8 +34,17 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(res => res || fetch(event.request))
+    fetch(event.request)
+      .then(networkRes => {
+        if (networkRes && networkRes.status === 200 && new URL(event.request.url).origin === self.location.origin) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone)).catch(() => {});
+        }
+        return networkRes;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

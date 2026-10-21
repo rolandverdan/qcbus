@@ -54,11 +54,14 @@ export async function updateBusRepo(id, patch) {
 
 export async function updateBusLocationRepo(id, location) {
   const busRef = doc(db, "buses", id);
+  const accuracy = Number(location.accuracy);
 
   await updateDoc(busRef, {
     lat: Number(location.lat),
     lng: Number(location.lng),
     speedKmh: Number(location.speedKmh) || 0,
+    ...(Number.isFinite(accuracy) && accuracy > 0 ? { accuracy } : {}),
+    ...(location.deviceId ? { locationDeviceId: String(location.deviceId) } : {}),
     locationUpdatedAt: serverTimestamp(),
   });
 }

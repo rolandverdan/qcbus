@@ -26,7 +26,7 @@ import {
   listenToTripsRepo,
 } from "../../shared/js/repositories/trips.repo.js";
 
-import { getEta } from "../../shared/js/eta.js";
+import { getEta, getNearestStop } from "../../shared/js/eta.js";
 
 const session = await requireRole("conductor");
 
@@ -117,7 +117,26 @@ const AppState = {
   tripHistoryFilterPreset: 'yesterday',
   tripHistoryPage: 1,
   tripHistoryPageSize: 10,
+  locationPermissionState: 'prompt',
 };
+
+async function initConductorLocationPermissionObserver() {
+  if (!("permissions" in navigator) || typeof navigator.permissions?.query !== "function") {
+    return;
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    AppState.locationPermissionState = status.state;
+    status.onchange = () => {
+      AppState.locationPermissionState = status.state;
+      if (AppState.currentPage === "account") {
+        navigateTo("account");
+      }
+    };
+  } catch (err) {
+    // Ignore on browsers that don't support geolocation permission query
+  }
+}
 
 // ==================================================
 // PAGE TEMPLATES
@@ -675,6 +694,39 @@ const Pages = {
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
+        <button onclick="requestConductorLocationPermission()" class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition text-left group">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 ${AppState.locationPermissionState === 'granted' ? 'text-qc-green' : AppState.locationPermissionState === 'denied' ? 'text-red-500' : 'text-gray-400 group-hover:text-qc-blue-accent'} transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <div>
+              <span class="text-sm font-medium text-gray-700 block">Phone Location Access</span>
+              <span class="text-[11px] text-gray-400 block">${
+                AppState.locationPermissionState === 'granted'
+                  ? 'Allowed · Tap to refresh GPS lock'
+                  : AppState.locationPermissionState === 'denied'
+                  ? 'Blocked · Tap to retry or allow in browser settings'
+                  : 'Tap to allow phone GPS for live bus tracking'
+              }</span>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+            AppState.locationPermissionState === 'granted'
+              ? 'bg-green-100 text-green-700'
+              : AppState.locationPermissionState === 'denied'
+              ? 'bg-red-100 text-red-700'
+              : 'bg-blue-50 text-qc-blue-accent'
+          }">
+            ${
+              AppState.locationPermissionState === 'granted'
+                ? 'Active'
+                : AppState.locationPermissionState === 'denied'
+                ? 'Blocked'
+                : 'Allow GPS'
+            }
+          </span>
+        </button>
         <button onclick="navigateTo('tripHistory')" class="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition text-left group">
           <div class="flex items-center gap-3">
             <svg class="w-5 h-5 text-gray-400 group-hover:text-qc-blue-accent transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1536,6 +1588,13 @@ async function loadConductorData() {
         ? Number(latestBus.speedKmh)
         : null;
 
+    const localGps = window.__conductorLocalGps;
+    const hasFreshLocalGps =
+      localGps &&
+      Number.isFinite(localGps.lat) &&
+      Number.isFinite(localGps.lng) &&
+      Date.now() - (localGps.updatedAt || 0) < 20000;
+
     AppState.bus = {
       id: latestBus.code || latestBus.id,
       documentId: latestBus.id,
@@ -1547,9 +1606,12 @@ async function loadConductorData() {
         : 'No route assigned',
       plateNumber: latestBus.plateNumber || '',
       capacity: Number(latestBus.capacity) || 45,
-      lat: remoteLat ?? AppState.bus.lat ?? null,
-      lng: remoteLng ?? AppState.bus.lng ?? null,
-      speedKmh: remoteSpeed ?? AppState.bus.speedKmh ?? null,
+      lat: hasFreshLocalGps ? localGps.lat : (remoteLat ?? AppState.bus.lat ?? null),
+      lng: hasFreshLocalGps ? localGps.lng : (remoteLng ?? AppState.bus.lng ?? null),
+      speedKmh:
+        hasFreshLocalGps && Number.isFinite(localGps.speedKmh)
+          ? localGps.speedKmh
+          : (remoteSpeed ?? AppState.bus.speedKmh ?? null),
       locationUpdatedAt: latestBus.locationUpdatedAt || AppState.bus.locationUpdatedAt || null,
     };
 
@@ -1558,6 +1620,11 @@ async function loadConductorData() {
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
 
     AppState.occupancy.capacity = AppState.bus.capacity;
+
+    if (Number.isFinite(AppState.bus.lat) && Number.isFinite(AppState.bus.lng)) {
+      const nearest = getNearestStop(AppState.bus, AppState.routeStops);
+      AppState.currentAlightStopId = nearest.stop?.id || null;
+    }
 
     if (isRealtimeUpdate) {
       if (prevBusDocId !== AppState.bus.documentId && window.initActiveTripListener) {
@@ -1626,6 +1693,7 @@ async function loadConductorData() {
 // ==================================================
 async function initApp() {
   showLoading();
+  initConductorLocationPermissionObserver();
   
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1657,8 +1725,15 @@ async function initApp() {
   }
 
   if ('serviceWorker' in navigator) {
+    let refreshingSw = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshingSw) return;
+      refreshingSw = true;
+      window.location.reload();
+    });
     navigator.serviceWorker
-      .register('./sw.js')
+      .register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => reg.update())
       .catch(err => console.log('SW:', err));
   }
   hideLoading();
