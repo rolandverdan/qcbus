@@ -118,13 +118,25 @@ function getBusCoordinates(bus) {
   const lng = Number(bus?.lng);
 
   if (
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng)
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    !(lat === 0 && lng === 0)
   ) {
-    return null;
+    return [lng, lat];
   }
 
-  return [lng, lat];
+  if (bus?.tripActive && bus?.routeId) {
+    const stops = getStopsForRoute(bus.routeId);
+    const startStop = bus.directionFromId
+      ? stops.find((s) => s.id === bus.directionFromId)
+      : stops[0];
+    const fallbackCoords = getStopCoordinates(startStop || stops[0]);
+    if (fallbackCoords) {
+      return fallbackCoords;
+    }
+  }
+
+  return null;
 }
 
 // ==================================================
@@ -176,10 +188,14 @@ function getStopCoordinates(stop) {
 
 function getRouteById(routeId) {
   if (!routeId) return null;
+  const target = String(routeId).trim().toLowerCase();
 
   return (
     AppState.routes?.find(
-      route => route.id === routeId
+      route =>
+        route.id === routeId ||
+        String(route.id || "").trim().toLowerCase() === target ||
+        String(route.code || "").trim().toLowerCase() === target
     ) || null
   );
 }
@@ -202,40 +218,47 @@ function getStopsForRoute(routeId) {
 
 
 function parseRouteGeometry(route) {
-  if (!route?.geometry) {
-    return null;
+  if (route?.geometry) {
+    try {
+      const geometry =
+        typeof route.geometry === "string"
+          ? JSON.parse(route.geometry)
+          : route.geometry;
+
+      if (
+        geometry?.type === "Feature" &&
+        geometry.geometry
+      ) {
+        return geometry.geometry;
+      }
+
+      if (
+        geometry?.type &&
+        geometry?.coordinates
+      ) {
+        return geometry;
+      }
+    } catch (error) {
+      console.error(
+        "Invalid route geometry:",
+        error
+      );
+    }
   }
 
-  try {
-    const geometry =
-      typeof route.geometry === "string"
-        ? JSON.parse(route.geometry)
-        : route.geometry;
-
-    if (
-      geometry?.type === "Feature" &&
-      geometry.geometry
-    ) {
-      return geometry.geometry;
+  if (route?.id) {
+    const stopCoords = getStopsForRoute(route.id)
+      .map(getStopCoordinates)
+      .filter(Boolean);
+    if (stopCoords.length >= 2) {
+      return {
+        type: "LineString",
+        coordinates: stopCoords,
+      };
     }
-
-    if (
-      geometry?.type &&
-      geometry?.coordinates
-    ) {
-      return geometry;
-    }
-
-    return null;
-
-  } catch (error) {
-    console.error(
-      "Invalid route geometry:",
-      error
-    );
-
-    return null;
   }
+
+  return null;
 }
 
 
@@ -273,6 +296,46 @@ function getGeometryCoordinates(geometry) {
 // INIT MAP
 // ==================================================
 
+let mapLiveRefreshInterval = null;
+
+function startMapLiveRefreshLoop() {
+  if (mapLiveRefreshInterval !== null) return;
+  mapLiveRefreshInterval = setInterval(() => {
+    if (!map) return;
+    updateBusMarkers();
+    updateBusLegend();
+    refreshActiveStopPopup?.();
+    window.updateCommuterDropoffEta?.();
+  }, 2500);
+}
+
+function stopMapLiveRefreshLoop() {
+  if (mapLiveRefreshInterval !== null) {
+    clearInterval(mapLiveRefreshInterval);
+    mapLiveRefreshInterval = null;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && map) {
+    updateRouteLayers();
+    updateBusMarkers();
+    updateBusLegend();
+    refreshActiveStopPopup?.();
+    window.updateCommuterDropoffEta?.();
+  }
+});
+
+window.addEventListener("focus", () => {
+  if (map) {
+    updateRouteLayers();
+    updateBusMarkers();
+    updateBusLegend();
+    refreshActiveStopPopup?.();
+    window.updateCommuterDropoffEta?.();
+  }
+});
+
 function initMap() {
   const container =
     document.getElementById(
@@ -298,6 +361,7 @@ function initMap() {
     if (userLocationWatchId === null) {
       getUserLocation();
     }
+    startMapLiveRefreshLoop();
 
     return;
   }
@@ -341,12 +405,20 @@ function initMap() {
   map.on("touchstart", markMapAsUserMoved);
   map.on("rotate", updateBusMarkers);
 
-  // Immediately place HTML markers (buses & user location) even before vector tiles finish loading
+  // Immediately place HTML markers (stops, buses & user location) even before vector tiles finish loading
+  updateStopMarkers();
   updateBusMarkers();
   updateBusLegend();
   getUserLocation();
+  startMapLiveRefreshLoop();
 
-  map.on("load", () => {
+  if (pendingSelectedRouteId) {
+    const routeId = pendingSelectedRouteId;
+    pendingSelectedRouteId = null;
+    selectRoute(routeId);
+  }
+
+  const onStyleOrMapLoaded = () => {
     if (!map) return;
     isMapLoaded = true;
 
@@ -365,7 +437,15 @@ function initMap() {
         map.resize();
       }
     }, 100);
+  };
+
+  map.on("styledata", () => {
+    if (!isMapLoaded && map?.isStyleLoaded()) {
+      onStyleOrMapLoaded();
+    }
   });
+
+  map.on("load", onStyleOrMapLoaded);
 
 
   // ==================================================
@@ -616,6 +696,69 @@ function createRoutePicker() {
 // UPDATE ROUTE PICKER
 // ==================================================
 
+function formatRouteInputValue(route) {
+  if (!route) return "";
+  return route.code
+    ? `${route.code}${route.name ? " — " + route.name : ""}`
+    : (route.name || "");
+}
+
+function normalizeRouteSearchText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[—–\-·•,._/()]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function matchesRouteSearch(route, rawQuery) {
+  if (!route) return false;
+  const normalizedQuery = normalizeRouteSearchText(rawQuery);
+  if (!normalizedQuery) return true;
+
+  const stops = getStopsForRoute(route.id);
+  const stopNames = stops
+    .map(stop => `${stop.name || stop.stopName || ""} ${stop.location || stop.address || ""}`)
+    .join(" ");
+
+  const activeBusesOnRoute = (AppState.buses || [])
+    .filter(bus => bus.routeId === route.id)
+    .map(bus => `${bus.code || ""} ${bus.id || ""} ${bus.directionLabel || ""}`)
+    .join(" ");
+
+  const codeDigits = String(route.code || "").replace(/\D+/g, "");
+  const routeAliases = codeDigits
+    ? `route ${codeDigits} r${codeDigits} r-${codeDigits} rt ${codeDigits} rt${codeDigits}`
+    : "";
+
+  const searchableText = normalizeRouteSearchText(`
+    ${route.id || ""}
+    ${route.code || ""}
+    ${routeAliases}
+    ${route.name || ""}
+    ${route.description || ""}
+    ${formatRouteInputValue(route)}
+    ${stopNames}
+    ${activeBusesOnRoute}
+  `);
+
+  if (searchableText.includes(normalizedQuery)) {
+    return true;
+  }
+
+  const queryParts = String(rawQuery)
+    .split(/[,;]+/)
+    .map(part => normalizeRouteSearchText(part))
+    .filter(Boolean);
+
+  if (queryParts.length > 1) {
+    return queryParts.some(part => searchableText.includes(part));
+  }
+
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  return tokens.length > 0 && tokens.every(token => searchableText.includes(token));
+}
+
 function updateRoutePicker(
   searchTerm = ""
 ) {
@@ -629,6 +772,11 @@ function updateRoutePicker(
       "clearRouteButton"
     );
 
+  const searchInput =
+    document.getElementById(
+      "routeSearchInput"
+    );
+
   const selectedRoute =
     selectedRouteId
       ? getRouteById(selectedRouteId)
@@ -640,12 +788,22 @@ function updateRoutePicker(
 
   if (!list) return;
 
-  const search =
-    String(searchTerm || "")
-      .trim()
-      .toLowerCase();
+  const rawSearch = String(searchTerm || "").trim();
+  const search = rawSearch.toLowerCase();
 
-  // "hide the routs in the search and when i type or search for a route it well then show me the routes"
+  // If a route is currently selected and the input simply shows that route's formatted label
+  // (and the user isn't actively editing it), keep the dropdown closed instead of showing "No routes found".
+  if (
+    selectedRoute &&
+    rawSearch &&
+    normalizeRouteSearchText(rawSearch) === normalizeRouteSearchText(formatRouteInputValue(selectedRoute)) &&
+    document.activeElement !== searchInput
+  ) {
+    list.classList.add("hidden");
+    list.innerHTML = "";
+    return;
+  }
+
   // If search is empty, hide the route list
   if (!search) {
     list.classList.add("hidden");
@@ -667,16 +825,17 @@ function updateRoutePicker(
       ? AppState.routes
       : [];
 
-  const filteredRoutes =
-    routes.filter(route => {
-      const text = `
-        ${route.code || ""}
-        ${route.name || ""}
-        ${route.description || ""}
-      `.toLowerCase();
+  if (routes.length === 0) {
+    list.innerHTML = `
+      <div class="py-4 text-center text-xs text-gray-400">
+        Loading routes...
+      </div>
+    `;
+    return;
+  }
 
-      return text.includes(search);
-    });
+  const filteredRoutes =
+    routes.filter(route => matchesRouteSearch(route, rawSearch));
 
   if (filteredRoutes.length === 0) {
     list.innerHTML = `
@@ -807,9 +966,8 @@ function updateRoutePicker(
 
         const r = getRouteById(routeId);
         if (r && searchInput) {
-          searchInput.value = r.code
-            ? `${r.code}${r.name ? " — " + r.name : ""}`
-            : (r.name || "");
+          searchInput.value = formatRouteInputValue(r);
+          searchInput.blur();
         }
       };
 
@@ -832,7 +990,7 @@ function selectRoute(routeId) {
     return;
   }
 
-  selectedRouteId = routeId;
+  selectedRouteId = route.id;
 
   const searchInput =
     document.getElementById(
@@ -840,9 +998,7 @@ function selectRoute(routeId) {
     );
 
   if (searchInput) {
-    searchInput.value = route.code
-      ? `${route.code}${route.name ? " — " + route.name : ""}`
-      : (route.name || "");
+    searchInput.value = formatRouteInputValue(route);
   }
 
   const list =
@@ -858,20 +1014,13 @@ function selectRoute(routeId) {
 
   if (map) {
     centerMapOnRoute(route);
-
-    if (isMapLoaded) {
-      updateRouteLayers();
-      updateBusMarkers();
-      updateBusLegend();
-    } else {
-      map.once("load", () => {
-        updateRouteLayers();
-        updateBusMarkers();
-        updateBusLegend();
-      });
-    }
+    // Immediately update HTML stop markers, bus markers, legend, and route layers
+    updateStopMarkers();
+    updateRouteLayers();
+    updateBusMarkers();
+    updateBusLegend();
   } else {
-    pendingSelectedRouteId = routeId;
+    pendingSelectedRouteId = route.id;
   }
 }
 
@@ -975,6 +1124,7 @@ function clearSelectedRoute() {
   }
 
   updateRoutePicker();
+  updateStopMarkers();
   updateRouteLayers();
   updateBusMarkers();
   updateBusLegend();
@@ -1043,404 +1193,296 @@ function getAllRouteFeatures() {
 // ==================================================
 
 function updateRouteLayers() {
-  if (!map || !isMapLoaded) {
+  if (!map) {
     return;
   }
 
+  // Always update HTML stop markers immediately without waiting for vector tiles to finish loading
+  updateStopMarkers();
 
-  const features =
-    getAllRouteFeatures();
-
-
-  const allRoutesData = {
-    type: "FeatureCollection",
-    features,
-  };
-
-
-  // ==================================================
-  // ALL ROUTES SOURCE
-  // ==================================================
-
-  if (!map.getSource("all-routes")) {
-    map.addSource("all-routes", {
-      type: "geojson",
-      data: allRoutesData,
-    });
+  if (!isMapLoaded && typeof map.isStyleLoaded === "function" && !map.isStyleLoaded()) {
+    return;
   }
 
+  try {
+    const features =
+      getAllRouteFeatures();
 
-  // ==================================================
-  // ALL ROUTES CASING
-  // ==================================================
+    const allRoutesData = {
+      type: "FeatureCollection",
+      features,
+    };
 
-  if (!map.getLayer("all-routes-casing")) {
-    map.addLayer({
-      id: "all-routes-casing",
+    if (!map.getSource("all-routes")) {
+      map.addSource("all-routes", {
+        type: "geojson",
+        data: allRoutesData,
+      });
+    }
 
-      type: "line",
+    if (!map.getLayer("all-routes-casing")) {
+      map.addLayer({
+        id: "all-routes-casing",
+        type: "line",
+        source: "all-routes",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 7,
+          "line-opacity": 0.9,
+        },
+      });
+    }
 
-      source: "all-routes",
+    if (!map.getLayer("all-routes-line")) {
+      map.addLayer({
+        id: "all-routes-line",
+        type: "line",
+        source: "all-routes",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": [
+            "coalesce",
+            ["get", "color"],
+            "#1e40af",
+          ],
+          "line-width": 5,
+          "line-opacity": 0.9,
+        },
+      });
+    }
 
-      layout: {
-        "line-cap": "round",
-        "line-join": "round",
-      },
+    if (!map.getSource("selected-route")) {
+      map.addSource("selected-route", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+    }
 
-      paint: {
-        "line-color": "#ffffff",
-        "line-width": 7,
-        "line-opacity": 0.9,
-      },
-    });
-  }
+    if (!map.getLayer("selected-route-casing")) {
+      map.addLayer({
+        id: "selected-route-casing",
+        type: "line",
+        source: "selected-route",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 10,
+          "line-opacity": 0,
+        },
+      });
+    }
 
+    if (!map.getLayer("selected-route-line")) {
+      map.addLayer({
+        id: "selected-route-line",
+        type: "line",
+        source: "selected-route",
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#1e40af",
+          "line-width": 7,
+          "line-opacity": 0,
+        },
+      });
+    }
 
-  // ==================================================
-  // ALL ROUTES LINE
-  // ==================================================
+    routeLayersInitialized = true;
+    isMapLoaded = true;
 
-  if (!map.getLayer("all-routes-line")) {
-    map.addLayer({
-      id: "all-routes-line",
+    const allRoutesSource =
+      map.getSource("all-routes");
 
-      type: "line",
+    if (allRoutesSource) {
+      allRoutesSource.setData(
+        allRoutesData
+      );
+    }
 
-      source: "all-routes",
+    if (selectedRouteId) {
+      const route =
+        getRouteById(
+          selectedRouteId
+        );
 
-      layout: {
-        "line-cap": "round",
-        "line-join": "round",
-      },
+      const geometry =
+        route
+          ? parseRouteGeometry(route)
+          : null;
 
-      paint: {
-        "line-color": [
-          "coalesce",
-          ["get", "color"],
-          "#1e40af",
-        ],
+      if (route && geometry) {
+        const color =
+          getRouteColor(route);
 
-        "line-width": 5,
+        const selectedData = {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {
+                routeId:
+                  selectedRouteId,
+              },
+              geometry,
+            },
+          ],
+        };
 
-        "line-opacity": 0.9,
-      },
-    });
-  }
+        const selectedSource =
+          map.getSource(
+            "selected-route"
+          );
 
+        if (selectedSource) {
+          selectedSource.setData(
+            selectedData
+          );
+        }
 
-  // ==================================================
-  // SELECTED ROUTE SOURCE
-  // ==================================================
+        if (
+          map.getLayer(
+            "selected-route-line"
+          )
+        ) {
+          map.setPaintProperty(
+            "selected-route-line",
+            "line-color",
+            color
+          );
 
-  if (!map.getSource("selected-route")) {
-    map.addSource("selected-route", {
-      type: "geojson",
+          map.setPaintProperty(
+            "selected-route-line",
+            "line-opacity",
+            1
+          );
+        }
 
-      data: {
-        type: "FeatureCollection",
-        features: [],
-      },
-    });
-  }
+        if (
+          map.getLayer(
+            "selected-route-casing"
+          )
+        ) {
+          map.setPaintProperty(
+            "selected-route-casing",
+            "line-opacity",
+            0.95
+          );
+        }
 
+        if (
+          map.getLayer(
+            "all-routes-line"
+          )
+        ) {
+          map.setPaintProperty(
+            "all-routes-line",
+            "line-opacity",
+            [
+              "case",
+              [
+                "==",
+                ["get", "routeId"],
+                selectedRouteId,
+              ],
+              1,
+              0.25,
+            ]
+          );
+        }
 
-  // ==================================================
-  // SELECTED ROUTE CASING
-  // ==================================================
+        if (
+          map.getLayer(
+            "all-routes-casing"
+          )
+        ) {
+          map.setPaintProperty(
+            "all-routes-casing",
+            "line-opacity",
+            0.35
+          );
+        }
 
-  if (!map.getLayer("selected-route-casing")) {
-    map.addLayer({
-      id: "selected-route-casing",
+        return;
+      }
+    }
 
-      type: "line",
+    if (
+      map.getLayer(
+        "all-routes-line"
+      )
+    ) {
+      map.setPaintProperty(
+        "all-routes-line",
+        "line-opacity",
+        0.9
+      );
+    }
 
-      source: "selected-route",
+    if (
+      map.getLayer(
+        "all-routes-casing"
+      )
+    ) {
+      map.setPaintProperty(
+        "all-routes-casing",
+        "line-opacity",
+        0.9
+      );
+    }
 
-      layout: {
-        "line-cap": "round",
-        "line-join": "round",
-      },
+    if (
+      map.getLayer(
+        "selected-route-line"
+      )
+    ) {
+      map.setPaintProperty(
+        "selected-route-line",
+        "line-opacity",
+        0
+      );
+    }
 
-      paint: {
-        "line-color": "#ffffff",
+    if (
+      map.getLayer(
+        "selected-route-casing"
+      )
+    ) {
+      map.setPaintProperty(
+        "selected-route-casing",
+        "line-opacity",
+        0
+      );
+    }
 
-        "line-width": 10,
-
-        "line-opacity": 0,
-      },
-    });
-  }
-
-
-  // ==================================================
-  // SELECTED ROUTE LINE
-  // ==================================================
-
-  if (!map.getLayer("selected-route-line")) {
-    map.addLayer({
-      id: "selected-route-line",
-
-      type: "line",
-
-      source: "selected-route",
-
-      layout: {
-        "line-cap": "round",
-        "line-join": "round",
-      },
-
-      paint: {
-        "line-color": "#1e40af",
-
-        "line-width": 7,
-
-        "line-opacity": 0,
-      },
-    });
-  }
-
-
-  routeLayersInitialized = true;
-
-
-  // ==================================================
-  // UPDATE ALL ROUTES DATA
-  // ==================================================
-
-  const allRoutesSource =
-    map.getSource("all-routes");
-
-  if (allRoutesSource) {
-    allRoutesSource.setData(
-      allRoutesData
-    );
-  }
-
-
-  // ==================================================
-  // SELECTED ROUTE
-  // ==================================================
-
-  if (selectedRouteId) {
-
-    const route =
-      getRouteById(
-        selectedRouteId
+    const selectedSource =
+      map.getSource(
+        "selected-route"
       );
 
-
-    const geometry =
-      route
-        ? parseRouteGeometry(route)
-        : null;
-
-
-    if (route && geometry) {
-
-      const color =
-        getRouteColor(route);
-
-
-      const selectedData = {
+    if (selectedSource) {
+      selectedSource.setData({
         type: "FeatureCollection",
-
-        features: [
-          {
-            type: "Feature",
-
-            properties: {
-              routeId:
-                selectedRouteId,
-            },
-
-            geometry,
-          },
-        ],
-      };
-
-
-      const selectedSource =
-        map.getSource(
-          "selected-route"
-        );
-
-
-      if (selectedSource) {
-        selectedSource.setData(
-          selectedData
-        );
-      }
-
-
-      // Highlight selected route
-
-      if (
-        map.getLayer(
-          "selected-route-line"
-        )
-      ) {
-        map.setPaintProperty(
-          "selected-route-line",
-          "line-color",
-          color
-        );
-
-        map.setPaintProperty(
-          "selected-route-line",
-          "line-opacity",
-          1
-        );
-      }
-
-
-      if (
-        map.getLayer(
-          "selected-route-casing"
-        )
-      ) {
-        map.setPaintProperty(
-          "selected-route-casing",
-          "line-opacity",
-          0.95
-        );
-      }
-
-
-      // Dim other routes
-
-      if (
-        map.getLayer(
-          "all-routes-line"
-        )
-      ) {
-        map.setPaintProperty(
-          "all-routes-line",
-          "line-opacity",
-          [
-            "case",
-
-            [
-              "==",
-              ["get", "routeId"],
-              selectedRouteId,
-            ],
-
-            1,
-
-            0.25,
-          ]
-        );
-      }
-
-
-      if (
-        map.getLayer(
-          "all-routes-casing"
-        )
-      ) {
-        map.setPaintProperty(
-          "all-routes-casing",
-          "line-opacity",
-          0.35
-        );
-      }
-
-
-      // ==================================================
-      // SHOW STOPS
-      // ==================================================
-
-      updateStopMarkers();
-
-      return;
+        features: [],
+      });
     }
+  } catch (err) {
+    // Style is still initializing; styledata/load listener will retry
   }
-
-
-  // ==================================================
-  // NO SELECTED ROUTE
-  // ==================================================
-
-  if (
-    map.getLayer(
-      "all-routes-line"
-    )
-  ) {
-    map.setPaintProperty(
-      "all-routes-line",
-      "line-opacity",
-      0.9
-    );
-  }
-
-
-  if (
-    map.getLayer(
-      "all-routes-casing"
-    )
-  ) {
-    map.setPaintProperty(
-      "all-routes-casing",
-      "line-opacity",
-      0.9
-    );
-  }
-
-
-  if (
-    map.getLayer(
-      "selected-route-line"
-    )
-  ) {
-    map.setPaintProperty(
-      "selected-route-line",
-      "line-opacity",
-      0
-    );
-  }
-
-
-  if (
-    map.getLayer(
-      "selected-route-casing"
-    )
-  ) {
-    map.setPaintProperty(
-      "selected-route-casing",
-      "line-opacity",
-      0
-    );
-  }
-
-
-  const selectedSource =
-    map.getSource(
-      "selected-route"
-    );
-
-
-  if (selectedSource) {
-    selectedSource.setData({
-      type: "FeatureCollection",
-      features: [],
-    });
-  }
-
-
-  // Remove stops
-
-  if (activeStopPopup) {
-    activeStopPopup.remove();
-    activeStopPopup = null;
-  }
-  refreshActiveStopPopup = null;
-  lastStopMarkersSignature = "";
-
-  stopMarkers.forEach(
-    marker => marker.remove()
-  );
-
-  stopMarkers = [];
 }
 
 
@@ -1856,10 +1898,32 @@ function updateBusMarkers() {
         bus => bus.tripActive === true
       );
 
-  const busesWithCoordinates = buses.flatMap(bus => {
+  const rawBusesWithCoordinates = buses.flatMap(bus => {
     const coordinates = getBusCoordinates(bus);
     return coordinates ? [{ bus, coordinates }] : [];
   });
+
+  // Keep exact GPS coordinates on the map (never artificially offset them).
+  // When two or more buses are at the exact same spot (within ~8 meters),
+  // group them so the top marker shows a count badge and its popup displays all buses at that spot.
+  const CO_LOCATED_THRESHOLD_DEG = 0.00007;
+  const busesWithCoordinates = rawBusesWithCoordinates.map((entry) => {
+    const coLocatedBuses = rawBusesWithCoordinates
+      .filter(
+        (other) =>
+          Math.hypot(
+            other.coordinates[0] - entry.coordinates[0],
+            other.coordinates[1] - entry.coordinates[1]
+          ) < CO_LOCATED_THRESHOLD_DEG
+      )
+      .map((other) => other.bus);
+    return {
+      bus: entry.bus,
+      coordinates: entry.coordinates,
+      coLocatedBuses,
+    };
+  });
+
   const visibleBusIds = new Set(
     busesWithCoordinates.map(({ bus }) => bus.id)
   );
@@ -1872,7 +1936,7 @@ function updateBusMarkers() {
     return false;
   });
 
-  const getPopupContent = bus => {
+  const getSingleBusPopupBlock = bus => {
     const displayId = bus.code || bus.id || "BUS";
     const capacity = Number(bus.capacity) || 0;
     const passengers = Number(bus.onboard) || 0;
@@ -1920,34 +1984,57 @@ function updateBusMarkers() {
     `;
   };
 
-    const getBusNextStopDirection = bus => {
-      const nextStopEta = window.getNextStopEtaForBus?.(bus);
-      const nextStop = nextStopEta?.stop;
-      if (!nextStop || !map) return null;
+  const renderCombinedPopupContent = (coLocatedBuses) => {
+    const list = Array.isArray(coLocatedBuses) && coLocatedBuses.length > 0 ? coLocatedBuses : [];
+    if (list.length <= 1) {
+      return getSingleBusPopupBlock(list[0]);
+    }
+    return `
+      <div style="max-height:260px;overflow-y:auto;padding-right:2px">
+        <div style="font-size:11px;font-weight:700;color:#115272;background:#eff6ff;padding:4px 8px;border-radius:6px;margin-bottom:8px">
+          ${list.length} buses at this GPS location
+        </div>
+        ${list
+          .map(
+            (b, idx) => `
+              <div style="${idx > 0 ? "border-top:1px solid #e5e7eb;padding-top:8px;margin-top:8px;" : ""}">
+                ${getSingleBusPopupBlock(b)}
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  };
 
-      const busLat = Number(bus.lat);
-      const busLng = Number(bus.lng);
-      const stopLat = Number(nextStop.lat ?? nextStop.latitude);
-      const stopLng = Number(nextStop.lng ?? nextStop.longitude);
-      if (![busLat, busLng, stopLat, stopLng].every(Number.isFinite)) return null;
+  const getBusNextStopDirection = bus => {
+    const nextStopEta = window.getNextStopEtaForBus?.(bus);
+    const nextStop = nextStopEta?.stop;
+    if (!nextStop || !map) return null;
 
-      const busPoint = map.project([busLng, busLat]);
-      const stopPoint = map.project([stopLng, stopLat]);
-      const dx = stopPoint.x - busPoint.x;
-      const dy = stopPoint.y - busPoint.y;
-      if (Math.hypot(dx, dy) < 1) return null;
+    const busLat = Number(bus.lat);
+    const busLng = Number(bus.lng);
+    const stopLat = Number(nextStop.lat ?? nextStop.latitude);
+    const stopLng = Number(nextStop.lng ?? nextStop.longitude);
+    if (![busLat, busLng, stopLat, stopLng].every(Number.isFinite)) return null;
 
-      return {
-        angle: Math.atan2(dx, -dy) * 180 / Math.PI,
-        stopName: nextStop.name || nextStop.stopName || "next bus stop",
-      };
+    const busPoint = map.project([busLng, busLat]);
+    const stopPoint = map.project([stopLng, stopLat]);
+    const dx = stopPoint.x - busPoint.x;
+    const dy = stopPoint.y - busPoint.y;
+    if (Math.hypot(dx, dy) < 1) return null;
+
+    return {
+      angle: Math.atan2(dx, -dy) * 180 / Math.PI,
+      stopName: nextStop.name || nextStop.stopName || "next bus stop",
     };
+  };
 
-    const getMarkerContent = bus => {
+  const getMarkerContent = (bus, coLocatedCount = 1) => {
     const routeColor =
       bus.routeColor ||
       getRouteColor(getRouteById(bus.routeId));
-      const nextStopDirection = getBusNextStopDirection(bus);
+    const nextStopDirection = getBusNextStopDirection(bus);
 
     return `
       <div class="relative">
@@ -1960,6 +2047,13 @@ function updateBusMarkers() {
             <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:#115272;">
               <path d="M12 2 21 22 12 17 3 22 12 2Z" />
             </svg>
+          </div>
+        ` : ""}
+        ${coLocatedCount > 1 ? `
+          <div
+            style="position:absolute; z-index:3; right:-7px; top:-7px; min-width:20px; height:20px; padding:0 5px; border-radius:9999px; background:#dc2626; color:#fff; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.25);"
+          >
+            ${coLocatedCount}
           </div>
         ` : ""}
         <div
@@ -1985,20 +2079,22 @@ function updateBusMarkers() {
     `;
   };
 
-  busesWithCoordinates.forEach(({ bus, coordinates }) => {
+  busesWithCoordinates.forEach(({ bus, coordinates, coLocatedBuses }) => {
     const existing = busMarkers.find(entry => entry.busId === bus.id);
+    const coLocatedCount = coLocatedBuses?.length || 1;
+    const popupHtml = renderCombinedPopupContent(coLocatedBuses);
 
     if (existing) {
       animateMarkerTo(existing.marker, existing.animation, coordinates, 900, position => {
         if (existing.popup.isOpen()) existing.popup.setLngLat(position);
       });
       const markerElement = existing.marker.getElement();
-      markerElement.innerHTML = getMarkerContent(bus);
+      markerElement.innerHTML = getMarkerContent(bus, coLocatedCount);
       markerElement.setAttribute(
         "aria-label",
         `Show details for ${bus.code || bus.id || "bus"}`
       );
-      existing.popup.setHTML(getPopupContent(bus));
+      existing.popup.setHTML(popupHtml);
       if (existing.popup.isOpen()) {
         existing.popup.setLngLat(coordinates);
       }
@@ -2013,13 +2109,13 @@ function updateBusMarkers() {
       "aria-label",
       `Show details for ${bus.code || bus.id || "bus"}`
     );
-    markerElement.innerHTML = getMarkerContent(bus);
+    markerElement.innerHTML = getMarkerContent(bus, coLocatedCount);
     const popup = new maplibregl.Popup({
       offset: 28,
       closeButton: true,
       closeOnClick: true,
       className: "bus-tooltip",
-    }).setHTML(getPopupContent(bus));
+    }).setHTML(popupHtml);
 
     let marker;
     const openPopup = event => {
@@ -2101,6 +2197,11 @@ function updateBusLegend() {
         bus => bus.tripActive === true
       );
 
+  const countSpan = document.querySelector("#activeBusMapCard .flex.items-center.justify-between span");
+  if (countSpan) {
+    countSpan.textContent = `${buses.length} total`;
+  }
+
 
   if (
     buses.length === 0
@@ -2139,6 +2240,7 @@ function updateBusLegend() {
 
         const route =
           escapeHtml(
+            bus.directionLabel ||
             bus.route ||
             "No route"
           );
@@ -2178,7 +2280,8 @@ function updateBusLegend() {
             <p
               class="
                 text-xs
-                text-gray-500
+                font-semibold
+                text-qc-blue-accent
               "
             >
               ${route}
@@ -2361,6 +2464,7 @@ function getUserLocation() {
 // ==================================================
 
 function destroyMap() {
+  stopMapLiveRefreshLoop();
   if (userLocationAnimation.frame !== null) {
     cancelAnimationFrame(userLocationAnimation.frame);
     userLocationAnimation.frame = null;

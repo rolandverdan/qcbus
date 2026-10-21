@@ -133,68 +133,361 @@ function updateNearestStop(latitude, longitude) {
   }
 }
 
-function startBusLocationTracking() {
-  if (busLocationWatchId !== null) return;
+let busLocationHeartbeatInterval = null;
+let pendingLocationWriteTimer = null;
+let isRequestingDevicePosition = false;
+let lastGpsFixReceivedAt = 0;
+let lastSpeedSample = null;
+let tripWakeLock = null;
 
+const CONDUCTOR_DEVICE_ID =
+  window.__conductorDeviceId ||
+  (window.__conductorDeviceId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+async function requestTripWakeLock() {
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  try {
+    if (!tripWakeLock) {
+      tripWakeLock = await navigator.wakeLock.request("screen");
+      tripWakeLock.addEventListener("release", () => {
+        tripWakeLock = null;
+      });
+    }
+  } catch (_err) {
+    // Wake lock is best-effort on mobile browsers
+  }
+}
+
+function releaseTripWakeLock() {
+  if (tripWakeLock) {
+    tripWakeLock.release().catch(() => {});
+    tripWakeLock = null;
+  }
+}
+
+function computeLiveBusSpeedKmh(latitude, longitude, hardwareSpeedMs, now) {
+  let instantSpeedKmh = null;
+  let distMeters = 0;
+  let elapsedSec = 0;
+
+  if (lastSpeedSample) {
+    elapsedSec = (now - lastSpeedSample.time) / 1000;
+    const distKm = getDistanceKm(lastSpeedSample, { lat: latitude, lng: longitude });
+    distMeters = Number.isFinite(distKm) ? distKm * 1000 : 0;
+  }
+
+  if (Number.isFinite(hardwareSpeedMs) && hardwareSpeedMs > 0.15) {
+    instantSpeedKmh = hardwareSpeedMs * 3.6;
+  } else if (lastSpeedSample && elapsedSec >= 0.4 && elapsedSec <= 30) {
+    if (distMeters >= 1.2) {
+      instantSpeedKmh = Math.min(100, (distMeters / 1000) / (elapsedSec / 3600));
+    } else if (elapsedSec < 3.5) {
+      instantSpeedKmh = (lastSpeedSample.speedKmh || 0) * 0.5;
+    } else {
+      instantSpeedKmh = 0;
+    }
+  } else {
+    instantSpeedKmh = 0;
+  }
+
+  const prevSpeed = lastSpeedSample?.speedKmh || 0;
+  const blended =
+    instantSpeedKmh < 0.8
+      ? 0
+      : prevSpeed > 0
+        ? prevSpeed * 0.35 + instantSpeedKmh * 0.65
+        : instantSpeedKmh;
+  const speedKmh = Math.round(blended * 10) / 10;
+
+  if (!lastSpeedSample || distMeters >= 1.2 || elapsedSec >= 2.5) {
+    lastSpeedSample = {
+      lat: latitude,
+      lng: longitude,
+      time: now,
+      speedKmh,
+    };
+  } else {
+    lastSpeedSample.speedKmh = speedKmh;
+  }
+
+  return speedKmh;
+}
+
+async function flushBusLocationToFirestore() {
+  if (pendingLocationWriteTimer) {
+    clearTimeout(pendingLocationWriteTimer);
+    pendingLocationWriteTimer = null;
+  }
+  const localGps = window.__conductorLocalGps;
+  if (!AppState.bus.documentId || !localGps) return;
+
+  lastBusLocationWriteAt = Date.now();
+  try {
+    await updateBusLocationRepo(AppState.bus.documentId, {
+      lat: localGps.lat,
+      lng: localGps.lng,
+      speedKmh: localGps.speedKmh,
+      accuracy: localGps.accuracy,
+      deviceId: CONDUCTOR_DEVICE_ID,
+    });
+  } catch (error) {
+    console.error("Bus location update failed:", error);
+  }
+}
+
+function requestDevicePosition(forceWrite = false) {
+  if (!navigator.geolocation || isRequestingDevicePosition) return;
+  isRequestingDevicePosition = true;
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      isRequestingDevicePosition = false;
+      handleConductorGpsPosition(position, forceWrite);
+    },
+    (error) => {
+      if (error && error.code !== error.PERMISSION_DENIED) {
+        navigator.geolocation.getCurrentPosition(
+          (fallbackPos) => {
+            isRequestingDevicePosition = false;
+            handleConductorGpsPosition(fallbackPos, forceWrite);
+          },
+          (fallbackErr) => {
+            isRequestingDevicePosition = false;
+            console.warn("Bus location fetch warning:", fallbackErr);
+          },
+          { enableHighAccuracy: false, maximumAge: 0, timeout: 6000 }
+        );
+      } else {
+        isRequestingDevicePosition = false;
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 }
+  );
+}
+
+function requestConductorLocationPermission() {
+  if (!navigator.geolocation) {
+    if (window.AppState) AppState.locationPermissionState = "unsupported";
+    showToast("Location is not supported by this browser", "error");
+    window.refreshConductorPage?.();
+    return;
+  }
+
+  const btn = document.getElementById("conductorLocationPermissionBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Requesting…";
+  }
+
+  const onSuccess = (position) => {
+    if (window.AppState) AppState.locationPermissionState = "granted";
+    handleConductorGpsPosition(position, true);
+    if (window.AppState?.trip?.active) {
+      startBusLocationTracking();
+    }
+    const acc = position?.coords?.accuracy;
+    const accLabel = Number.isFinite(acc) ? ` (±${Math.round(acc)}m)` : "";
+    showToast(`Phone GPS location enabled${accLabel}`, "success");
+    window.refreshConductorPage?.();
+  };
+
+  const onError = (error) => {
+    if (error?.code === error?.PERMISSION_DENIED) {
+      if (window.AppState) AppState.locationPermissionState = "denied";
+      showToast("Location blocked. Allow Location in your browser site settings.", "error");
+    } else {
+      showToast("Could not get phone location. Make sure GPS is turned on.", "warn");
+    }
+    window.refreshConductorPage?.();
+  };
+
+  navigator.geolocation.getCurrentPosition(
+    onSuccess,
+    (err) => {
+      if (err && err.code !== err.PERMISSION_DENIED) {
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          onError,
+          { enableHighAccuracy: false, maximumAge: 0, timeout: 10000 }
+        );
+      } else {
+        onError(err);
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+}
+
+async function handleConductorGpsPosition(position, forceWrite = false) {
+  const { latitude, longitude, speed, accuracy } = position.coords;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  if (window.AppState) AppState.locationPermissionState = "granted";
+  const now = Date.now();
+  lastGpsFixReceivedAt = now;
+
+  const normalizedAccuracy = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null;
+  const speedKmh = computeLiveBusSpeedKmh(latitude, longitude, speed, now);
+
+  window.__conductorLocalGps = {
+    lat: latitude,
+    lng: longitude,
+    accuracy: normalizedAccuracy,
+    speedKmh,
+    deviceId: CONDUCTOR_DEVICE_ID,
+    updatedAt: now,
+  };
+
+  const remoteUpdatedAtMs = getTimestampMillis(AppState.bus.remoteLocationUpdatedAt);
+  const remoteAccuracy = Number(AppState.bus.remoteAccuracy);
+  const remoteDeviceId = AppState.bus.remoteLocationDeviceId || null;
+  const hasBetterOtherDeviceFix =
+    Boolean(remoteDeviceId) &&
+    remoteDeviceId !== CONDUCTOR_DEVICE_ID &&
+    Number.isFinite(remoteAccuracy) &&
+    remoteAccuracy > 0 &&
+    remoteAccuracy <= 40 &&
+    now - remoteUpdatedAtMs < 15000 &&
+    Number.isFinite(normalizedAccuracy) &&
+    normalizedAccuracy > 250;
+
+  if (!hasBetterOtherDeviceFix) {
+    AppState.bus.lat = latitude;
+    AppState.bus.lng = longitude;
+    AppState.bus.accuracy = normalizedAccuracy;
+    AppState.bus.speedKmh = speedKmh;
+    AppState.bus.locationUpdatedAt = now;
+  }
+
+  trackStopEtaAndArrival(AppState.bus.lat ?? latitude, AppState.bus.lng ?? longitude, now);
+  updateNearestStop(AppState.bus.lat ?? latitude, AppState.bus.lng ?? longitude);
+  window.updateConductorEta?.();
+  window.updateFloatingLiveMap?.();
+
+  if (!AppState.bus.documentId || hasBetterOtherDeviceFix) return;
+
+  const elapsedSinceLastWrite = now - lastBusLocationWriteAt;
+  if (!forceWrite && elapsedSinceLastWrite < 750) {
+    if (!pendingLocationWriteTimer) {
+      pendingLocationWriteTimer = setTimeout(() => {
+        flushBusLocationToFirestore();
+      }, 750 - elapsedSinceLastWrite);
+    }
+    return;
+  }
+
+  await flushBusLocationToFirestore();
+}
+
+function bindBusLocationWatch() {
+  if (!navigator.geolocation) return;
+  if (busLocationWatchId !== null) {
+    navigator.geolocation.clearWatch(busLocationWatchId);
+    busLocationWatchId = null;
+  }
+
+  busLocationWatchId = navigator.geolocation.watchPosition(
+    (position) => handleConductorGpsPosition(position, false),
+    (error) => {
+      console.warn("Bus location tracking error:", error);
+      if (error && error.code === error.PERMISSION_DENIED) {
+        if (window.AppState) AppState.locationPermissionState = "denied";
+        showToast("Allow location access to share live ETA", "warn");
+        stopBusLocationTracking();
+        window.refreshConductorPage?.();
+      } else {
+        requestDevicePosition(true);
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000,
+    }
+  );
+}
+
+function startBusLocationTracking() {
   if (!navigator.geolocation || !AppState.bus.documentId) {
     showToast("Live ETA needs location access", "warn");
     return;
   }
 
-  lastBusLocationWriteAt = 0;
-  busLocationWatchId = navigator.geolocation.watchPosition(
-    async (position) => {
-      const { latitude, longitude, speed } = position.coords;
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  requestTripWakeLock();
+
+  if (busLocationWatchId === null) {
+    lastBusLocationWriteAt = 0;
+    requestDevicePosition(true);
+    bindBusLocationWatch();
+  }
+
+  if (!busLocationHeartbeatInterval) {
+    busLocationHeartbeatInterval = setInterval(() => {
+      if (!AppState.trip.active || !AppState.bus.documentId) return;
       const now = Date.now();
-      const speedKmh = Number.isFinite(speed) && speed >= 0
-        ? speed * 3.6
-        : 0;
+      const silenceMs = now - lastGpsFixReceivedAt;
 
-      AppState.bus.lat = latitude;
-      AppState.bus.lng = longitude;
-      AppState.bus.speedKmh = speedKmh;
-      AppState.bus.locationUpdatedAt = now;
-      trackStopEtaAndArrival(latitude, longitude, now);
-      updateNearestStop(latitude, longitude);
-      window.updateConductorEta?.();
-      window.updateFloatingLiveMap?.();
-
-      if (!AppState.bus.documentId) return;
-      if (now - lastBusLocationWriteAt < BUS_LOCATION_WRITE_INTERVAL_MS) return;
-      lastBusLocationWriteAt = now;
-
-      try {
-        await updateBusLocationRepo(AppState.bus.documentId, {
-          lat: latitude,
-          lng: longitude,
-          speedKmh,
-        });
-      } catch (error) {
-        console.error("Bus location update failed:", error);
+      if (silenceMs >= 7500) {
+        bindBusLocationWatch();
       }
-    },
-    (error) => {
-      console.warn("Bus location tracking error:", error);
-      if (error && error.code === error.PERMISSION_DENIED) {
-        showToast("Allow location access to share live ETA", "warn");
-        stopBusLocationTracking();
+      if (silenceMs >= 2200) {
+        requestDevicePosition(true);
       }
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 2000,
-      timeout: 20000,
+      if (
+        silenceMs >= 4500 &&
+        window.__conductorLocalGps &&
+        (window.__conductorLocalGps.speedKmh || 0) > 0
+      ) {
+        window.__conductorLocalGps.speedKmh = 0;
+        AppState.bus.speedKmh = 0;
+        window.updateConductorEta?.();
+        window.updateFloatingLiveMap?.();
+        flushBusLocationToFirestore();
+      }
+    }, 2500);
+  }
+}
+
+if (!window.__conductorLocationLifecycleBound) {
+  window.__conductorLocationLifecycleBound = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && window.AppState?.trip?.active) {
+      requestTripWakeLock();
+      bindBusLocationWatch();
+      requestDevicePosition(true);
     }
-  );
+  });
+  window.addEventListener("focus", () => {
+    if (window.AppState?.trip?.active) {
+      requestTripWakeLock();
+      requestDevicePosition(true);
+    }
+  });
+  window.addEventListener("online", () => {
+    if (window.AppState?.trip?.active) {
+      requestDevicePosition(true);
+      flushBusLocationToFirestore();
+    }
+  });
 }
 
 function stopBusLocationTracking() {
   if (busLocationWatchId !== null && navigator.geolocation) {
     navigator.geolocation.clearWatch(busLocationWatchId);
   }
-
   busLocationWatchId = null;
+
+  if (busLocationHeartbeatInterval) {
+    clearInterval(busLocationHeartbeatInterval);
+    busLocationHeartbeatInterval = null;
+  }
+  if (pendingLocationWriteTimer) {
+    clearTimeout(pendingLocationWriteTimer);
+    pendingLocationWriteTimer = null;
+  }
+  lastSpeedSample = null;
+  releaseTripWakeLock();
 }
 
 function listenToDropoffRequests(tripId) {
@@ -562,4 +855,6 @@ window.addHistory = recordHistory;
 window.updateTripStatus = updateTripStatus;
 window.startBusLocationTracking = startBusLocationTracking;
 window.stopBusLocationTracking = stopBusLocationTracking;
+window.requestConductorLocationPermission = requestConductorLocationPermission;
+window.requestConductorDevicePosition = requestDevicePosition;
 

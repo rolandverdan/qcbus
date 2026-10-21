@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qc-conductor-v20';
+const CACHE_NAME = 'qc-conductor-v26';
 const urlsToCache = [
   './',
   './index.html',
@@ -31,7 +31,16 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request)
+      .then(networkRes => {
+        if (networkRes && networkRes.status === 200 && new URL(e.request.url).origin === self.location.origin) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone)).catch(() => {});
+        }
+        return networkRes;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
