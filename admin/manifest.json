@@ -4,7 +4,7 @@
   "short_name": "QCommute Admin",
   "description": "Manage routes, buses, staff and monitor fleet for QCommute",
   "start_url": "./index.html",
-  "scope": "./",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0D3B54",

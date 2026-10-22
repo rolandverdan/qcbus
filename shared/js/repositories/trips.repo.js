@@ -166,6 +166,7 @@ export async function addTripRepo(data) {
 
     busId: data.busId,
     busCode: data.busCode || "",
+    ...(data.busDocId ? { busDocId: data.busDocId } : {}),
 
     routeId: data.routeId || null,
     routeName: data.routeName || "",
@@ -264,6 +265,29 @@ export async function endAllActiveTripsRepo() {
   }
 
   return snapshot.docs.length;
+}
+
+export async function endStaleActiveTripsRepo(conductorId, busId, busDocId, exceptTripId) {
+  const snapshot = await getDocs(query(tripsCollection, where("status", "==", "active")));
+  const staleTrips = snapshot.docs.filter((tripDoc) => {
+    if (tripDoc.id === exceptTripId) return false;
+    const trip = tripDoc.data();
+    return (conductorId && trip.conductorId === conductorId) ||
+      (busId && trip.busId === busId) || (busDocId && trip.busDocId === busDocId);
+  });
+  for (let start = 0; start < staleTrips.length; start += 450) {
+    const batch = writeBatch(db);
+    staleTrips.slice(start, start + 450).forEach((tripDoc) => {
+      const trip = tripDoc.data();
+      batch.update(tripDoc.ref, {
+        status: "ended", onboard: Number(trip.onboard) || 0,
+        totalIn: Number(trip.totalIn) || 0, totalOut: Number(trip.totalOut) || 0,
+        endedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+  return staleTrips.length;
 }
 
 export function listenToTripOccupancyRepo(tripId, callback) {

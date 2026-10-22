@@ -53,16 +53,35 @@ export async function updateBusRepo(id, patch) {
 }
 
 export async function updateBusLocationRepo(id, location) {
+  const rawLat = location?.lat;
+  const rawLng = location?.lng;
+  if (rawLat === null || rawLat === undefined || rawLat === "" || rawLng === null || rawLng === undefined || rawLng === "") {
+    throw new Error("Bus location requires valid coordinates");
+  }
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new Error("Bus location coordinates are invalid");
+  }
   const busRef = doc(db, "buses", id);
   const accuracy = Number(location.accuracy);
 
   await updateDoc(busRef, {
-    lat: Number(location.lat),
-    lng: Number(location.lng),
+    lat,
+    lng,
     speedKmh: Number(location.speedKmh) || 0,
     ...(Number.isFinite(accuracy) && accuracy > 0 ? { accuracy } : {}),
     ...(location.deviceId ? { locationDeviceId: String(location.deviceId) } : {}),
+    ...(location.tripId ? { locationTripId: String(location.tripId) } : {}),
     locationUpdatedAt: serverTimestamp(),
+  });
+}
+
+export async function clearBusLocationRepo(id) {
+  if (!id) return;
+  await updateDoc(doc(db, "buses", id), {
+    lat: null, lng: null, speedKmh: null, accuracy: null,
+    locationTripId: null, locationDeviceId: null, locationUpdatedAt: null,
   });
 }
 

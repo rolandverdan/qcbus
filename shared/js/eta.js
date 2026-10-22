@@ -1,6 +1,7 @@
 const DEFAULT_SPEED_KMH = 18;
 const ROAD_DISTANCE_FACTOR = 1.25;
-const MAX_LOCATION_AGE_MS = 120000;
+export const BUS_LOCATION_LIVE_MAX_AGE_MS = 30000;
+export const BUS_LOCATION_STALE_MAX_AGE_MS = 120000;
 export const DROPOFF_BUS_RADIUS_METERS = 100;
 export const COMMUTER_NEARBY_RADIUS_METERS = 400;
 
@@ -29,6 +30,7 @@ export function getDistanceKm(from, to) {
   if ([fromLat, fromLng, toLat, toLng].some(value => value === null)) {
     return null;
   }
+  if ((fromLat === 0 && fromLng === 0) || (toLat === 0 && toLng === 0)) return null;
 
   const radians = value => value * Math.PI / 180;
   const latDelta = radians(toLat - fromLat);
@@ -40,6 +42,20 @@ export function getDistanceKm(from, to) {
     Math.sin(lngDelta / 2) ** 2;
 
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function getBusLocationStatus(bus, now = Date.now()) {
+  const lat = coordinate(bus?.lat ?? bus?.latitude);
+  const lng = coordinate(bus?.lng ?? bus?.longitude);
+  const timestamp = getLocationTimestamp(bus?.locationUpdatedAt);
+  if (lat === null || lng === null || (lat === 0 && lng === 0) || timestamp === null ||
+      (bus?.tripId && bus.locationTripId !== bus.tripId)) {
+    return { state: "none", ageMs: null };
+  }
+  const ageMs = Math.max(0, now - timestamp);
+  if (ageMs <= BUS_LOCATION_LIVE_MAX_AGE_MS) return { state: "live", ageMs };
+  if (ageMs <= BUS_LOCATION_STALE_MAX_AGE_MS) return { state: "stale", ageMs };
+  return { state: "lost", ageMs };
 }
 
 export function getNearestStop(location, stops = []) {
@@ -58,17 +74,17 @@ export function getNearestStop(location, stops = []) {
 }
 
 export function getEta(bus, stop, now = Date.now()) {
+  const locationStatus = getBusLocationStatus(bus, now);
+  if (locationStatus.state === "none" || locationStatus.state === "lost") {
+    return { label: "Waiting for live location", detail: "Bus location unavailable", minutes: null };
+  }
   const distanceKm = getDistanceKm(bus, stop);
-  const locationTimestamp = getLocationTimestamp(bus?.locationUpdatedAt);
 
   if (distanceKm === null) {
     return { label: "Waiting for live location", detail: "Bus location unavailable", minutes: null };
   }
 
-  if (
-    locationTimestamp === null ||
-    now - locationTimestamp > MAX_LOCATION_AGE_MS
-  ) {
+  if (locationStatus.state === "stale") {
     return { label: "Waiting for live location", detail: "Last bus location is outdated", minutes: null };
   }
 

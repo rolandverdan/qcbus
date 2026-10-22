@@ -25,6 +25,7 @@ import {
   COMMUTER_NEARBY_RADIUS_METERS,
   DROPOFF_BUS_RADIUS_METERS,
   getDistanceKm,
+  getBusLocationStatus,
   getEta,
 } from "../../shared/js/eta.js";
 
@@ -137,8 +138,7 @@ function requestCommuterLocationPermission() {
     return;
   }
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
+  const onSuccess = (position) => {
       if (AppState.settings.locationEnabled === false) return;
       AppState.locationPermissionState = "granted";
       const nextLoc = {
@@ -157,21 +157,37 @@ function requestCommuterLocationPermission() {
       } else {
         refreshCurrentPage();
       }
-    },
-    (error) => {
-      if (error.code === error.PERMISSION_DENIED) {
+    };
+  const onError = (error, isFallback = false) => {
+      console.warn("Commuter location request failed:", error?.code, error?.message);
+      if (error?.code === 1) {
         AppState.locationPermissionState = "denied";
         showSavedRouteToast(
           "Location access is blocked. Please allow location in your browser/site settings.",
           true
         );
+      } else if (!isFallback) {
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          (fallbackError) => onError(fallbackError, true),
+          { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 }
+        );
+        return;
       } else {
-        showSavedRouteToast("Unable to read phone location right now. Please try again.", true);
+        const message = error?.code === 3
+          ? "Location request timed out. Try again in an area with a clearer GPS signal."
+          : error?.code === 2
+            ? "Your current location is unavailable. Please try again in a moment."
+            : "Unable to read phone location right now. Please try again.";
+        showSavedRouteToast(message, true);
       }
       if (AppState.currentPage === "settings") {
         navigateTo("settings", false, { scrollToTop: false });
       }
-    },
+    };
+  navigator.geolocation.getCurrentPosition(
+    onSuccess,
+    onError,
     { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
   );
 }
@@ -219,11 +235,8 @@ let nearbyLocationWatchId = null;
 
 function resumeCommuterLocationTracking() {
   if (AppState.settings.locationEnabled === false) return;
-  if (AppState.currentPage === "home" && nearbyLocationWatchId === null) {
+  if ((AppState.currentPage === "home" || AppState.currentPage === "map") && nearbyLocationWatchId === null) {
     startNearbyBusDetection();
-  }
-  if (AppState.currentPage === "map") {
-    window.startMapLocationTracking?.();
   }
 }
 
@@ -321,7 +334,7 @@ function getActiveTripForBus(busId, busCode, conductorId = null) {
   return (
     AppState.activeTrips.find((trip) => {
       if (trip.status !== "active") return false;
-      const tripIds = [trip.busId, trip.busCode]
+      const tripIds = [trip.busDocId, trip.busId, trip.busCode]
         .filter(Boolean)
         .map((v) => String(v).trim().toLowerCase());
       if (normId && tripIds.includes(normId)) return true;
@@ -335,11 +348,16 @@ function getActiveTripForBus(busId, busCode, conductorId = null) {
 }
 
 function isCommuterNearTripBus(trip) {
-  const location = AppState.userLocation;
+  const now = Date.now();
+  const location = [AppState.userLocation, AppState.nearbyLocation]
+    .filter(Boolean)
+    .sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0];
+  const locationAge = Number(location?.updatedAt);
   if (
     !trip ||
     !location ||
-    Date.now() - location.updatedAt > 30000
+    !Number.isFinite(locationAge) ||
+    now - locationAge > 90000
   ) {
     return false;
   }
@@ -458,19 +476,12 @@ function getNearbyBuses() {
   return AppState.buses
     .map((bus) => {
       const distanceKm = getDistanceKm(AppState.nearbyLocation, bus);
-      const updatedAt = bus.locationUpdatedAt?.toMillis?.()
-        ?? (bus.locationUpdatedAt instanceof Date
-          ? bus.locationUpdatedAt.getTime()
-          : typeof bus.locationUpdatedAt === "number"
-            ? bus.locationUpdatedAt
-            : Date.parse(bus.locationUpdatedAt || ""));
+      const locationStatus = getBusLocationStatus(bus);
 
       if (
+        !["live", "stale"].includes(locationStatus.state) ||
         distanceKm === null ||
-        distanceKm * 1000 > COMMUTER_NEARBY_RADIUS_METERS ||
-        !Number.isFinite(updatedAt) ||
-        Date.now() - updatedAt > 120000 ||
-        updatedAt - Date.now() > 30000
+        distanceKm * 1000 > COMMUTER_NEARBY_RADIUS_METERS
       ) {
         return null;
       }
@@ -483,6 +494,7 @@ function getNearbyBuses() {
 
 function getNextStopEtaForBus(bus) {
   if (!bus?.tripActive || !bus.directionFromId || !bus.directionToId) return null;
+  if (!["live", "stale"].includes(getBusLocationStatus(bus).state)) return null;
 
   const stops = getStopsByRoute(bus.routeId);
   const fromIndex = stops.findIndex((stop) => stop.id === bus.directionFromId);
@@ -600,8 +612,8 @@ function startNearbyBusDetection() {
         accuracy: Number.isFinite(accuracy) ? accuracy : null,
         updatedAt: Date.now(),
       };
-      // Keep the shared location current even while the map page is closed.
-      if (!AppState.userLocation) AppState.userLocation = AppState.nearbyLocation;
+      AppState.userLocation = AppState.nearbyLocation;
+      window.onCommuterLocation?.(AppState.nearbyLocation);
       AppState.nearbyLocationError = "";
       if (AppState.currentPage === "home") refreshCurrentPage();
     },
@@ -963,6 +975,12 @@ function rebuildBuses() {
 
       speedKmh:
         rawBus.speedKmh,
+
+      accuracy:
+        rawBus.accuracy,
+
+      locationTripId:
+        rawBus.locationTripId,
 
       locationUpdatedAt:
         rawBus.locationUpdatedAt,
@@ -3278,7 +3296,7 @@ function navigateTo(page, updateHash = true, options = {}) {
     }, 100);
   }
 
-  if (page === "home" && AppState.settings.locationEnabled !== false && nearbyLocationWatchId === null && !AppState.nearbyLocationError) {
+  if ((page === "home" || page === "map") && AppState.settings.locationEnabled !== false && nearbyLocationWatchId === null && !AppState.nearbyLocationError) {
     startNearbyBusDetection();
   }
 
@@ -3886,11 +3904,10 @@ function listenToBuses() {
               const data =
                 busDoc.data();
 
-              const lat =
-                Number(data.lat);
-
-              const lng =
-                Number(data.lng);
+              const lat = data.lat === null || data.lat === undefined || data.lat === ""
+                ? null : Number(data.lat);
+              const lng = data.lng === null || data.lng === undefined || data.lng === ""
+                ? null : Number(data.lng);
 
               return {
 
@@ -3916,6 +3933,12 @@ function listenToBuses() {
 
                 speedKmh:
                   getNumber(data.speedKmh, null),
+
+                accuracy:
+                  getNumber(data.accuracy, null),
+
+                locationTripId:
+                  data.locationTripId || null,
 
                 locationUpdatedAt:
                   data.locationUpdatedAt || null,

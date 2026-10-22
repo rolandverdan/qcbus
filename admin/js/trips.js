@@ -63,8 +63,19 @@ function getTripRouteLabel(trip) {
 }
 
 function getTripBusLabel(trip) {
-  const bus = tripLogData.buses.find(item => item.id === trip.busId);
+  const bus = tripLogData.buses.find(item => item.id === trip.busDocId) ||
+    tripLogData.buses.find(item => item.id === trip.busId) ||
+    tripLogData.buses.find(item => item.code === trip.busId || item.code === trip.busCode);
   return bus?.code || trip.busCode || trip.busId || "Unknown bus";
+}
+
+function tripMatchesBusFilter(trip, selectedBusId) {
+  if (!selectedBusId) return true;
+  if (trip.busDocId === selectedBusId || trip.busId === selectedBusId) return true;
+  const bus = tripLogData.buses.find(item => item.id === trip.busDocId) ||
+    tripLogData.buses.find(item => item.id === trip.busId) ||
+    tripLogData.buses.find(item => item.code === trip.busId || item.code === trip.busCode);
+  return bus?.id === selectedBusId;
 }
 
 function getTripStatus(trip) {
@@ -88,7 +99,7 @@ function getFilteredTrips() {
       if (tripLogFilters.routeId && trip.routeId !== tripLogFilters.routeId) {
         return false;
       }
-      if (tripLogFilters.busId && trip.busId !== tripLogFilters.busId) {
+      if (!tripMatchesBusFilter(trip, tripLogFilters.busId)) {
         return false;
       }
       if (tripLogFilters.status !== "all" && status !== tripLogFilters.status) {
@@ -254,8 +265,12 @@ function renderFilterOptions() {
     if (trip.routeId && !routes.has(trip.routeId)) {
       routes.set(trip.routeId, trip.routeName || "Deleted route");
     }
-    if (trip.busId && !buses.has(trip.busId)) {
-      buses.set(trip.busId, trip.busCode || trip.busId);
+    const bus = tripLogData.buses.find(item => item.id === trip.busDocId) ||
+      tripLogData.buses.find(item => item.id === trip.busId) ||
+      tripLogData.buses.find(item => item.code === trip.busId || item.code === trip.busCode);
+    const busId = trip.busDocId || bus?.id || trip.busId;
+    if (busId && !buses.has(busId)) {
+      buses.set(busId, bus?.code || trip.busCode || trip.busId);
     }
   });
 

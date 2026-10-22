@@ -39,6 +39,7 @@ function startLiveOccupancySync(tripId) {
       AppState.trip.active = false;
       AppState.trip.endedAt = Date.now();
       AppState.trip.tripId = null;
+      if (window.stopBusLocationTracking) window.stopBusLocationTracking();
       if (window.stopTripTimer) window.stopTripTimer();
       if (window.updateTripStatus) window.updateTripStatus();
       window.refreshConductorPage?.();

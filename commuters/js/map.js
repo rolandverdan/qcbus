@@ -3,6 +3,7 @@ import {
   DROPOFF_BUS_RADIUS_METERS,
   getDistanceKm,
   getEta,
+  getBusLocationStatus,
 } from "../../shared/js/eta.js";
 
 // ==================================================
@@ -48,7 +49,6 @@ let activeStopPopup = null;
 let refreshActiveStopPopup = null;
 let lastStopMarkersSignature = "";
 let isMapLoaded = false;
-let userLocationWatchId = null;
 let displayedUserLocation = null;
 let hasUserMovedMap = false;
 let hasCenteredOnUser = false;
@@ -114,29 +114,9 @@ function escapeHtml(value) {
 
 
 function getBusCoordinates(bus) {
-  const lat = Number(bus?.lat);
-  const lng = Number(bus?.lng);
-
-  if (
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    !(lat === 0 && lng === 0)
-  ) {
-    return [lng, lat];
-  }
-
-  if (bus?.tripActive && bus?.routeId) {
-    const stops = getStopsForRoute(bus.routeId);
-    const startStop = bus.directionFromId
-      ? stops.find((s) => s.id === bus.directionFromId)
-      : stops[0];
-    const fallbackCoords = getStopCoordinates(startStop || stops[0]);
-    if (fallbackCoords) {
-      return fallbackCoords;
-    }
-  }
-
-  return null;
+  const status = getBusLocationStatus(bus);
+  if (status.state !== "live" && status.state !== "stale") return null;
+  return [Number(bus.lng), Number(bus.lat)];
 }
 
 // ==================================================
@@ -358,9 +338,7 @@ function initMap() {
     updateRouteLayers();
     updateBusMarkers();
     updateBusLegend();
-    if (userLocationWatchId === null) {
-      getUserLocation();
-    }
+    if (AppState.nearbyLocation) window.onCommuterLocation?.(AppState.nearbyLocation);
     startMapLiveRefreshLoop();
 
     return;
@@ -409,7 +387,7 @@ function initMap() {
   updateStopMarkers();
   updateBusMarkers();
   updateBusLegend();
-  getUserLocation();
+  if (AppState.nearbyLocation) window.onCommuterLocation?.(AppState.nearbyLocation);
   startMapLiveRefreshLoop();
 
   if (pendingSelectedRouteId) {
@@ -2022,6 +2000,14 @@ function updateBusMarkers() {
           minute: "2-digit",
         })
       : "Unavailable";
+    const locationStatus = getBusLocationStatus(bus);
+    const lastSeen = locationStatus.state === "stale"
+      ? `<div style="margin-top:4px;font-size:11px;color:#a16207">Last seen ${Math.floor(locationStatus.ageMs / 1000)}s ago</div>`
+      : "";
+    const accuracy = Number(bus.accuracy);
+    const accuracyLabel = Number.isFinite(accuracy) && accuracy > 100
+      ? `<div style="margin-top:4px;font-size:11px;color:#888">±${Math.round(accuracy)} m</div>`
+      : "";
 
     return `
       <div style="min-width:190px">
@@ -2046,6 +2032,7 @@ function updateBusMarkers() {
         <div style="margin-top:4px;font-size:11px;color:#888">
           Location updated: ${escapeHtml(locationUpdated)}
         </div>
+        ${lastSeen}${accuracyLabel}
       </div>
     `;
   };
@@ -2155,6 +2142,7 @@ function updateBusMarkers() {
         if (existing.popup.isOpen()) existing.popup.setLngLat(position);
       });
       const markerElement = existing.marker.getElement();
+      markerElement.style.opacity = getBusLocationStatus(bus).state === "stale" ? "0.55" : "1";
       markerElement.innerHTML = getMarkerContent(bus, coLocatedCount);
       markerElement.setAttribute(
         "aria-label",
@@ -2169,6 +2157,7 @@ function updateBusMarkers() {
 
     const markerElement = document.createElement("div");
     markerElement.className = "custom-bus-marker";
+    markerElement.style.opacity = getBusLocationStatus(bus).state === "stale" ? "0.55" : "1";
     markerElement.setAttribute("role", "button");
     markerElement.setAttribute("tabindex", "0");
     markerElement.setAttribute(
@@ -2317,6 +2306,10 @@ function updateBusLegend() {
             bus.status ||
             "Idle"
           );
+        const locationState = getBusLocationStatus(bus).state;
+        const locationLabel = locationState === "none"
+          ? "Waiting for GPS"
+          : locationState === "lost" ? "Location lost" : "";
 
 
         return `
@@ -2382,6 +2375,8 @@ function updateBusLegend() {
                 `
             }
 
+            ${locationLabel ? `<p class="mt-1 text-xs font-semibold text-amber-700">${locationLabel}</p>` : ""}
+
           </div>
         `;
       })
@@ -2407,137 +2402,53 @@ function centerMapOnCommuter() {
   });
 }
 
-function getUserLocation() {
-  if (AppState.settings.locationEnabled === false || userLocationWatchId !== null) return;
-  if (!navigator.geolocation) {
-    console.warn("Commuter location is unavailable in this browser.");
-    return;
+function updateCommuterLocationMarker(location) {
+  if (!location || AppState.settings.locationEnabled === false) return;
+  const { lat: latitude, lng: longitude, accuracy } = location;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+  const nextLocation = { lat: latitude, lng: longitude };
+  const distanceFromDisplayedKm = displayedUserLocation
+    ? getDistanceKm(displayedUserLocation, nextLocation)
+    : null;
+  const minimumMovementMeters = Math.max(3, Math.min(8, (Number(accuracy) || 0) * 0.15));
+  if (!map) return;
+  const centerButton = document.getElementById("centerMapButton");
+  if (centerButton) centerButton.disabled = false;
+  if (!userMarker) {
+    const userElement = document.createElement("div");
+    userElement.className = "user-marker";
+    userElement.addEventListener("click", event => event.stopPropagation());
+    userElement.addEventListener("mousedown", event => event.stopPropagation());
+    userElement.innerHTML = `
+      <div class="relative">
+        <div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
+      </div>
+    `;
+    userMarker = new maplibregl.Marker({ element: userElement, anchor: "center" })
+      .setLngLat([longitude, latitude])
+      .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML('<div style="font-size:12px">You are here</div>'))
+      .addTo(map);
+    displayedUserLocation = nextLocation;
+  } else if (distanceFromDisplayedKm === null || distanceFromDisplayedKm * 1000 >= minimumMovementMeters) {
+    animateMarkerTo(userMarker, userLocationAnimation, [longitude, latitude], 700);
+    displayedUserLocation = nextLocation;
   }
-
-  userLocationWatchId = navigator.geolocation.watchPosition(
-    pos => {
-      if (AppState.settings.locationEnabled === false) return;
-
-      const {
-        latitude,
-        longitude,
-        accuracy,
-      } = pos.coords;
-
-      if (
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180 ||
-        !Number.isFinite(accuracy) ||
-        accuracy < 0
-      ) {
-        console.warn("Ignoring invalid commuter GPS coordinates.");
-        return;
-      }
-
-      const nextLocation = {
-        lat: latitude,
-        lng: longitude,
-      };
-
-      const distanceFromDisplayedKm = displayedUserLocation
-        ? getDistanceKm(displayedUserLocation, nextLocation)
-        : null;
-      const minimumMovementMeters = Math.max(3, Math.min(8, accuracy * 0.15));
-
-      AppState.userLocation = {
-        ...nextLocation,
-        accuracy,
-        updatedAt: Date.now(),
-      };
-      AppState.nearbyLocation = {
-        ...nextLocation,
-        accuracy,
-        updatedAt: Date.now(),
-      };
-      AppState.locationPermissionState = "granted";
-      AppState.nearbyLocationError = "";
-      if (!map) return;
-      const centerButton = document.getElementById("centerMapButton");
-      if (centerButton) centerButton.disabled = false;
-      if (!userMarker) {
-        const userElement = document.createElement("div");
-
-        userElement.className = "user-marker";
-
-        userElement.addEventListener("click", event => {
-          event.stopPropagation();
-        });
-
-        userElement.addEventListener("mousedown", event => {
-          event.stopPropagation();
-        });
-
-        userElement.innerHTML = `
-          <div class="relative">
-            <div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
-          </div>
-        `;
-
-        userMarker = new maplibregl.Marker({
-          element: userElement,
-          anchor: "center",
-        })
-          .setLngLat([longitude, latitude])
-          .setPopup(
-            new maplibregl.Popup({ offset: 12 }).setHTML(`
-              <div style="font-size:12px">You are here</div>
-            `)
-          )
-          .addTo(map);
-        displayedUserLocation = nextLocation;
-      } else if (
-        distanceFromDisplayedKm === null ||
-        distanceFromDisplayedKm * 1000 >= minimumMovementMeters
-      ) {
-        animateMarkerTo(userMarker, userLocationAnimation, [longitude, latitude], 700);
-        displayedUserLocation = nextLocation;
-      }
-
-      if (!hasCenteredOnUser) {
-        hasCenteredOnUser = true;
-        if (!hasUserMovedMap) {
-          map.easeTo({
-            center: [longitude, latitude],
-            duration: 500,
-          });
-        }
-      }
-
-      refreshActiveStopPopup?.();
-      window.updateCommuterDropoffEta?.();
-    },
-    error => {
-      console.warn("Unable to get commuter location:", error.message);
-      const centerButton = document.getElementById("centerMapButton");
-      if (centerButton && !AppState.nearbyLocation) centerButton.disabled = true;
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 10000,
-      timeout: 30000,
-    }
-  );
+  if (!hasCenteredOnUser) {
+    hasCenteredOnUser = true;
+    if (!hasUserMovedMap) map.easeTo({ center: [longitude, latitude], duration: 500 });
+  }
+  refreshActiveStopPopup?.();
+  window.updateCommuterDropoffEta?.();
 }
 
+window.onCommuterLocation = updateCommuterLocationMarker;
+
 function startMapLocationTracking() {
-  if (AppState.settings.locationEnabled === false || userLocationWatchId !== null) return;
-  getUserLocation();
+  if (AppState.nearbyLocation) updateCommuterLocationMarker(AppState.nearbyLocation);
 }
 
 function stopMapLocationTracking() {
-  if (userLocationWatchId !== null && navigator.geolocation) {
-    navigator.geolocation.clearWatch(userLocationWatchId);
-    userLocationWatchId = null;
-  }
   if (userLocationAnimation.frame !== null) {
     cancelAnimationFrame(userLocationAnimation.frame);
     userLocationAnimation.frame = null;
@@ -2563,14 +2474,6 @@ function destroyMap() {
   if (userLocationAnimation.frame !== null) {
     cancelAnimationFrame(userLocationAnimation.frame);
     userLocationAnimation.frame = null;
-  }
-  if (userLocationWatchId !== null && navigator.geolocation) {
-    navigator.geolocation.clearWatch(userLocationWatchId);
-    userLocationWatchId = null;
-  }
-
-  if (window.AppState) {
-    AppState.userLocation = null;
   }
   displayedUserLocation = null;
   hasUserMovedMap = false;

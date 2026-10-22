@@ -4,7 +4,7 @@
   "short_name": "QCommute",
   "description": "Trip management and passenger counter for QCommute bus conductors",
   "start_url": "./index.html",
-  "scope": "./",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0D3B54",

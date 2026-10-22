@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.web.qcommute_88bf5.twa",
+        "sha256_cert_fingerprints": ["72:89:C2:FD:91:E7:58:F2:B3:11:E9:AA:25:E3:FD:36:C2:CB:96:62:5A:97:5D:69:E8:C2:76:DF:68:6D:B8:FD"]
+      }
+    }]

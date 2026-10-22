@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="enableNotification">true</bool>
+    <bool name="enableSiteSettingsShortcut">true</bool>
+    <color name="backgroundColor">#FFFFFF</color>
+    <color name="colorPrimary">#0D3B54</color>
+    <color name="colorPrimaryDark">#0D3B54</color>
+    <color name="navigationColor">#0D3B54</color>
+    <color name="navigationColorDark">#0D3B54</color>
+    <color name="navigationDividerColor">#0D3B54</color>
+    <color name="navigationDividerColorDark">#0D3B54</color>
+    <color name="shortcut_background">#F5F5F5</color>
+    <integer name="splashScreenFadeOutDuration">300</integer>
+    <string name="appName" translatable="false">QCommute</string>
+    <string name="assetStatements">
+    [{
+        \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+        \"target\": {
+            \"namespace\": \"web\",
+            \"site\": \"https://qcommute-88bf5.web.app\"
+        }
+    }]
+    
+  </string>
+    <string name="fallbackType" translatable="false">customtabs</string>
+    <string name="fullScopeUrl" translatable="false">https://qcommute-88bf5.web.app/commuters/</string>
+    <string name="generatorApp" translatable="false">PWABuilder</string>
+    <string name="hostName" translatable="false">qcommute-88bf5.web.app</string>
+    <string name="launchUrl" translatable="false">https://qcommute-88bf5.web.app/commuters/index.html</string>
+    <string name="launcherName" translatable="false">QCommute</string>
+    <string name="orientation" translatable="false">portrait</string>
+    <string name="providerAuthority" translatable="false">app.web.qcommute_88bf5.twa.fileprovider</string>
+    <string name="webManifestUrl" translatable="false">https://qcommute-88bf5.web.app/commuters/manifest.json</string>
+</resources>

@@ -8,6 +8,7 @@ import {
   addTripRepo,
   updateTripRepo,
   endTripRepo,
+  endStaleActiveTripsRepo,
 } from "../../shared/js/repositories/trips.repo.js";
 
 import {
@@ -16,6 +17,7 @@ import {
 
 import {
   updateBusLocationRepo,
+  clearBusLocationRepo,
 } from "../../shared/js/repositories/buses.repo.js";
 
 import { getDistanceKm, getEta, getNearestStop } from "../../shared/js/eta.js";
@@ -25,7 +27,7 @@ let unsubscribeDropoffRequests = null;
 let unsubscribeActiveTrip = null;
 let busLocationWatchId = null;
 let lastBusLocationWriteAt = 0;
-const BUS_LOCATION_WRITE_INTERVAL_MS = 1000;
+const BUS_LOCATION_WRITE_INTERVAL_MS = 3000;
 const STOP_ETA_CAPTURE_DISTANCE_KM = 3;
 const STOP_ARRIVAL_RADIUS_KM = 0.15;
 let stopEtaAnalytics = [];
@@ -241,9 +243,10 @@ async function flushBusLocationToFirestore() {
     pendingLocationWriteTimer = null;
   }
   const localGps = window.__conductorLocalGps;
-  if (!AppState.bus.documentId || !localGps) return;
+  if (!AppState.bus.documentId || !localGps || !AppState.trip.tripId) return;
+  if (Number.isFinite(localGps.accuracy) && localGps.accuracy > 150 &&
+      !(Date.now() - (lastBusLocationWriteAt || gpsTripStartedAt) >= 30000 && localGps.accuracy <= 1000)) return;
 
-  lastBusLocationWriteAt = Date.now();
   try {
     await updateBusLocationRepo(AppState.bus.documentId, {
       lat: localGps.lat,
@@ -251,7 +254,9 @@ async function flushBusLocationToFirestore() {
       speedKmh: localGps.speedKmh,
       accuracy: localGps.accuracy,
       deviceId: CONDUCTOR_DEVICE_ID,
+      tripId: AppState.trip.tripId,
     });
+    lastBusLocationWriteAt = Date.now();
   } catch (error) {
     console.error("Bus location update failed:", error);
   }
@@ -370,6 +375,13 @@ async function handleConductorGpsPosition(position, forceWrite = false) {
     deviceId: CONDUCTOR_DEVICE_ID,
     updatedAt: now,
   };
+  window.__gpsStatus = {
+    state: normalizedAccuracy !== null && normalizedAccuracy > 150 ? "weak" : "ok",
+    accuracy: normalizedAccuracy,
+    lastFixAt: now,
+  };
+  updateGpsStatusChip();
+  gpsNoFixWarned = false;
 
   const remoteUpdatedAtMs = getTimestampMillis(AppState.bus.remoteLocationUpdatedAt);
   const remoteAccuracy = Number(AppState.bus.remoteAccuracy);
@@ -400,44 +412,16 @@ async function handleConductorGpsPosition(position, forceWrite = false) {
   if (!AppState.bus.documentId || hasBetterOtherDeviceFix) return;
 
   const elapsedSinceLastWrite = now - lastBusLocationWriteAt;
-  if (!forceWrite && elapsedSinceLastWrite < 750) {
+  if (!forceWrite && lastBusLocationWriteAt && elapsedSinceLastWrite < BUS_LOCATION_WRITE_INTERVAL_MS) {
     if (!pendingLocationWriteTimer) {
       pendingLocationWriteTimer = setTimeout(() => {
         flushBusLocationToFirestore();
-      }, 750 - elapsedSinceLastWrite);
+      }, BUS_LOCATION_WRITE_INTERVAL_MS - elapsedSinceLastWrite);
     }
     return;
   }
 
   await flushBusLocationToFirestore();
-}
-
-function bindBusLocationWatch() {
-  if (!navigator.geolocation) return;
-  if (busLocationWatchId !== null) {
-    navigator.geolocation.clearWatch(busLocationWatchId);
-    busLocationWatchId = null;
-  }
-
-  busLocationWatchId = navigator.geolocation.watchPosition(
-    (position) => handleConductorGpsPosition(position, false),
-    (error) => {
-      console.warn("Bus location tracking error:", error);
-      if (error && error.code === 1) {
-        if (window.AppState) AppState.locationPermissionState = "denied";
-        showToast("Allow location access to share live ETA", "warn");
-        stopBusLocationTracking();
-        window.refreshConductorPage?.();
-      } else {
-        requestDevicePosition(true);
-      }
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 10000,
-      timeout: 30000,
-    }
-  );
 }
 
 function startBusLocationTracking() {
@@ -448,17 +432,22 @@ function startBusLocationTracking() {
     return;
   }
 
+  requestTripWakeLock();
+  if (!gpsTripStartedAt) gpsTripStartedAt = Date.now();
+  window.__gpsStatus ||= { state: "searching", accuracy: null, lastFixAt: null };
+  updateGpsStatusChip();
   busLocationWatchId = navigator.geolocation.watchPosition(
     (position) => handleConductorGpsPosition(position, false),
     (error) => {
       console.warn("GPS signal hiccup:", error.message);
-      // ONLY stop tracking if the user explicitly blocked permission (code 1)
       if (error.code === 1) {
+        window.__gpsStatus = { ...window.__gpsStatus, state: "denied" };
+        if (window.AppState) AppState.locationPermissionState = "denied";
         showToast("Allow location access to share live ETA", "warn");
         stopBusLocationTracking();
+      } else {
+        window.__gpsStatus = { ...window.__gpsStatus, state: error.code === 2 ? "weak" : "searching" };
       }
-      // For TIMEOUT (3) or POSITION_UNAVAILABLE (2) under flyovers/tunnels, 
-      // do nothing! watchPosition will automatically recover once signal returns.
     },
     {
       enableHighAccuracy: true,
@@ -466,6 +455,31 @@ function startBusLocationTracking() {
       timeout: 30000,
     }
   );
+  if (!busLocationHeartbeatInterval) {
+    busLocationHeartbeatInterval = setInterval(() => {
+      if (!AppState.trip.active) return stopBusLocationTracking();
+      updateGpsStatusChip();
+      if (Date.now() - (lastGpsFixReceivedAt || gpsTripStartedAt) > 20000 && document.visibilityState === "visible" && busLocationWatchId !== null && Date.now() - lastWatchRestartAt >= 20000) {
+        navigator.geolocation.clearWatch(busLocationWatchId);
+        busLocationWatchId = null;
+        lastWatchRestartAt = Date.now();
+        startBusLocationTracking();
+      }
+      if (AppState.trip.active && !gpsNoFixWarned && Date.now() - (lastGpsFixReceivedAt || gpsTripStartedAt) > 60000) {
+        gpsNoFixWarned = true;
+        showToast("No GPS fix received for 60 seconds", "warn");
+      }
+    }, 5000);
+  }
+}
+
+let lastWatchRestartAt = 0;
+let gpsTripStartedAt = 0;
+let gpsNoFixWarned = false;
+function updateGpsStatusChip() {
+  const status = window.__gpsStatus || { state: "searching" };
+  const label = status.state === "ok" ? (Number.isFinite(status.accuracy) ? `GPS OK ±${Math.round(status.accuracy)} m` : "GPS OK") : status.state === "weak" ? "Weak GPS" : status.state === "denied" ? "GPS denied" : "Searching for GPS…";
+  document.querySelectorAll("[data-gps-status]").forEach((chip) => { chip.textContent = label; });
 }
 
 if (!window.__conductorLocationLifecycleBound) {
@@ -473,22 +487,35 @@ if (!window.__conductorLocationLifecycleBound) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && window.AppState?.trip?.active) {
       requestTripWakeLock();
-      bindBusLocationWatch();
-      requestDevicePosition(true);
+      checkGpsWatchdog();
     }
   });
   window.addEventListener("focus", () => {
     if (window.AppState?.trip?.active) {
       requestTripWakeLock();
-      requestDevicePosition(true);
+      checkGpsWatchdog();
     }
   });
   window.addEventListener("online", () => {
     if (window.AppState?.trip?.active) {
-      requestDevicePosition(true);
-      flushBusLocationToFirestore();
+      requestTripWakeLock();
+      checkGpsWatchdog();
     }
   });
+}
+
+function checkGpsWatchdog() {
+  updateGpsStatusChip();
+  if (Date.now() - (lastGpsFixReceivedAt || gpsTripStartedAt) > 20000 && document.visibilityState === "visible" && Date.now() - lastWatchRestartAt >= 20000) {
+    stopBusWatchOnly();
+    lastWatchRestartAt = Date.now();
+    startBusLocationTracking();
+  }
+}
+
+function stopBusWatchOnly() {
+  if (busLocationWatchId !== null) navigator.geolocation?.clearWatch(busLocationWatchId);
+  busLocationWatchId = null;
 }
 
 function stopBusLocationTracking() {
@@ -556,12 +583,27 @@ async function startTrip() {
   }
 
   try {
+    try {
+      await endStaleActiveTripsRepo(AppState.conductor.id, AppState.bus.id, AppState.bus.documentId, null);
+    } catch (error) {
+      console.warn("Unable to close stale active trips:", error);
+    }
+    try {
+      await clearBusLocationRepo(AppState.bus.documentId);
+    } catch (error) {
+      console.warn("Unable to clear previous bus location:", error);
+    }
+    lastBusLocationWriteAt = 0;
+    lastGpsFixReceivedAt = 0;
+    gpsTripStartedAt = Date.now();
+    gpsNoFixWarned = false;
     const trip = await addTripRepo({
       conductorId: AppState.conductor.id,
       conductorName: AppState.conductor.name,
 
       busId: AppState.bus.id,
       busCode: AppState.bus.code || AppState.bus.id,
+      busDocId: AppState.bus.documentId || null,
 
       routeId: AppState.bus.routeId,
       routeName: AppState.bus.route,
@@ -602,16 +644,11 @@ async function startTrip() {
     listenToDropoffRequests(trip.id);
     if (window.startLiveOccupancySync) window.startLiveOccupancySync(trip.id);
     startBusLocationTracking();
-    if (
-      AppState.bus.documentId &&
-      Number.isFinite(Number(AppState.bus.lat)) &&
-      Number.isFinite(Number(AppState.bus.lng))
-    ) {
-      updateBusLocationRepo(AppState.bus.documentId, {
-        lat: AppState.bus.lat,
-        lng: AppState.bus.lng,
-        speedKmh: AppState.bus.speedKmh || 0,
-      }).catch((err) => console.warn("Initial bus location sync failed:", err));
+    const localGps = window.__conductorLocalGps;
+    if (localGps && Date.now() - localGps.updatedAt < 20000 && Number.isFinite(localGps.lat) && Number.isFinite(localGps.lng) && (localGps.lat !== 0 || localGps.lng !== 0)) {
+      updateBusLocationRepo(AppState.bus.documentId, { ...localGps, deviceId: CONDUCTOR_DEVICE_ID, tripId: trip.id })
+        .then(() => { lastBusLocationWriteAt = Date.now(); })
+        .catch((err) => console.warn("Initial bus location sync failed:", err));
     }
     setLiveMapAvailable(true);
     window.updateFloatingLiveMap?.();
@@ -653,6 +690,11 @@ async function endTrip() {
         totalOut: AppState.occupancy.totalOut,
       }
     );
+    try {
+      await clearBusLocationRepo(AppState.bus.documentId);
+    } catch (error) {
+      console.warn("Unable to clear ended trip location:", error);
+    }
 
     AppState.trip.active = false;
     AppState.trip.endedAt = Date.now();

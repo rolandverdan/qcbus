@@ -54,17 +54,16 @@ Pages.monitor = async function () {
     }))
     .map(trip => {
 
-      const bus =
-        allBuses.find(
-          b => b.id === trip.busId
-        );
+      const busKey = trip.busDocId || trip.busId;
+      const bus = allBuses.find(b => b.id === busKey) ||
+        allBuses.find(b => b.id === trip.busId || b.code === trip.busId || b.code === trip.busCode);
 
       return {
         ...bus,
         ...trip,
 
         // Keep the bus identity available
-        id: bus?.id || trip.busId,
+        id: bus?.id || trip.busDocId || trip.busId,
         code: bus?.code || trip.busCode,
 
         // Trip data takes priority
@@ -821,11 +820,13 @@ function updateMonitorLiveData({ fitNewBuses = false, renderTrips = true } = {})
   const busesById = new Map();
 
   monitorActiveTrips.forEach((trip) => {
-    const busId = trip.busId;
+    const busId = trip.busDocId || trip.busId;
     if (!busId) return;
     // Older conductor builds save the bus code in trips.busId, while GPS is
     // written to the bus document. Resolve either identifier back to that doc.
-    const inventory = inventoryById.get(String(busId)) || {};
+    const inventory = inventoryById.get(String(trip.busDocId || "")) ||
+      inventoryById.get(String(trip.busId || "")) ||
+      inventoryById.get(String(trip.busCode || "")) || {};
     busesById.set(busId, {
       ...inventory,
       ...trip,
@@ -944,6 +945,14 @@ function getMonitorGps(bus) {
   }
 
   return { lat, lng };
+}
+
+function getMonitorLocationAgeMs(bus, now = Date.now()) {
+  const timestamp = bus?.locationUpdatedAt?.toMillis?.() ??
+    (bus?.locationUpdatedAt?.toDate ? bus.locationUpdatedAt.toDate().getTime() :
+      bus?.locationUpdatedAt instanceof Date ? bus.locationUpdatedAt.getTime() :
+        typeof bus?.locationUpdatedAt === "number" ? bus.locationUpdatedAt : Date.parse(bus?.locationUpdatedAt || ""));
+  return Number.isFinite(timestamp) ? Math.max(0, now - timestamp) : null;
 }
 
 function getMonitorRoute(routeId) {
@@ -1344,9 +1353,7 @@ function updateMonitorMapHeader(
     title.textContent =
       "All routes";
 
-    const locatedCount = monitorBuses.filter((bus) =>
-      Number.isFinite(Number(bus.lat)) && Number.isFinite(Number(bus.lng))
-    ).length;
+    const locatedCount = monitorBuses.filter((bus) => getMonitorGps(bus)).length;
     subtitle.textContent = monitorBuses.length
       ? `${locatedCount} of ${monitorBuses.length} active buses sharing GPS`
       : "No active trips right now";
@@ -1361,9 +1368,7 @@ function updateMonitorMapHeader(
     "Selected route";
 
   const routeBuses = monitorBuses.filter((bus) => bus.routeId === route.id);
-  const locatedCount = routeBuses.filter((bus) =>
-    Number.isFinite(Number(bus.lat)) && Number.isFinite(Number(bus.lng))
-  ).length;
+  const locatedCount = routeBuses.filter((bus) => getMonitorGps(bus)).length;
   subtitle.textContent = `${locatedCount} of ${routeBuses.length} active buses sharing GPS`;
 }
 
@@ -2054,6 +2059,8 @@ function updateMonitorBusMarkers() {
         existing.markerHtml = markerHtml;
       }
       existing.element.setAttribute('aria-label', `Show details for bus ${bus.code || bus.id || 'bus'}`);
+      const locationAge = getMonitorLocationAgeMs(bus);
+      existing.element.style.opacity = locationAge === null || locationAge > 30000 ? "0.55" : "1";
       return;
     }
 
@@ -2062,6 +2069,8 @@ function updateMonitorBusMarkers() {
     element.setAttribute('tabindex', '0');
     element.setAttribute('aria-label', `Show details for bus ${bus.code || bus.id || 'bus'}`);
     element.style.cursor = 'pointer';
+    const locationAge = getMonitorLocationAgeMs(bus);
+    element.style.opacity = locationAge === null || locationAge > 30000 ? "0.55" : "1";
     element.innerHTML = markerHtml;
 
     const popup = new maplibregl.Popup({ offset: 12, closeButton: true }).setHTML(popupHtml);

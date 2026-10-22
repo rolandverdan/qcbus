@@ -110,22 +110,9 @@ function getFallbackRoute() {
 }
 
 function getBusLiveCoordinates(state = window.AppState) {
-  const busCoords = getCoordinates(state?.bus);
-  if (busCoords) return busCoords;
-
   const localGpsCoords = getCoordinates(window.__conductorLocalGps);
-  if (localGpsCoords) return localGpsCoords;
-
-  if (state?.trip?.active) {
-    const stops = state?.routeStops || [];
-    const fromStop = state?.trip?.directionFromId
-      ? stops.find((s) => s.id === state.trip.directionFromId)
-      : stops[0];
-    const stopCoords = getCoordinates(fromStop || stops[0]);
-    if (stopCoords) return stopCoords;
-  }
-
-  return null;
+  if (localGpsCoords && Date.now() - (window.__conductorLocalGps.updatedAt || 0) < 20000) return localGpsCoords;
+  return getCoordinates(state?.bus);
 }
 
 function getInitialCenter() {

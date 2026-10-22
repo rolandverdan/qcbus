@@ -252,6 +252,8 @@ const Pages = {
     return `
     <div class="space-y-4 slide-in">
 
+      <div data-gps-status class="inline-flex rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">Searching for GPS…</div>
+
       <!-- Trip status card -->
       <div class="rounded-2xl p-5 shadow-lg text-white ${
         active
@@ -519,6 +521,8 @@ const Pages = {
 
     return `
     <div class="space-y-4 slide-in">
+
+      <div data-gps-status class="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">Searching for GPS…</div>
 
       <!-- Big counter display -->
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 text-center">
@@ -1620,8 +1624,12 @@ async function loadConductorData() {
         : 'No route assigned',
       plateNumber: latestBus.plateNumber || '',
       capacity: Number(latestBus.capacity) || 45,
-      lat: hasFreshLocalGps ? localGps.lat : (remoteLat ?? AppState.bus.lat ?? null),
-      lng: hasFreshLocalGps ? localGps.lng : (remoteLng ?? AppState.bus.lng ?? null),
+      lat: hasFreshLocalGps ? localGps.lat : (AppState.trip.active && latestBus.locationTripId === AppState.trip.tripId ? remoteLat : null),
+      lng: hasFreshLocalGps ? localGps.lng : (AppState.trip.active && latestBus.locationTripId === AppState.trip.tripId ? remoteLng : null),
+      accuracy: hasFreshLocalGps ? localGps.accuracy : AppState.bus.accuracy,
+      remoteLocationDeviceId: latestBus.locationDeviceId || null,
+      remoteAccuracy: latestBus.accuracy ?? null,
+      remoteLocationUpdatedAt: latestBus.locationUpdatedAt || null,
       speedKmh:
         hasFreshLocalGps && Number.isFinite(localGps.speedKmh)
           ? localGps.speedKmh
@@ -1637,7 +1645,7 @@ async function loadConductorData() {
 
     if (Number.isFinite(AppState.bus.lat) && Number.isFinite(AppState.bus.lng)) {
       const nearest = getNearestStop(AppState.bus, AppState.routeStops);
-      if (nearest?.stop) AppState.currentAlightStopId = nearest.stop.id;
+      if (nearest) AppState.currentAlightStopId = nearest.id;
     } else if (!AppState.routeStops.some((stop) => stop.id === AppState.currentAlightStopId)) {
       AppState.currentAlightStopId = null;
     }
@@ -1663,8 +1671,8 @@ async function loadConductorData() {
     // once either the route or its stops become available.
     if (Number.isFinite(AppState.bus.lat) && Number.isFinite(AppState.bus.lng)) {
       const nearest = getNearestStop(AppState.bus, AppState.routeStops);
-      if (nearest?.stop && !AppState.currentAlightStopId) {
-        AppState.currentAlightStopId = nearest.stop.id;
+      if (nearest && !AppState.currentAlightStopId) {
+        AppState.currentAlightStopId = nearest.id;
       }
       window.updateConductorEta?.();
     }

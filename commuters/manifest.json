@@ -4,7 +4,7 @@
   "short_name": "QCommute",
   "description": "Real-time Quezon City bus tracking for commuters",
   "start_url": "/commuters/index.html",
-  "scope": "/commuters/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0D3B54",
