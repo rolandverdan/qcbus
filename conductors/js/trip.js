@@ -409,44 +409,59 @@ function bindBusLocationWatch() {
 }
 
 function startBusLocationTracking() {
+  if (busLocationWatchId !== null) return;
+
   if (!navigator.geolocation || !AppState.bus.documentId) {
     showToast("Live ETA needs location access", "warn");
     return;
   }
 
-  requestTripWakeLock();
-
-  if (busLocationWatchId === null) {
-    lastBusLocationWriteAt = 0;
-    requestDevicePosition(true);
-    bindBusLocationWatch();
-  }
-
-  if (!busLocationHeartbeatInterval) {
-    busLocationHeartbeatInterval = setInterval(() => {
-      if (!AppState.trip.active || !AppState.bus.documentId) return;
+  busLocationWatchId = navigator.geolocation.watchPosition(
+    async (position) => {
+      const { latitude, longitude, speed } = position.coords;
       const now = Date.now();
-      const silenceMs = now - lastGpsFixReceivedAt;
+      const speedKmh = Number.isFinite(speed) && speed >= 0
+        ? speed * 3.6
+        : 0;
 
-      if (silenceMs >= 7500) {
-        bindBusLocationWatch();
+      AppState.bus.lat = latitude;
+      AppState.bus.lng = longitude;
+      AppState.bus.speedKmh = speedKmh;
+      AppState.bus.locationUpdatedAt = now;
+      updateNearestStop(latitude, longitude);
+      window.updateConductorEta?.();
+      window.updateFloatingLiveMap?.();
+
+      // Reduced throttle from 10s to 4s for smoother live map tracking
+      if (now - lastBusLocationWriteAt < 4000) return;
+      lastBusLocationWriteAt = now;
+
+      try {
+        await updateBusLocationRepo(AppState.bus.documentId, {
+          lat: latitude,
+          lng: longitude,
+          speedKmh,
+        });
+      } catch (error) {
+        console.error("Bus location update failed:", error);
       }
-      if (silenceMs >= 2200) {
-        requestDevicePosition(true);
+    },
+    (error) => {
+      console.warn("GPS signal hiccup:", error.message);
+      // ONLY stop tracking if the user explicitly blocked permission (code 1)
+      if (error.code === error.PERMISSION_DENIED) {
+        showToast("Allow location access to share live ETA", "warn");
+        stopBusLocationTracking();
       }
-      if (
-        silenceMs >= 4500 &&
-        window.__conductorLocalGps &&
-        (window.__conductorLocalGps.speedKmh || 0) > 0
-      ) {
-        window.__conductorLocalGps.speedKmh = 0;
-        AppState.bus.speedKmh = 0;
-        window.updateConductorEta?.();
-        window.updateFloatingLiveMap?.();
-        flushBusLocationToFirestore();
-      }
-    }, 2500);
-  }
+      // For TIMEOUT (3) or POSITION_UNAVAILABLE (2) under flyovers/tunnels, 
+      // do nothing! watchPosition will automatically recover once signal returns.
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 10000, // Allow slightly cached GPS in weak signal areas
+      timeout: 25000,    // Give GPS 25s before timing out in dead zones
+    }
+  );
 }
 
 if (!window.__conductorLocationLifecycleBound) {

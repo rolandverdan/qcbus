@@ -53,9 +53,10 @@ function startLiveOccupancySync(tripId) {
       AppState.occupancy.capacity = Number(data.capacity);
     }
 
-    // 2. Instantly update all views (counter, trip, scanner)
-    if (window.softRefreshCounter) window.softRefreshCounter();
-    window.refreshConductorPage?.();
+   if (window.softRefreshCounter) window.softRefreshCounter();
+    if (AppState.currentPage !== 'scanner') {
+      window.refreshConductorPage?.();
+    }
   });
 }
 

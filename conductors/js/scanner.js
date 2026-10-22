@@ -133,13 +133,12 @@ window.resetScannerLine = function() {
     updateScannerControlsUI();
 };
 
-// Pre-configure TensorFlow WebGL backend for maximum mobile performance & zero stutter
+// Pre-configure TensorFlow WebGL backend for maximum mobile performance
 async function configureTf() {
     if (window.tf) {
         try {
             await tf.setBackend('webgl');
             tf.env().set('WEBGL_PACK', true);
-            tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0); // Immediately delete textures to prevent GC stutter
             tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
             tf.env().set('WEBGL_VERSION', 2);
         } catch (e) {
@@ -364,28 +363,24 @@ function runDetection(video, model, ctx, canvas) {
     let isDetecting = false;
     let flashEffect = null;
 
-    // 1. Offscreen 256x256 canvas: power-of-2 hardware scaling eliminates GPU texture overhead
+    // 1. Offscreen 256x256 canvas WITHOUT willReadFrequently (keeps it on the GPU!)
     const AI_SIZE = 256;
     const offscreen = document.createElement('canvas');
     offscreen.width = AI_SIZE;
     offscreen.height = AI_SIZE;
-    const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+    const offCtx = offscreen.getContext('2d', { alpha: false });
     offCtx.imageSmoothingEnabled = false;
 
-    // 2. Smooth 60 FPS Render Loop: renders live video, red line at user angle, and tracking overlays smoothly
+    // 2. Lightweight Overlay Loop: ONLY draws UI lines & boxes (the <video> tag handles the video feed natively!)
     function renderLoop() {
         if (!aiRunning) return;
 
-        // Directly paint video to canvas (fixes black video in Chrome on PC)
-        if (video.readyState >= 2) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        } else {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+        // Clear only the transparent overlay instead of repainting the entire video frame
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const geom = getLineGeometry(canvas.width, canvas.height);
 
-        // Draw detection line at adjusted angle and offset
+        // Draw detection line
         ctx.beginPath();
         ctx.moveTo(geom.x1, geom.y1);
         ctx.lineTo(geom.x2, geom.y2);
@@ -406,7 +401,6 @@ function runDetection(video, model, ctx, canvas) {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        // Green IN indicator pill
         ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
         ctx.beginPath();
         ctx.arc(inTagX, inTagY, 12, 0, 2 * Math.PI);
@@ -414,7 +408,6 @@ function runDetection(video, model, ctx, canvas) {
         ctx.fillStyle = "#ffffff";
         ctx.fillText("IN", inTagX, inTagY);
 
-        // Red OUT indicator pill
         ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
         ctx.beginPath();
         ctx.arc(outTagX, outTagY, 12, 0, 2 * Math.PI);
@@ -426,12 +419,11 @@ function runDetection(video, model, ctx, canvas) {
 
         // Draw active tracked person boxes
         for (const [id, entity] of Object.entries(trackedEntities)) {
-            if (entity.box && now - entity.lastSeen < 600) {
+            if (entity.box && now - entity.lastSeen < 500) {
                 ctx.strokeStyle = entity.counted ? "#10b981" : "#38bdf8";
                 ctx.lineWidth = 3;
                 ctx.strokeRect(entity.box.x, entity.box.y, entity.box.w, entity.box.h);
 
-                // Center tracker dot
                 ctx.fillStyle = entity.counted ? "#10b981" : "#38bdf8";
                 ctx.beginPath();
                 ctx.arc(entity.x, entity.y, 6, 0, 2 * Math.PI);
@@ -457,14 +449,16 @@ function runDetection(video, model, ctx, canvas) {
         };
     }
 
-    // 3. Cooperative AI Detection Loop: yields smoothly to preserve 60 FPS video render
+    // 3. Throttled GPU AI Loop (~8-10 FPS is plenty for walking speed and keeps phone cool)
     async function detectLoop() {
         while (aiRunning && aiStream) {
             if (!isDetecting && video.readyState >= 2) {
                 isDetecting = true;
                 try {
                     offCtx.drawImage(video, 0, 0, AI_SIZE, AI_SIZE);
-                    const predictions = await model.detect(offscreen, 3, 0.38);
+                    if (window.tf) await tf.nextFrame(); // Yield before heavy GPU inference
+                    
+                    const predictions = await model.detect(offscreen, 3, 0.40);
 
                     const scaleX = canvas.width / AI_SIZE;
                     const scaleY = canvas.height / AI_SIZE;
@@ -520,7 +514,6 @@ function runDetection(video, model, ctx, canvas) {
                             box: { x, y, w, h }
                         };
 
-                        // Line crossing math with arbitrary angle!
                         if (!wasCounted) {
                             if (prevDist < 0 && currDist >= 0) {
                                 currentFrameEntities[matchedId].counted = true;
@@ -539,14 +532,12 @@ function runDetection(video, model, ctx, canvas) {
                             }
                         }
 
-                        // Reset count eligibility when moving away from the line
                         const resetThreshold = Math.min(canvas.width, canvas.height) * 0.18;
                         if (Math.abs(currDist) > resetThreshold) {
                             currentFrameEntities[matchedId].counted = false;
                         }
                     }
 
-                    // Keep existing active entities that were seen within 500ms
                     for (const [id, entity] of Object.entries(trackedEntities)) {
                         if (!currentFrameEntities[id] && now - entity.lastSeen < 500) {
                             currentFrameEntities[id] = entity;
@@ -562,9 +553,8 @@ function runDetection(video, model, ctx, canvas) {
                 }
             }
 
-            // Yield thread cooperatively so camera video & UI stay silky smooth at 60 FPS
-            await new Promise(r => requestAnimationFrame(r));
-            await new Promise(r => setTimeout(r, 60));
+            // Wait 110ms (~9 detections per second) so the mobile GPU never overheats or lags the UI
+            await new Promise(r => setTimeout(r, 110));
         }
     }
 
