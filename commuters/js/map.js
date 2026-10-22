@@ -2408,7 +2408,7 @@ function centerMapOnCommuter() {
 }
 
 function getUserLocation() {
-  if (AppState.settings.locationEnabled === false) return;
+  if (AppState.settings.locationEnabled === false || userLocationWatchId !== null) return;
   if (!navigator.geolocation) {
     console.warn("Commuter location is unavailable in this browser.");
     return;
@@ -2416,7 +2416,7 @@ function getUserLocation() {
 
   userLocationWatchId = navigator.geolocation.watchPosition(
     pos => {
-      if (!map || AppState.settings.locationEnabled === false) return;
+      if (AppState.settings.locationEnabled === false) return;
 
       const {
         latitude,
@@ -2434,7 +2434,7 @@ function getUserLocation() {
         !Number.isFinite(accuracy) ||
         accuracy < 0
       ) {
-        AppState.userLocation = null;
+        console.warn("Ignoring invalid commuter GPS coordinates.");
         return;
       }
 
@@ -2458,6 +2458,9 @@ function getUserLocation() {
         accuracy,
         updatedAt: Date.now(),
       };
+      AppState.locationPermissionState = "granted";
+      AppState.nearbyLocationError = "";
+      if (!map) return;
       const centerButton = document.getElementById("centerMapButton");
       if (centerButton) centerButton.disabled = false;
       if (!userMarker) {
@@ -2519,8 +2522,8 @@ function getUserLocation() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 15000,
+      maximumAge: 10000,
+      timeout: 30000,
     }
   );
 }

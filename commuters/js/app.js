@@ -172,7 +172,7 @@ function requestCommuterLocationPermission() {
         navigateTo("settings", false, { scrollToTop: false });
       }
     },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
   );
 }
 
@@ -216,6 +216,24 @@ const unsubscribeTripDropoffs = new Map();
 
 let rawBuses = [];
 let nearbyLocationWatchId = null;
+
+function resumeCommuterLocationTracking() {
+  if (AppState.settings.locationEnabled === false) return;
+  if (AppState.currentPage === "home" && nearbyLocationWatchId === null) {
+    startNearbyBusDetection();
+  }
+  if (AppState.currentPage === "map") {
+    window.startMapLocationTracking?.();
+  }
+}
+
+if (!window.__commuterLocationLifecycleBound) {
+  window.__commuterLocationLifecycleBound = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") resumeCommuterLocationTracking();
+  });
+  window.addEventListener("focus", resumeCommuterLocationTracking);
+}
 
 
 // ==================================================
@@ -572,11 +590,18 @@ function startNearbyBusDetection() {
   nearbyLocationWatchId = navigator.geolocation.watchPosition(
     (position) => {
       if (AppState.settings.locationEnabled === false) return;
+      const { latitude, longitude, accuracy } = position.coords || {};
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+          !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return;
+      AppState.locationPermissionState = "granted";
       AppState.nearbyLocation = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+        lat: latitude,
+        lng: longitude,
+        accuracy: Number.isFinite(accuracy) ? accuracy : null,
         updatedAt: Date.now(),
       };
+      // Keep the shared location current even while the map page is closed.
+      if (!AppState.userLocation) AppState.userLocation = AppState.nearbyLocation;
       AppState.nearbyLocationError = "";
       if (AppState.currentPage === "home") refreshCurrentPage();
     },
@@ -592,7 +617,7 @@ function startNearbyBusDetection() {
         nearbyLocationWatchId = null;
       }
     },
-    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
   );
   refreshCurrentPage();
 }

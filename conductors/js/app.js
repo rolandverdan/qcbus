@@ -1637,7 +1637,9 @@ async function loadConductorData() {
 
     if (Number.isFinite(AppState.bus.lat) && Number.isFinite(AppState.bus.lng)) {
       const nearest = getNearestStop(AppState.bus, AppState.routeStops);
-      AppState.currentAlightStopId = nearest.stop?.id || null;
+      if (nearest?.stop) AppState.currentAlightStopId = nearest.stop.id;
+    } else if (!AppState.routeStops.some((stop) => stop.id === AppState.currentAlightStopId)) {
+      AppState.currentAlightStopId = null;
     }
 
     if (isRealtimeUpdate) {
@@ -1655,6 +1657,16 @@ async function loadConductorData() {
       } else {
         refreshCurrentPage();
       }
+    }
+
+    // A location fix can arrive before route stops load. Re-evaluate the stop
+    // once either the route or its stops become available.
+    if (Number.isFinite(AppState.bus.lat) && Number.isFinite(AppState.bus.lng)) {
+      const nearest = getNearestStop(AppState.bus, AppState.routeStops);
+      if (nearest?.stop && !AppState.currentAlightStopId) {
+        AppState.currentAlightStopId = nearest.stop.id;
+      }
+      window.updateConductorEta?.();
     }
   };
 

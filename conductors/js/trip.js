@@ -260,29 +260,31 @@ async function flushBusLocationToFirestore() {
 function requestDevicePosition(forceWrite = false) {
   if (!navigator.geolocation || isRequestingDevicePosition) return;
   isRequestingDevicePosition = true;
+  const onFailure = (error) => {
+    if (error?.code === 1) {
+      isRequestingDevicePosition = false;
+      if (window.AppState) AppState.locationPermissionState = "denied";
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        isRequestingDevicePosition = false;
+        handleConductorGpsPosition(position, forceWrite);
+      },
+      (fallbackError) => {
+        isRequestingDevicePosition = false;
+        console.warn("Bus location fetch warning:", fallbackError || error);
+      },
+      { enableHighAccuracy: false, maximumAge: 15000, timeout: 15000 }
+    );
+  };
   navigator.geolocation.getCurrentPosition(
     (position) => {
       isRequestingDevicePosition = false;
       handleConductorGpsPosition(position, forceWrite);
     },
-    (error) => {
-      if (error && error.code !== error.PERMISSION_DENIED) {
-        navigator.geolocation.getCurrentPosition(
-          (fallbackPos) => {
-            isRequestingDevicePosition = false;
-            handleConductorGpsPosition(fallbackPos, forceWrite);
-          },
-          (fallbackErr) => {
-            isRequestingDevicePosition = false;
-            console.warn("Bus location fetch warning:", fallbackErr);
-          },
-          { enableHighAccuracy: false, maximumAge: 0, timeout: 6000 }
-        );
-      } else {
-        isRequestingDevicePosition = false;
-      }
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 }
+    onFailure,
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
   );
 }
 
@@ -301,6 +303,7 @@ function requestConductorLocationPermission() {
   }
 
   const onSuccess = (position) => {
+    if (btn) btn.disabled = false;
     if (window.AppState) AppState.locationPermissionState = "granted";
     handleConductorGpsPosition(position, true);
     if (window.AppState?.trip?.active) {
@@ -313,29 +316,39 @@ function requestConductorLocationPermission() {
   };
 
   const onError = (error) => {
-    if (error?.code === error?.PERMISSION_DENIED) {
+    if (btn) btn.disabled = false;
+    if (error?.code === 1) {
       if (window.AppState) AppState.locationPermissionState = "denied";
-      showToast("Location blocked. Allow Location in your browser site settings.", "error");
+      showToast("Location access is blocked. Allow it in your browser site settings.", "error");
     } else {
-      showToast("Could not get phone location. Make sure GPS is turned on.", "warn");
+      if (window.AppState) AppState.locationPermissionState = "prompt";
+      showToast(error?.code === 3
+        ? "Location is taking too long. Check that phone location is on and try again."
+        : "Could not get phone location. Check that phone location is on and try again.", "warn");
     }
     window.refreshConductorPage?.();
   };
 
   navigator.geolocation.getCurrentPosition(
-    onSuccess,
+    (position) => {
+      if (btn) btn.disabled = false;
+      onSuccess(position);
+    },
     (err) => {
       if (err && err.code !== err.PERMISSION_DENIED) {
         navigator.geolocation.getCurrentPosition(
-          onSuccess,
+          (position) => {
+            if (btn) btn.disabled = false;
+            onSuccess(position);
+          },
           onError,
-          { enableHighAccuracy: false, maximumAge: 0, timeout: 10000 }
+          { enableHighAccuracy: false, maximumAge: 15000, timeout: 15000 }
         );
       } else {
         onError(err);
       }
     },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
   );
 }
 
@@ -410,7 +423,7 @@ function bindBusLocationWatch() {
     (position) => handleConductorGpsPosition(position, false),
     (error) => {
       console.warn("Bus location tracking error:", error);
-      if (error && error.code === error.PERMISSION_DENIED) {
+      if (error && error.code === 1) {
         if (window.AppState) AppState.locationPermissionState = "denied";
         showToast("Allow location access to share live ETA", "warn");
         stopBusLocationTracking();
@@ -421,8 +434,8 @@ function bindBusLocationWatch() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000,
+      maximumAge: 10000,
+      timeout: 30000,
     }
   );
 }
@@ -436,39 +449,11 @@ function startBusLocationTracking() {
   }
 
   busLocationWatchId = navigator.geolocation.watchPosition(
-    async (position) => {
-      const { latitude, longitude, speed } = position.coords;
-      const now = Date.now();
-      const speedKmh = Number.isFinite(speed) && speed >= 0
-        ? speed * 3.6
-        : 0;
-
-      AppState.bus.lat = latitude;
-      AppState.bus.lng = longitude;
-      AppState.bus.speedKmh = speedKmh;
-      AppState.bus.locationUpdatedAt = now;
-      updateNearestStop(latitude, longitude);
-      window.updateConductorEta?.();
-      window.updateFloatingLiveMap?.();
-
-      // Reduced throttle from 10s to 4s for smoother live map tracking
-      if (now - lastBusLocationWriteAt < 4000) return;
-      lastBusLocationWriteAt = now;
-
-      try {
-        await updateBusLocationRepo(AppState.bus.documentId, {
-          lat: latitude,
-          lng: longitude,
-          speedKmh,
-        });
-      } catch (error) {
-        console.error("Bus location update failed:", error);
-      }
-    },
+    (position) => handleConductorGpsPosition(position, false),
     (error) => {
       console.warn("GPS signal hiccup:", error.message);
       // ONLY stop tracking if the user explicitly blocked permission (code 1)
-      if (error.code === error.PERMISSION_DENIED) {
+      if (error.code === 1) {
         showToast("Allow location access to share live ETA", "warn");
         stopBusLocationTracking();
       }
@@ -477,8 +462,8 @@ function startBusLocationTracking() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 10000, // Allow slightly cached GPS in weak signal areas
-      timeout: 25000,    // Give GPS 25s before timing out in dead zones
+      maximumAge: 10000,
+      timeout: 30000,
     }
   );
 }
