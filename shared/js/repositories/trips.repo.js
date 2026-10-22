@@ -4,6 +4,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  writeBatch,
   query,
   where,
   serverTimestamp,
@@ -87,41 +88,51 @@ export function listenToActiveTripRepo(conductorId, callback, busId = null) {
       where("status", "==", "active")
     );
 
-    return onSnapshot(
+    let conductorTrips = [];
+    let busTrips = [];
+    let conductorReady = false;
+    let busReady = !busId;
+    const publishActiveTrip = () => {
+      if (!conductorReady || !busReady) return;
+      const tripDoc = conductorTrips[0] || busTrips[0];
+      callback(tripDoc ? { id: tripDoc.id, ...tripDoc.data() } : null);
+    };
+
+    const unsubscribeConductor = onSnapshot(
       q,
       (snapshot) => {
-        if (!snapshot.empty) {
-          const tripDoc = snapshot.docs[0];
-          callback({
-            id: tripDoc.id,
-            ...tripDoc.data(),
-          });
-        } else if (busId) {
-          const qBus = query(
-            tripsCollection,
-            where("busId", "==", busId),
-            where("status", "==", "active")
-          );
-          getDocs(qBus)
-            .then((busSnap) => {
-              if (!busSnap.empty) {
-                callback({
-                  id: busSnap.docs[0].id,
-                  ...busSnap.docs[0].data(),
-                });
-              } else {
-                callback(null);
-              }
-            })
-            .catch(() => callback(null));
-        } else {
-          callback(null);
-        }
+        conductorTrips = snapshot.docs;
+        conductorReady = true;
+        publishActiveTrip();
       },
       (error) => {
         console.error("listenToActiveTripRepo error:", error);
       }
     );
+
+    if (!busId) return unsubscribeConductor;
+
+    const qBus = query(
+      tripsCollection,
+      where("busId", "==", busId),
+      where("status", "==", "active")
+    );
+    const unsubscribeBus = onSnapshot(
+      qBus,
+      (snapshot) => {
+        busTrips = snapshot.docs;
+        busReady = true;
+        publishActiveTrip();
+      },
+      (error) => {
+        console.error("listenToActiveTripRepo bus query error:", error);
+      }
+    );
+
+    return () => {
+      unsubscribeConductor();
+      unsubscribeBus();
+    };
   }
 
   const qBus = query(
@@ -223,6 +234,36 @@ export async function endTripRepo(id, data = {}) {
     endedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function endAllActiveTripsRepo() {
+  const activeTripsQuery = query(
+    tripsCollection,
+    where("status", "==", "active")
+  );
+  const snapshot = await getDocs(activeTripsQuery);
+  if (snapshot.empty) return 0;
+
+  // Firestore batches allow at most 500 writes; leave headroom for future additions.
+  const chunkSize = 450;
+  for (let start = 0; start < snapshot.docs.length; start += chunkSize) {
+    const batch = writeBatch(db);
+    const docs = snapshot.docs.slice(start, start + chunkSize);
+    docs.forEach((tripDoc) => {
+      const trip = tripDoc.data();
+      batch.update(tripDoc.ref, {
+        status: "ended",
+        onboard: Number(trip.onboard) || 0,
+        totalIn: Number(trip.totalIn) || 0,
+        totalOut: Number(trip.totalOut) || 0,
+        endedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+
+  return snapshot.docs.length;
 }
 
 export function listenToTripOccupancyRepo(tripId, callback) {

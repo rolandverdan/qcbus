@@ -11,6 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 import { db } from "../../shared/js/firebase.js";
+import { endAllActiveTripsRepo, endTripRepo } from "../../shared/js/repositories/trips.repo.js";
 
 import * as maplibregl from "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.mjs";
 
@@ -285,6 +286,16 @@ Pages.monitor = async function () {
               Buses currently running a trip
             </p>
           </div>
+
+          <button
+            id="endAllActiveTripsBtn"
+            type="button"
+            onclick="endAllActiveTrips()"
+            class="rounded-lg bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            ${activeTrips.length === 0 ? "disabled" : ""}
+          >
+            End all trips
+          </button>
 
           <div
             id="monitorActiveTripCount"
@@ -710,7 +721,8 @@ function renderMonitorLiveTrips() {
     const capacity = Number(bus.capacity) || 0;
     const occupancy = capacity ? Math.min(100, Math.round(onboard / capacity * 100)) : 0;
     return `
-      <button type="button" onclick="selectMonitorRoute('${escapeHtml(route?.id || "")}')" class="w-full rounded-xl border border-gray-100 p-3 text-left transition hover:bg-gray-50">
+      <div class="flex items-stretch gap-2">
+      <button type="button" onclick="selectMonitorRoute('${escapeHtml(route?.id || "")}')" class="min-w-0 flex-1 rounded-xl border border-gray-100 p-3 text-left transition hover:bg-gray-50">
         <div class="flex items-center gap-3">
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold text-white" style="background:${escapeHtml(color)}">${escapeHtml(String(bus.code || bus.id || "BUS").split("-").pop())}</span>
           <span class="min-w-0 flex-1">
@@ -726,9 +738,76 @@ function renderMonitorLiveTrips() {
             <span class="mt-1.5 block h-1 overflow-hidden rounded-full bg-gray-100"><span class="block h-full rounded-full" data-monitor-occupancy-bar style="width:${occupancy}%;background:${escapeHtml(color)}"></span></span>
           </span>
         </div>
-      </button>`;
+      </button>
+      <button type="button" data-end-trip-id="${escapeHtml(bus.tripDocumentId || "")}" data-bus-code="${escapeHtml(bus.code || bus.id || "Bus")}" class="shrink-0 self-center rounded-lg bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50" ${bus.tripDocumentId ? "" : "disabled"}>End trip</button>
+      </div>`;
   }).join("")}</div>`;
+
+  root.querySelectorAll("[data-end-trip-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      endSingleActiveTrip(button.dataset.endTripId, button.dataset.busCode, button);
+    });
+  });
 }
+
+async function endSingleActiveTrip(tripId, busCode, button) {
+  if (!tripId) return;
+  if (!confirm(`End the active trip for ${busCode || "this bus"}?`)) return;
+
+  button.disabled = true;
+  button.textContent = "Ending...";
+  const trip = monitorActiveTrips.find((item) => item.id === tripId) || {};
+  try {
+    await endTripRepo(tripId, trip);
+    window.showToast?.(`Trip for ${busCode || "bus"} ended.`, "success");
+  } catch (error) {
+    console.error("Failed to end bus trip:", error);
+    window.showToast?.(`Could not end the trip for ${busCode || "bus"}. Please try again.`, "error");
+    if (button.isConnected) {
+      button.disabled = false;
+      button.textContent = "End trip";
+    }
+  }
+}
+
+async function endAllActiveTrips() {
+  const activeCount = monitorActiveTrips.length;
+  if (activeCount === 0) {
+    window.showToast?.("There are no active trips to end.", "info");
+    return;
+  }
+
+  const confirmed = confirm(
+    `End all ${activeCount} active ${activeCount === 1 ? "trip" : "trips"}? This will stop live tracking for those trips.`
+  );
+  if (!confirmed) return;
+
+  const button = document.getElementById("endAllActiveTripsBtn");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Ending trips...";
+  }
+
+  try {
+    const endedCount = await endAllActiveTripsRepo();
+    window.showToast?.(
+      endedCount
+        ? `Ended ${endedCount} active ${endedCount === 1 ? "trip" : "trips"}.`
+        : "There are no active trips to end.",
+      endedCount ? "success" : "info"
+    );
+  } catch (error) {
+    console.error("Failed to end all active trips:", error);
+    window.showToast?.("Could not end all active trips. Please try again.", "error");
+  } finally {
+    if (button?.isConnected) {
+      button.textContent = "End all trips";
+      button.disabled = monitorActiveTrips.length === 0;
+    }
+  }
+}
+
+window.endAllActiveTrips = endAllActiveTrips;
 
 function updateMonitorLiveData({ fitNewBuses = false, renderTrips = true } = {}) {
   const previousIds = new Set(monitorBuses.map((bus) => bus.id));
@@ -761,6 +840,7 @@ function updateMonitorLiveData({ fitNewBuses = false, renderTrips = true } = {})
       capacity: trip.capacity ?? inventory.capacity ?? 0,
       driverId: trip.driverId || inventory.driverId || null,
       conductorId: trip.conductorId || inventory.conductorId || null,
+      tripDocumentId: trip.id,
       tripActive: true,
     });
   });

@@ -30,6 +30,7 @@ const STOP_ETA_CAPTURE_DISTANCE_KM = 3;
 const STOP_ARRIVAL_RADIUS_KM = 0.15;
 let stopEtaAnalytics = [];
 let stopEtaAnalyticsWrite = Promise.resolve();
+let stopArrivalCandidate = null;
 
 function orderedTripStops() {
   const stops = [...(AppState.routeStops || [])].sort(
@@ -47,7 +48,7 @@ function orderedTripStops() {
   return ordered.slice(1);
 }
 
-function trackStopEtaAndArrival(latitude, longitude, now) {
+function trackStopEtaAndArrival(latitude, longitude, now, accuracy) {
   if (!AppState.trip.tripId) return;
   const stops = orderedTripStops();
   if (!stops.length) return;
@@ -62,8 +63,9 @@ function trackStopEtaAndArrival(latitude, longitude, now) {
   if (distanceKm === null) return;
   const existing = analytics.find((entry) => entry.stopId === nextStop.id);
   let changed = false;
+  const hasUsableAccuracy = Number.isFinite(accuracy) && accuracy > 0;
 
-  if (!existing && distanceKm <= STOP_ETA_CAPTURE_DISTANCE_KM && distanceKm > STOP_ARRIVAL_RADIUS_KM) {
+  if (!existing && hasUsableAccuracy && accuracy <= 100 && distanceKm <= STOP_ETA_CAPTURE_DISTANCE_KM && distanceKm > STOP_ARRIVAL_RADIUS_KM) {
     const eta = getEta(AppState.bus, nextStop, now);
     if (Number.isFinite(eta.minutes)) {
       analytics.push({
@@ -73,15 +75,32 @@ function trackStopEtaAndArrival(latitude, longitude, now) {
         predictionCapturedAt: now,
         actualArrivalAt: null,
         distanceAtPredictionKm: distanceKm,
+        gpsAccuracyMeters: accuracy,
       });
       changed = true;
     }
   }
 
   const currentEntry = analytics.find((entry) => entry.stopId === nextStop.id);
-  if (currentEntry && !currentEntry.actualArrivalAt && distanceKm <= STOP_ARRIVAL_RADIUS_KM) {
-    currentEntry.actualArrivalAt = now;
-    changed = true;
+  if (currentEntry && !currentEntry.actualArrivalAt) {
+    const isReliableArrivalFix = hasUsableAccuracy && accuracy <= 75;
+    if (distanceKm <= STOP_ARRIVAL_RADIUS_KM && isReliableArrivalFix) {
+      if (stopArrivalCandidate?.stopId === nextStop.id && now - stopArrivalCandidate.lastSeenAt <= 5000) {
+        stopArrivalCandidate.fixes += 1;
+        stopArrivalCandidate.lastSeenAt = now;
+      } else {
+        stopArrivalCandidate = { stopId: nextStop.id, firstSeenAt: now, lastSeenAt: now, fixes: 1 };
+      }
+
+      if (stopArrivalCandidate.fixes >= 3 && now - stopArrivalCandidate.firstSeenAt >= 3000) {
+        currentEntry.actualArrivalAt = now;
+        currentEntry.arrivalGpsAccuracyMeters = accuracy;
+        stopArrivalCandidate = null;
+        changed = true;
+      }
+    } else if (stopArrivalCandidate?.stopId === nextStop.id) {
+      stopArrivalCandidate = null;
+    }
   }
 
   if (changed) {
@@ -360,7 +379,7 @@ async function handleConductorGpsPosition(position, forceWrite = false) {
     AppState.bus.locationUpdatedAt = now;
   }
 
-  trackStopEtaAndArrival(AppState.bus.lat ?? latitude, AppState.bus.lng ?? longitude, now);
+  trackStopEtaAndArrival(AppState.bus.lat ?? latitude, AppState.bus.lng ?? longitude, now, normalizedAccuracy);
   updateNearestStop(AppState.bus.lat ?? latitude, AppState.bus.lng ?? longitude);
   window.updateConductorEta?.();
   window.updateFloatingLiveMap?.();
@@ -586,6 +605,7 @@ async function startTrip() {
       directionLabel: `${directionFrom.name} → ${directionTo.name}`,
     };
     stopEtaAnalytics = [];
+    stopArrivalCandidate = null;
 
     AppState.occupancy = {
       onboard: 0,
@@ -768,6 +788,7 @@ async function restoreActiveTrip() {
       directionTo: trip.directionToName || null,
       directionLabel: trip.directionLabel || "",
     };
+    stopArrivalCandidate = null;
     stopEtaAnalytics = Array.isArray(trip.stopEtaAnalytics)
       ? trip.stopEtaAnalytics.map((entry) => ({ ...entry }))
       : [];
@@ -807,6 +828,7 @@ function initActiveTripListener() {
       if (trip && trip.status === "active") {
         const wasActive = AppState.trip.active;
         const previousTripId = AppState.trip.tripId;
+        if (previousTripId !== trip.id) stopArrivalCandidate = null;
 
         const startedTime = getTimestampMillis(trip.startedAt);
         AppState.trip.active = true;
