@@ -83,14 +83,14 @@ function updateScannerControlsUI() {
 
     if (btnVert && btnHoriz) {
         if (scannerConfig.angle === 90) {
-            btnVert.className = 'px-2.5 py-1 rounded-lg transition bg-qc-blue-accent text-white shadow-sm';
-            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+            btnVert.className = 'flex items-center justify-center gap-2 rounded-xl border border-qc-blue-accent bg-qc-blue-accent px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition';
+            btnHoriz.className = 'flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50';
         } else if (scannerConfig.angle === 0 || scannerConfig.angle === 180) {
-            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition bg-qc-blue-accent text-white shadow-sm';
-            btnVert.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+            btnHoriz.className = 'flex items-center justify-center gap-2 rounded-xl border border-qc-blue-accent bg-qc-blue-accent px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition';
+            btnVert.className = 'flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50';
         } else {
-            btnVert.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
-            btnHoriz.className = 'px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900';
+            btnVert.className = 'flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50';
+            btnHoriz.className = 'flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50';
         }
     }
 }

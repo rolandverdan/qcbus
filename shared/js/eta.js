@@ -88,7 +88,7 @@ export function getEta(bus, stop, now = Date.now()) {
     return { label: "Waiting for live location", detail: "Last bus location is outdated", minutes: null };
   }
 
-  if (distanceKm <= 0.12) {
+  if (distanceKm <= 0.1) {
     return { label: "Arriving now", detail: "Bus is near this stop", minutes: 0 };
   }
 

@@ -425,28 +425,42 @@ const Pages = {
         </div>
 
         <!-- Scanner Line Adjustment Controls -->
-        <div class="w-full max-w-sm bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2">
-            <div>
-                <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">Detection Line</span>
+        <div class="w-full max-w-sm rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-slate-50 p-4 shadow-md shadow-slate-200/60 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800">Detection Line</h3>
+                        <p class="mt-0.5 text-[11px] text-slate-500">Align with the bus doorway</p>
+                    </div>
+                </div>
+                <button type="button" onclick="resetScannerLine()" class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95">Reset</button>
             </div>
-            <div class="flex items-center justify-between gap-2">
+            <div class="grid grid-cols-2 gap-2">
                 <!-- Quick Orientation Presets -->
-                <div class="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold gap-1">
-                    <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900">
+                    <button type="button" id="btnLineVert" onclick="setScannerLineOrientation('vertical')" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]">
+                        <span class="h-4 border-l-2 border-current"></span>
                         Vertical (|)
                     </button>
-                    <button type="button" id="btnLineHoriz" onclick="setScannerLineOrientation('horizontal')" class="px-2.5 py-1 rounded-lg transition text-gray-600 hover:text-gray-900">
+                    <button type="button" id="btnLineHoriz" onclick="setScannerLineOrientation('horizontal')" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]">
+                        <span class="w-4 border-t-2 border-current"></span>
                         Horizontal (—)
                     </button>
+            </div>
+
+            <!-- Invert Direction Button -->
+            <div class="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-xs">
+                <div>
+                    <p class="font-semibold text-slate-700">Boarding direction</p>
+                    <p class="mt-0.5 text-[10px] text-slate-500">Choose which side is IN</p>
                 </div>
-                <button type="button" onclick="resetScannerLine()" class="shrink-0 px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold text-[11px] transition active:scale-95">
-                    Reset to default
+                <button type="button" id="btnInvertDir" onclick="toggleScannerDirection()" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-95">
+                    <span id="directionLabel">Normal</span> ⇄
                 </button>
             </div>
 
             <!-- Angle Adjustment Slider Bar -->
-            <div class="space-y-1">
-                <div class="flex justify-between items-center text-xs text-gray-500">
+            <div class="rounded-2xl border border-slate-100 bg-white/80 p-3 space-y-2">
+                <div class="flex items-center justify-between text-xs text-slate-500">
                     <span>Line Angle</span>
                     <span id="lineAngleLabel" class="font-bold text-qc-blue-accent">90° (Vertical)</span>
                 </div>
@@ -460,8 +474,8 @@ const Pages = {
             </div>
 
             <!-- Position Adjustment Slider Bar -->
-            <div class="space-y-1">
-                <div class="flex justify-between items-center text-xs text-gray-500">
+            <div class="rounded-2xl border border-slate-100 bg-white/80 p-3 space-y-2">
+                <div class="flex items-center justify-between text-xs text-slate-500">
                     <span>Line Position</span>
                     <span id="lineOffsetLabel" class="font-bold text-qc-blue-accent">Center</span>
                 </div>
@@ -474,13 +488,6 @@ const Pages = {
                 </div>
             </div>
             
-            <!-- Invert Direction Button -->
-            <div class="pt-2 flex items-center justify-between border-t border-gray-100 text-xs">
-                <span class="text-gray-500">Boarding Direction:</span>
-                <button type="button" id="btnInvertDir" onclick="toggleScannerDirection()" class="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold rounded-lg border border-gray-200 transition text-[11px] flex items-center gap-1 active:scale-95">
-                    <span id="directionLabel">Normal</span> ⇄
-                </button>
-            </div>
         </div>
     </div>
     `;

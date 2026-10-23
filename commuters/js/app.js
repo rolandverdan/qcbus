@@ -1723,76 +1723,39 @@ const Pages = {
               : getNearbyBuses().length
                 ? getNearbyBuses()
                   .map(({ bus, distanceKm }) => `
-                    <div
-                      class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                    >
-
-                      <div class="flex items-center gap-3 min-w-0">
-
-                                                <div
-                          class="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center border-2 border-white overflow-hidden"
-                          style="background:${escapeHtml(bus.routeColor)}"
-                        >
-                          <img
-                            src="../images/bus (2).png"
-                            alt="Bus"
-                            style="
-                              width: 25px;
-                              height: 25px;
-                              object-fit: contain;
-                              filter: brightness(0) invert(1);
-                            "
-                          />
+                    <div class="flex flex-col gap-2 rounded-lg bg-gray-50 p-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="flex min-w-0 flex-1 items-center gap-3">
+                          <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 border-white" style="background:${escapeHtml(bus.routeColor)}">
+                            <img src="../images/bus (2).png" alt="Bus" style="width:25px;height:25px;object-fit:contain;filter:brightness(0) invert(1);" />
+                          </div>
+                          <div class="min-w-0 flex-1">
+                            <p class="whitespace-normal break-words text-sm font-medium leading-snug text-gray-800">${escapeHtml(bus.route || "No route assigned")}</p>
+                            <p class="mt-0.5 break-words text-xs text-gray-500">${escapeHtml(bus.code || bus.id)}</p>
+                          </div>
                         </div>
-
-                        <div class="min-w-0">
-
-                          <p class="font-medium text-sm text-gray-800 truncate">
-                            ${escapeHtml(bus.route || "No route assigned")}
-                          </p>
-
-                          <p class="text-xs text-gray-500">
-                            ${escapeHtml(bus.code || bus.id)}
-                          </p>
-
+                        <div class="shrink-0 text-right">
+                          <p class="text-xs font-semibold text-qc-blue">${distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`} away</p>
+                          <p class="text-xs font-medium ${getStatusClass(bus)}">${escapeHtml(getStatusLabel(bus))}</p>
                         </div>
-
                       </div>
-
-
-                      <div class="text-right ml-3 flex-shrink-0">
-
-                        <p class="text-xs font-semibold text-qc-blue">
-                          ${distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`} away
-                        </p>
-
-                        <p class="text-xs font-medium ${getStatusClass(bus)}">
-                          ${escapeHtml(getStatusLabel(bus))}
-                        </p>
-
+                      <div class="flex items-start justify-between gap-3 border-t border-gray-200 pt-2">
                         ${bus.tripActive
                           ? (() => {
                               const nextStopEta = getNextStopEtaForBus(bus);
                               return nextStopEta
-                                ? `<p class="mt-1 text-xs text-gray-600">Next: ${escapeHtml(nextStopEta.stop.name || "Bus stop")} · ${escapeHtml(nextStopEta.eta.label)}</p>`
-                                : `<p class="mt-1 text-xs text-gray-400">Next stop ETA unavailable</p>`;
+                                ? `<div class="min-w-0 flex-1"><p class="break-words text-xs leading-snug text-gray-600">Next stop: ${escapeHtml(nextStopEta.stop.name || "Bus stop")}</p><p class="mt-1 text-xs font-medium text-qc-blue">ETA: ${escapeHtml(nextStopEta.eta.label)}</p></div>`
+                                : `<div class="min-w-0 flex-1"><p class="text-xs leading-snug text-gray-600">Next stop unavailable</p><p class="mt-1 text-xs text-gray-400">ETA unavailable</p></div>`;
                             })()
                           : ""}
-
-                        <p class="text-xs text-gray-400">
-
-                          ${
-                            bus.tripActive
-                              ? `${bus.onboard}/${bus.capacity} onboard`
-                              : bus.capacity
-                                ? `${bus.capacity} capacity`
-                                : "Capacity unavailable"
-                          }
-
+                        <p class="shrink-0 text-right text-xs text-gray-500">
+                          ${bus.tripActive
+                            ? `${bus.onboard}/${bus.capacity} onboard`
+                            : bus.capacity
+                              ? `${bus.capacity} capacity`
+                              : "Capacity unavailable"}
                         </p>
-
                       </div>
-
                     </div>
                   `)
                   .join("")
