@@ -1752,6 +1752,7 @@ async function initApp() {
   try {
     await loadConductorData();
     await restoreActiveTrip();
+    window.startPassengerHelpListener?.();
     if (window.initActiveTripListener) {
       window.initActiveTripListener();
     }

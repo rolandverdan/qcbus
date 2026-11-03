@@ -43,6 +43,9 @@ import "../../shared/js/loading.js";
 import {
   createReport,
 } from "../../shared/js/repositories/reports.repo.js";
+import {
+  createEmergencyRepo,
+} from "../../shared/js/repositories/emergencies.repo.js";
 
 import {
   listenToDropoffRequestRepo,
@@ -101,6 +104,7 @@ const AppState = {
   nearbyLocationError: "",
   activeTrips: [],
   dropoffCountsByTrip: {},
+  passengerHelpSentByTrip: {},
   userLocation: null,
   dropoff: {
     tripId: null,
@@ -346,6 +350,86 @@ function getActiveTripForBus(busId, busCode, conductorId = null) {
     }) || null
   );
 }
+
+async function requestPassengerHelp(busId) {
+  const bus = AppState.buses.find((item) => item.id === busId);
+  const trip = bus?.tripId
+    ? AppState.activeTrips.find((item) => item.id === bus.tripId && item.status === "active")
+    : null;
+  if (!bus || !trip) {
+    showSavedRouteToast("This bus is not on an active trip right now.", true);
+    return;
+  }
+  if (!isCommuterNearTripBus(trip)) {
+    showSavedRouteToast(
+      `Move within ${DROPOFF_BUS_RADIUS_METERS} meters of the bus to send a help alert`,
+      true
+    );
+    return;
+  }
+  const button = [...document.querySelectorAll("[data-passenger-help-bus]")]
+    .find((item) => item.dataset.passengerHelpBus === String(busId)) ||
+    document.querySelector("[data-passenger-help-bus='']");
+  if (AppState.passengerHelpSentByTrip[trip.id]) return;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending alert…";
+  }
+  try {
+    await createEmergencyRepo({
+      type: "passenger_help",
+      label: "Passenger Needs Help",
+      busId: bus.id,
+      busCode: bus.code || bus.id,
+      plateNumber: bus.plateNumber || "",
+      route: bus.route || "No Route Assigned",
+      routeId: trip.routeId || bus.routeId || null,
+      tripId: trip.id,
+      tripDirection: trip.directionLabel || "",
+      conductorId: trip.conductorId || bus.conductorId || null,
+      conductorName: trip.conductorName || "Conductor",
+      onboard: trip.onboard,
+      capacity: trip.capacity || bus.capacity,
+      lat: bus.lat,
+      lng: bus.lng,
+      speedKmh: bus.speedKmh,
+      notes: "A passenger requested immediate assistance. Please check on the passengers.",
+      reporterRole: "commuter",
+      reporterId: user.uid,
+      reporterName: AppState.user.name || "Commuter",
+    });
+    if (button) {
+      button.dataset.sent = "true";
+      button.textContent = "Alert sent to conductor";
+      button.classList.remove("bg-qc-red", "hover:bg-red-700");
+      button.classList.add("bg-green-700");
+    }
+    AppState.passengerHelpSentByTrip[trip.id] = true;
+    showSavedRouteToast("Help alert sent to the conductor.");
+    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
+  } catch (error) {
+    console.error("Passenger help alert failed:", error);
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Alert conductor — I need help";
+    }
+    showSavedRouteToast("Could not send the alert. Please try again or call 122.", true);
+  }
+}
+window.requestPassengerHelp = requestPassengerHelp;
+window.updatePassengerHelpButton = function () {
+  const select = document.getElementById("passengerHelpBusSelect");
+  const button = document.querySelector("[data-passenger-help-bus='']");
+  if (!select || !button) return;
+  const bus = AppState.buses.find((item) => item.id === select.value);
+  const sent = Boolean(bus?.tripId && AppState.passengerHelpSentByTrip[bus.tripId]);
+  button.disabled = sent;
+  button.dataset.sent = String(sent);
+  button.textContent = sent ? "Alert sent to conductor" : "Alert conductor — I need help";
+  button.classList.toggle("bg-green-700", sent);
+  button.classList.toggle("bg-qc-red", !sent);
+  button.classList.toggle("hover:bg-red-700", !sent);
+};
 
 function isCommuterNearTripBus(trip) {
   const now = Date.now();
@@ -1687,7 +1771,6 @@ const Pages = {
         </div>
       </div>
 
-
       <!-- Nearby Buses -->
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -2018,6 +2101,45 @@ const Pages = {
         </div>
 
       </div>
+
+      <!-- Passenger emergency alert -->
+      ${(() => {
+        const activeBuses = AppState.buses.filter((bus) => {
+          if (!bus.tripActive || !bus.tripId) return false;
+          const trip = AppState.activeTrips.find((item) => item.id === bus.tripId && item.status === "active");
+          return isCommuterNearTripBus(trip);
+        });
+        const hasActiveTrips = AppState.buses.some((bus) => bus.tripActive && bus.tripId);
+        const initialBus = activeBuses[0] || null;
+        const alreadySent = Boolean(initialBus && AppState.passengerHelpSentByTrip[initialBus.tripId]);
+        return `
+          <section class="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm" aria-labelledby="passengerHelpTitle">
+            <div class="min-w-0">
+              <div class="flex items-start justify-between gap-3">
+                <h3 id="passengerHelpTitle" class="font-bold text-red-900">Need help on a bus?</h3>
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 text-qc-red" aria-hidden="true">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                </span>
+              </div>
+              <p class="mt-0.5 text-xs leading-relaxed text-red-800">Send a discreet alert to the conductor.</p>
+                ${activeBuses.length > 1 ? `
+                  <label for="passengerHelpBusSelect" class="mt-3 block text-xs font-semibold text-red-900">Choose your bus</label>
+                  <select id="passengerHelpBusSelect" onchange="updatePassengerHelpButton()" class="mt-1 w-full rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm text-gray-800">
+                    ${activeBuses.map((bus) => `<option value="${escapeHtml(bus.id)}">Bus ${escapeHtml(bus.code || bus.id)} · ${escapeHtml(bus.route || "On trip")}</option>`).join("")}
+                  </select>
+                ` : activeBuses.length === 1 ? `<p class="mt-2 text-xs font-semibold text-red-900">Bus ${escapeHtml(activeBuses[0].code || activeBuses[0].id)} · ${escapeHtml(activeBuses[0].route || "On trip")}</p>` : `<p class="mt-2 text-xs text-red-800">${hasActiveTrips ? `Allow location access and move within ${DROPOFF_BUS_RADIUS_METERS} meters of your bus to enable this alert.` : "No active bus trip is available right now."}</p>`}
+                <button
+                  type="button"
+                  data-passenger-help-bus=""
+                  onclick="requestPassengerHelp(document.getElementById('passengerHelpBusSelect')?.value || '${initialBus ? escapeHtml(initialBus.id) : ""}')"
+                  ${!activeBuses.length || alreadySent ? "disabled data-sent=\"true\"" : ""}
+                  class="mt-3 w-full rounded-lg ${alreadySent ? "bg-green-700" : "bg-qc-red hover:bg-red-700"} px-3 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.99] disabled:cursor-default ${!activeBuses.length ? "opacity-60" : ""}"
+                >${alreadySent ? "Alert sent to conductor" : "Alert conductor — I need help"}</button>
+            </div>
+          </section>
+        `;
+      })()}
+
 
     </div>
   `,

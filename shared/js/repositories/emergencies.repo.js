@@ -66,6 +66,9 @@ export async function createEmergencyRepo(data) {
 
     nearestStop: data.nearestStop || "",
     notes: data.notes || "",
+    reporterRole: data.reporterRole || "conductor",
+    reporterId: data.reporterId || null,
+    reporterName: data.reporterName || "",
 
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
