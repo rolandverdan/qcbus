@@ -1771,6 +1771,44 @@ const Pages = {
         </div>
       </div>
 
+      <!-- Passenger emergency alert -->
+      ${(() => {
+        const activeBuses = AppState.buses.filter((bus) => {
+          if (!bus.tripActive || !bus.tripId) return false;
+          const trip = AppState.activeTrips.find((item) => item.id === bus.tripId && item.status === "active");
+          return isCommuterNearTripBus(trip);
+        });
+        const hasActiveTrips = AppState.buses.some((bus) => bus.tripActive && bus.tripId);
+        const initialBus = activeBuses[0] || null;
+        const alreadySent = Boolean(initialBus && AppState.passengerHelpSentByTrip[initialBus.tripId]);
+        return `
+          <section class="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm" aria-labelledby="passengerHelpTitle">
+            <div class="min-w-0">
+              <div class="flex items-start justify-between gap-3">
+                <h3 id="passengerHelpTitle" class="font-bold text-red-900">Need help on a bus?</h3>
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 text-qc-red" aria-hidden="true">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                </span>
+              </div>
+              <p class="mt-0.5 text-xs leading-relaxed text-red-800">Send a discreet alert to the conductor.</p>
+                ${activeBuses.length > 1 ? `
+                  <label for="passengerHelpBusSelect" class="mt-3 block text-xs font-semibold text-red-900">Choose your bus</label>
+                  <select id="passengerHelpBusSelect" onchange="updatePassengerHelpButton()" class="mt-1 w-full rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm text-gray-800">
+                    ${activeBuses.map((bus) => `<option value="${escapeHtml(bus.id)}">Bus ${escapeHtml(bus.code || bus.id)} · ${escapeHtml(bus.route || "On trip")}</option>`).join("")}
+                  </select>
+                ` : activeBuses.length === 1 ? `<p class="mt-2 text-xs font-semibold text-red-900">Bus ${escapeHtml(activeBuses[0].code || activeBuses[0].id)} · ${escapeHtml(activeBuses[0].route || "On trip")}</p>` : `<p class="mt-2 text-xs text-red-800">${hasActiveTrips ? `Allow location access and move within ${DROPOFF_BUS_RADIUS_METERS} meters of your bus to enable this alert.` : "No active bus trip is available right now."}</p>`}
+                <button
+                  type="button"
+                  data-passenger-help-bus=""
+                  onclick="requestPassengerHelp(document.getElementById('passengerHelpBusSelect')?.value || '${initialBus ? escapeHtml(initialBus.id) : ""}')"
+                  ${!activeBuses.length || alreadySent ? "disabled data-sent=\"true\"" : ""}
+                  class="mt-3 w-full rounded-lg ${alreadySent ? "bg-green-700" : "bg-qc-red hover:bg-red-700"} px-3 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.99] disabled:cursor-default ${!activeBuses.length ? "opacity-60" : ""}"
+                >${alreadySent ? "Alert sent to conductor" : "Alert conductor — I need help"}</button>
+            </div>
+          </section>
+        `;
+      })()}
+
       <!-- Nearby Buses -->
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -2628,44 +2666,6 @@ const Pages = {
           Report a driver, conductor, or fellow passenger.
         </p>
       </div>
-
-      <!-- Passenger emergency alert -->
-      ${(() => {
-        const activeBuses = AppState.buses.filter((bus) => {
-          if (!bus.tripActive || !bus.tripId) return false;
-          const trip = AppState.activeTrips.find((item) => item.id === bus.tripId && item.status === "active");
-          return isCommuterNearTripBus(trip);
-        });
-        const hasActiveTrips = AppState.buses.some((bus) => bus.tripActive && bus.tripId);
-        const initialBus = activeBuses[0] || null;
-        const alreadySent = Boolean(initialBus && AppState.passengerHelpSentByTrip[initialBus.tripId]);
-        return `
-          <section class="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm" aria-labelledby="passengerHelpTitle">
-            <div class="min-w-0">
-              <div class="flex items-start justify-between gap-3">
-                <h3 id="passengerHelpTitle" class="font-bold text-red-900">Need help on a bus?</h3>
-                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 text-qc-red" aria-hidden="true">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-                </span>
-              </div>
-              <p class="mt-0.5 text-xs leading-relaxed text-red-800">Send a discreet alert to the conductor.</p>
-                ${activeBuses.length > 1 ? `
-                  <label for="passengerHelpBusSelect" class="mt-3 block text-xs font-semibold text-red-900">Choose your bus</label>
-                  <select id="passengerHelpBusSelect" onchange="updatePassengerHelpButton()" class="mt-1 w-full rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm text-gray-800">
-                    ${activeBuses.map((bus) => `<option value="${escapeHtml(bus.id)}">Bus ${escapeHtml(bus.code || bus.id)} · ${escapeHtml(bus.route || "On trip")}</option>`).join("")}
-                  </select>
-                ` : activeBuses.length === 1 ? `<p class="mt-2 text-xs font-semibold text-red-900">Bus ${escapeHtml(activeBuses[0].code || activeBuses[0].id)} · ${escapeHtml(activeBuses[0].route || "On trip")}</p>` : `<p class="mt-2 text-xs text-red-800">${hasActiveTrips ? `Allow location access and move within ${DROPOFF_BUS_RADIUS_METERS} meters of your bus to enable this alert.` : "No active bus trip is available right now."}</p>`}
-                <button
-                  type="button"
-                  data-passenger-help-bus=""
-                  onclick="requestPassengerHelp(document.getElementById('passengerHelpBusSelect')?.value || '${initialBus ? escapeHtml(initialBus.id) : ""}')"
-                  ${!activeBuses.length || alreadySent ? "disabled data-sent=\"true\"" : ""}
-                  class="mt-3 w-full rounded-lg ${alreadySent ? "bg-green-700" : "bg-qc-red hover:bg-red-700"} px-3 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.99] disabled:cursor-default ${!activeBuses.length ? "opacity-60" : ""}"
-                >${alreadySent ? "Alert sent to conductor" : "Alert conductor — I need help"}</button>
-            </div>
-          </section>
-        `;
-      })()}
 
       <form id="reportForm" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
 
