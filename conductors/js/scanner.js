@@ -5,8 +5,29 @@ let aiStream = null;
 let aiRunning = false;
 let tfModel = null; 
 let isModelLoading = false;
+let detectorBusy = false;
 let currentCameraIndex = 0;
 let availableCameras = [];
+let cameraSessions = [];
+let cameraStartToken = 0;
+
+async function refreshAvailableCameras() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        availableCameras = devices.filter(device => device.kind === 'videoinput' && device.deviceId);
+        return availableCameras;
+    } catch (error) {
+        console.warn("Could not enumerate cameras:", error);
+        availableCameras = [];
+        return availableCameras;
+    }
+}
+
+if (navigator.mediaDevices?.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+        refreshAvailableCameras().then(updateAddCameraControls);
+    });
+}
 
 // ==================================================
 // LINE ORIENTATION & ANGLE CONFIGURATION
@@ -158,14 +179,13 @@ async function configureTf() {
 // Start configuration immediately
 configureTf();
 
-async function startAICamera(preferredDeviceId = null) {
+async function startAICameraLegacy(preferredDeviceId = null) {
     if (isModelLoading) return;
     
     const video = document.getElementById('aiVideo');
     const canvas = document.getElementById('aiCanvas');
     const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
-    const switchBtn = document.getElementById('switchCamBtn');
     
     if (!video || !canvas) return;
 
@@ -182,21 +202,6 @@ async function startAICamera(preferredDeviceId = null) {
     if (statusBadge) {
         statusBadge.textContent = tfModel ? "Starting Camera..." : "Loading AI Scanner...";
         statusBadge.className = "bg-yellow-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg";
-    }
-
-    // Enumerate connected cameras
-    try {
-        const allDevices = await navigator.mediaDevices.enumerateDevices();
-        availableCameras = allDevices.filter(d => d.kind === 'videoinput');
-        if (switchBtn) {
-            if (availableCameras.length > 1) {
-                switchBtn.classList.remove('hidden');
-            } else {
-                switchBtn.classList.add('hidden');
-            }
-        }
-    } catch (e) {
-        console.warn("Could not enumerate devices:", e);
     }
 
     // Resilient camera constraints: works on PC webcams, laptops, tablets, and phones!
@@ -272,6 +277,8 @@ async function startAICamera(preferredDeviceId = null) {
     }
 
     aiStream = stream;
+    const activeDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    await refreshAvailableCameras(activeDeviceId);
 
     // Critical for autoplay & rendering across mobile and PC browsers
     video.muted = true;
@@ -355,9 +362,356 @@ async function startAICamera(preferredDeviceId = null) {
     }, 1200);
 }
 
-let renderAnimFrame = null;
+function updateCameraPager() {
+    const pager = document.getElementById('cameraPager');
+    const label = document.getElementById('cameraPageLabel');
+    if (pager) pager.classList.toggle('hidden', cameraSessions.length <= 1);
+    if (label && cameraSessions.length) {
+        const session = cameraSessions[currentCameraIndex];
+        label.textContent = `${session.label} · ${currentCameraIndex + 1}/${cameraSessions.length}`;
+        label.title = session.label;
+    }
 
-function runDetection(video, model, ctx, canvas) {
+    cameraSessions.forEach((session, index) => {
+        const page = document.getElementById(`aiCameraPage${index}`);
+        if (page) page.classList.toggle('hidden', index !== currentCameraIndex);
+    });
+
+    const buttons = pager?.querySelectorAll('button');
+    if (buttons?.length === 2) {
+        buttons[0].disabled = currentCameraIndex <= 0;
+        buttons[1].disabled = currentCameraIndex >= cameraSessions.length - 1;
+    }
+}
+
+function updateAddCameraControls() {
+    const addButton = document.getElementById('addCameraBtn');
+    const picker = document.getElementById('addCameraPicker');
+    const select = document.getElementById('availableCameraSelect');
+    if (!addButton || !picker || !select) return;
+
+    const selectedDeviceId = select.value;
+    const unopenedCameras = availableCameras.filter(
+        camera => !cameraSessions.some(session => session.deviceId === camera.deviceId)
+    );
+    const pickerOpen = !picker.classList.contains('hidden');
+
+    addButton.classList.toggle('hidden', !aiRunning || unopenedCameras.length === 0);
+    select.replaceChildren();
+    unopenedCameras.forEach((camera, index) => {
+        const option = document.createElement('option');
+        option.value = camera.deviceId;
+        option.textContent = camera.label || `Camera ${index + 1}`;
+        select.appendChild(option);
+    });
+    if (unopenedCameras.some(camera => camera.deviceId === selectedDeviceId)) {
+        select.value = selectedDeviceId;
+    }
+
+    picker.classList.toggle('hidden', !pickerOpen || unopenedCameras.length === 0);
+    picker.classList.toggle('flex', pickerOpen && unopenedCameras.length > 0);
+}
+
+async function startCameraSession(session, startToken) {
+    const pages = document.getElementById('aiCameraPages');
+    const index = cameraSessions.indexOf(session);
+    if (!pages || index < 0) return false;
+
+    const page = document.createElement('div');
+    page.id = `aiCameraPage${index}`;
+    page.className = `absolute inset-0 ${index === currentCameraIndex ? '' : 'hidden'}`;
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.className = 'absolute inset-0 h-full w-full object-cover';
+    video.setAttribute('playsinline', '');
+    video.setAttribute('muted', '');
+    video.srcObject = session.stream;
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'absolute inset-0 z-10 h-full w-full object-cover';
+    page.append(video, canvas);
+    pages.appendChild(page);
+    session.video = video;
+    session.canvas = canvas;
+
+    try {
+        await video.play();
+    } catch (error) {
+        console.warn(`Could not play camera "${session.label}":`, error);
+    }
+    if (startToken !== cameraStartToken || !pages.isConnected) return false;
+
+    await new Promise(resolve => {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+            resolve();
+            return;
+        }
+        const onReady = () => {
+            video.removeEventListener('loadeddata', onReady);
+            resolve();
+        };
+        video.addEventListener('loadeddata', onReady, { once: true });
+        setTimeout(resolve, 1000);
+    });
+    if (startToken !== cameraStartToken || !pages.isConnected) return false;
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    const scale = Math.min(1, 640 / Math.max(width, height));
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const context = canvas.getContext('2d');
+    if (!context) {
+        console.error(`Could not create the scanner canvas for "${session.label}".`);
+        return false;
+    }
+
+    session.running = true;
+    runDetection(video, tfModel, context, canvas, session);
+    updateCameraPager();
+    return true;
+}
+
+async function openAddCameraPicker() {
+    if (!aiRunning || isModelLoading) return;
+    await refreshAvailableCameras();
+    if (!aiRunning) return;
+
+    const picker = document.getElementById('addCameraPicker');
+    const notice = document.getElementById('cameraCountNotice');
+    const hasUnopenedCamera = availableCameras.some(
+        camera => !cameraSessions.some(session => session.deviceId === camera.deviceId)
+    );
+    if (!picker || !hasUnopenedCamera) {
+        if (notice) {
+            notice.textContent = 'No additional cameras are available.';
+            notice.classList.remove('hidden');
+        }
+        return;
+    }
+
+    picker.classList.remove('hidden');
+    picker.classList.add('flex');
+    updateAddCameraControls();
+}
+
+function closeAddCameraPicker() {
+    const picker = document.getElementById('addCameraPicker');
+    if (!picker) return;
+    picker.classList.add('hidden');
+    picker.classList.remove('flex');
+}
+
+async function addSelectedAICamera() {
+    if (!aiRunning || isModelLoading) return;
+
+    const select = document.getElementById('availableCameraSelect');
+    const statusBadge = document.getElementById('aiStatus');
+    const notice = document.getElementById('cameraCountNotice');
+    const pages = document.getElementById('aiCameraPages');
+    const device = availableCameras.find(camera => camera.deviceId === select?.value);
+    if (!device || cameraSessions.some(session => session.deviceId === device.deviceId)) {
+        await refreshAvailableCameras();
+        updateAddCameraControls();
+        return;
+    }
+
+    const startToken = cameraStartToken;
+    isModelLoading = true;
+    if (statusBadge) statusBadge.textContent = 'Adding camera...';
+
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                deviceId: { exact: device.deviceId },
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            },
+            audio: false
+        });
+    } catch (error) {
+        console.error(`Could not add camera "${device.label || device.deviceId}":`, error);
+        isModelLoading = false;
+        if (statusBadge) statusBadge.textContent = `${cameraSessions.length} camera${cameraSessions.length === 1 ? '' : 's'} counting`;
+        if (notice) {
+            notice.textContent = `Could not open "${device.label || 'the selected camera'}". Check device support and permissions.`;
+            notice.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (startToken !== cameraStartToken || !pages?.isConnected) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+    }
+
+    const session = {
+        deviceId: device.deviceId,
+        label: device.label || `Camera ${cameraSessions.length + 1}`,
+        stream,
+        error: null
+    };
+    cameraSessions.push(session);
+    currentCameraIndex = cameraSessions.length - 1;
+    updateCameraPager();
+
+    let started = false;
+    try {
+        started = await startCameraSession(session, startToken);
+    } catch (error) {
+        console.error(`Could not initialize camera "${session.label}":`, error);
+    }
+    if (startToken !== cameraStartToken || !pages?.isConnected) return;
+
+    isModelLoading = false;
+    if (!started) {
+        session.running = false;
+        stream.getTracks().forEach(track => track.stop());
+        cameraSessions = cameraSessions.filter(cameraSession => cameraSession !== session);
+        document.getElementById(`aiCameraPage${currentCameraIndex}`)?.remove();
+        currentCameraIndex = Math.max(0, cameraSessions.length - 1);
+        if (notice) {
+            notice.textContent = `Could not start "${session.label}".`;
+            notice.classList.remove('hidden');
+        }
+    } else {
+        closeAddCameraPicker();
+        if (notice) {
+            notice.textContent = 'Each camera counts independently; overlapping views may count a passenger more than once.';
+            notice.classList.remove('hidden');
+        }
+    }
+    if (statusBadge) {
+        statusBadge.textContent = `${cameraSessions.length} camera${cameraSessions.length === 1 ? '' : 's'} counting`;
+    }
+    updateCameraPager();
+    updateAddCameraControls();
+}
+
+function changeAICameraPage(offset) {
+    currentCameraIndex = Math.max(0, Math.min(cameraSessions.length - 1, currentCameraIndex + offset));
+    updateCameraPager();
+}
+
+async function startAICamera() {
+    if (isModelLoading || aiRunning) return;
+
+    const pages = document.getElementById('aiCameraPages');
+    const overlay = document.getElementById('scannerOverlay');
+    const statusBadge = document.getElementById('aiStatus');
+    const notice = document.getElementById('cameraCountNotice');
+    if (!pages) return;
+
+    const startToken = ++cameraStartToken;
+    const isCurrentStart = () => startToken === cameraStartToken && pages.isConnected;
+    isModelLoading = true;
+    pages.replaceChildren();
+    if (notice) {
+        notice.textContent = '';
+        notice.classList.add('hidden');
+    }
+    if (statusBadge) {
+        statusBadge.textContent = "Starting cameras...";
+        statusBadge.className = "bg-yellow-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg";
+    }
+
+    let firstStream;
+    try {
+        firstStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            },
+            audio: false
+        });
+    } catch (error) {
+        console.error("Could not start the camera:", error);
+        if (statusBadge) {
+            statusBadge.textContent = "Camera Error";
+            statusBadge.className = "bg-red-500 text-white px-5 py-2 rounded-full text-xs font-bold";
+        }
+        isModelLoading = false;
+        return;
+    }
+    if (!isCurrentStart()) {
+        firstStream.getTracks().forEach(track => track.stop());
+        return;
+    }
+
+    const firstTrack = firstStream.getVideoTracks()[0];
+    const firstDeviceId = firstTrack?.getSettings().deviceId;
+    aiStream = firstStream;
+    await refreshAvailableCameras();
+    if (!isCurrentStart()) {
+        firstStream.getTracks().forEach(track => track.stop());
+        return;
+    }
+
+    const activeDevice = availableCameras.find(device => device.deviceId === firstDeviceId)
+        || availableCameras.find(device => device.label && device.label === firstTrack?.label);
+    cameraSessions = [{
+        deviceId: firstDeviceId || activeDevice?.deviceId || 'default',
+        label: activeDevice?.label || firstTrack?.label || 'Camera 1',
+        stream: firstStream,
+        error: null
+    }];
+
+    try {
+        if (!tfModel) {
+            await configureTf();
+            if (!tfModel && window.cocoSsd) {
+                tfModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+            }
+        }
+    } catch (error) {
+        console.error("AI passenger detection model could not be loaded:", error);
+    }
+    if (!isCurrentStart()) return;
+    if (!tfModel) {
+        console.error("AI passenger detection model is unavailable.");
+        cameraSessions.forEach(session => session.stream?.getTracks().forEach(track => track.stop()));
+        cameraSessions = [];
+        aiStream = null;
+        isModelLoading = false;
+        if (statusBadge) {
+            statusBadge.textContent = "AI Scanner Error";
+            statusBadge.className = "bg-red-500 text-white px-5 py-2 rounded-full text-xs font-bold";
+        }
+        return;
+    }
+
+    currentCameraIndex = 0;
+    aiRunning = true;
+    const started = await startCameraSession(cameraSessions[0], startToken);
+    if (!isCurrentStart()) return;
+    isModelLoading = false;
+    if (!started) {
+        stopAICamera();
+        if (statusBadge) {
+            statusBadge.textContent = "Camera Error";
+            statusBadge.className = "bg-red-500 text-white px-5 py-2 rounded-full text-xs font-bold";
+        }
+        return;
+    }
+
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
+    }
+    if (statusBadge) {
+        statusBadge.textContent = "1 camera counting";
+        statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg";
+    }
+    updateCameraPager();
+    updateAddCameraControls();
+}
+
+function runDetection(video, model, ctx, canvas, session) {
     let trackedEntities = {};
     let entityIdCounter = 0;
     let isDetecting = false;
@@ -373,7 +727,7 @@ function runDetection(video, model, ctx, canvas) {
 
     // 2. Lightweight Overlay Loop: ONLY draws UI lines & boxes (the <video> tag handles the video feed natively!)
     function renderLoop() {
-        if (!aiRunning) return;
+        if (!session.running) return;
 
         // Clear only the transparent overlay instead of repainting the entire video frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -438,7 +792,7 @@ function runDetection(video, model, ctx, canvas) {
             flashEffect.alpha -= 0.05;
         }
 
-        renderAnimFrame = requestAnimationFrame(renderLoop);
+        session.renderAnimFrame = requestAnimationFrame(renderLoop);
     }
     renderLoop();
 
@@ -451,9 +805,10 @@ function runDetection(video, model, ctx, canvas) {
 
     // 3. Throttled GPU AI Loop (~8-10 FPS is plenty for walking speed and keeps phone cool)
     async function detectLoop() {
-        while (aiRunning && aiStream) {
-            if (!isDetecting && video.readyState >= 2) {
+        while (session.running && session.stream) {
+            if (!isDetecting && !detectorBusy && video.readyState >= 2) {
                 isDetecting = true;
+                detectorBusy = true;
                 try {
                     offCtx.drawImage(video, 0, 0, AI_SIZE, AI_SIZE);
                     if (window.tf) await tf.nextFrame(); // Yield before heavy GPU inference
@@ -550,10 +905,10 @@ function runDetection(video, model, ctx, canvas) {
                     console.error("Detection error:", err);
                 } finally {
                     isDetecting = false;
+                    detectorBusy = false;
                 }
             }
 
-            // Wait 110ms (~9 detections per second) so the mobile GPU never overheats or lags the UI
             await new Promise(r => setTimeout(r, 110));
         }
     }
@@ -568,68 +923,45 @@ function updateLocalDisplay() {
     }
 }
 
-async function switchAICamera() {
-    if (!availableCameras.length) {
-        try {
-            const allDevices = await navigator.mediaDevices.enumerateDevices();
-            availableCameras = allDevices.filter(d => d.kind === 'videoinput');
-        } catch (e) {}
-    }
-    if (availableCameras.length <= 1) return;
-
-    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-    const nextCam = availableCameras[currentCameraIndex];
-    stopAICamera(true);
-    await new Promise(r => setTimeout(r, 200));
-    if (nextCam) {
-        startAICamera(nextCam.deviceId);
-    }
-}
-
-function stopAICamera(isSwitching = false) {
+function stopAICamera() {
+    cameraStartToken += 1;
     aiRunning = false;
-    if (aiStream) {
-        aiStream.getTracks().forEach(track => track.stop());
-        aiStream = null;
-    }
-    if (renderAnimFrame) {
-        cancelAnimationFrame(renderAnimFrame);
-        renderAnimFrame = null;
-    }
-    const video = document.getElementById('aiVideo');
-    const canvas = document.getElementById('aiCanvas');
+    cameraSessions.forEach(session => {
+        session.running = false;
+        if (session.renderAnimFrame) cancelAnimationFrame(session.renderAnimFrame);
+        session.stream?.getTracks().forEach(track => track.stop());
+        if (session.video) {
+            session.video.pause();
+            session.video.srcObject = null;
+        }
+    });
+    cameraSessions = [];
+    aiStream = null;
+    const pages = document.getElementById('aiCameraPages');
     const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
-    const switchBtn = document.getElementById('switchCamBtn');
 
-    if (video) {
-        video.classList.add('hidden');
-        video.style.display = 'none';
-        video.srcObject = null;
+    if (pages) pages.replaceChildren();
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
     }
-    if (canvas) {
-        canvas.classList.add('hidden');
-        canvas.style.display = 'none';
-    }
-    if (!isSwitching) {
-        if (overlay) {
-            overlay.classList.remove('hidden');
-            overlay.style.display = 'flex';
-        }
-        if (switchBtn) {
-            switchBtn.classList.add('hidden');
-        }
-        currentCameraIndex = 0;
-    }
+    const notice = document.getElementById('cameraCountNotice');
+    if (notice) notice.classList.add('hidden');
+    currentCameraIndex = 0;
+    closeAddCameraPicker();
+    updateCameraPager();
+    updateAddCameraControls();
     if (statusBadge) {
-        statusBadge.textContent = isSwitching ? "Switching Camera..." : "Camera Off";
-        statusBadge.className = isSwitching
-            ? "bg-yellow-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg"
-            : "bg-slate-800 text-slate-300 px-5 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700";
+        statusBadge.textContent = "Camera Off";
+        statusBadge.className = "bg-slate-800 text-slate-300 px-5 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700";
     }
     isModelLoading = false;
 }
 
 window.startAICamera = startAICamera;
 window.stopAICamera = stopAICamera;
-window.switchAICamera = switchAICamera;
+window.changeAICameraPage = changeAICameraPage;
+window.openAddCameraPicker = openAddCameraPicker;
+window.closeAddCameraPicker = closeAddCameraPicker;
+window.addSelectedAICamera = addSelectedAICamera;

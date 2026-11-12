@@ -411,18 +411,26 @@ const Pages = {
                 <p class="text-slate-400 mt-4 text-xs">Mount phone before starting</p>
             </div>
 
-            <video id="aiVideo" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
-            <canvas id="aiCanvas" class="absolute inset-0 w-full h-full object-cover hidden z-10"></canvas>
+            <div id="aiCameraPages" class="absolute inset-0"></div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-center gap-2">
             <div id="aiStatus" class="bg-slate-800 text-slate-300 px-5 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700">
                 Camera Off
             </div>
-            <button id="switchCamBtn" onclick="switchAICamera()" class="hidden bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700 transition active:scale-95" title="Switch Camera">
-                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7v5h-5M4 17v-5h5m-3.5-3A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.5-3"/></svg>Switch Camera
-            </button>
+            <div id="cameraPager" class="hidden flex items-center gap-2" aria-label="Camera pages">
+                <button type="button" onclick="changeAICameraPage(-1)" class="rounded-full bg-slate-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" aria-label="Previous camera">Previous</button>
+                <span id="cameraPageLabel" class="min-w-[5rem] text-center text-xs font-semibold text-slate-700" aria-live="polite"></span>
+                <button type="button" onclick="changeAICameraPage(1)" class="rounded-full bg-slate-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" aria-label="Next camera">Next</button>
+            </div>
+            <button id="addCameraBtn" type="button" onclick="openAddCameraPicker()" class="hidden rounded-full bg-qc-blue-accent px-4 py-2 text-xs font-bold text-white shadow-sm">Add Camera</button>
         </div>
+        <div id="addCameraPicker" class="hidden w-full max-w-sm items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <select id="availableCameraSelect" class="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" aria-label="Available cameras"></select>
+            <button type="button" onclick="addSelectedAICamera()" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Add</button>
+            <button type="button" onclick="closeAddCameraPicker()" class="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">Cancel</button>
+        </div>
+        <p id="cameraCountNotice" class="hidden w-full max-w-sm text-center text-xs text-amber-700"></p>
 
         <!-- Scanner Line Adjustment Controls -->
         <div class="w-full max-w-sm rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-slate-50 p-4 shadow-md shadow-slate-200/60 space-y-4">
