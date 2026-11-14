@@ -6,10 +6,41 @@ let aiRunning = false;
 let tfModel = null; 
 let isModelLoading = false;
 let detectorBusy = false;
-let currentCameraIndex = 0;
+let legacyCameraIndex = 0;
 let availableCameras = [];
 let cameraSessions = [];
 let cameraStartToken = 0;
+const MAX_CAMERA_SESSIONS = 4;
+const PREFERRED_ADDITIONAL_CAMERAS_KEY = 'qc_scanner_additional_camera_device_ids';
+const LEGACY_PREFERRED_ADDITIONAL_CAMERA_KEY = 'qc_scanner_additional_camera_device_id';
+
+function loadPreferredAdditionalCameraIds() {
+    const savedIds = localStorage.getItem(PREFERRED_ADDITIONAL_CAMERAS_KEY);
+    if (savedIds) {
+        try {
+            const parsedIds = JSON.parse(savedIds);
+            if (Array.isArray(parsedIds)) {
+                return [...new Set(parsedIds.filter(deviceId => typeof deviceId === 'string' && deviceId))];
+            }
+            console.warn('Saved additional camera preferences are not a list.');
+        } catch (error) {
+            console.warn('Could not read saved additional camera preferences:', error);
+        }
+    }
+
+    const legacyDeviceId = localStorage.getItem(LEGACY_PREFERRED_ADDITIONAL_CAMERA_KEY);
+    return legacyDeviceId ? [legacyDeviceId] : [];
+}
+
+function savePreferredAdditionalCameraIds(deviceIds) {
+    const uniqueIds = [...new Set(deviceIds.filter(deviceId => typeof deviceId === 'string' && deviceId))];
+    if (uniqueIds.length) {
+        localStorage.setItem(PREFERRED_ADDITIONAL_CAMERAS_KEY, JSON.stringify(uniqueIds));
+    } else {
+        localStorage.removeItem(PREFERRED_ADDITIONAL_CAMERAS_KEY);
+    }
+    localStorage.removeItem(LEGACY_PREFERRED_ADDITIONAL_CAMERA_KEY);
+}
 
 async function refreshAvailableCameras() {
     try {
@@ -32,14 +63,93 @@ if (navigator.mediaDevices?.addEventListener) {
 // ==================================================
 // LINE ORIENTATION & ANGLE CONFIGURATION
 // ==================================================
-let scannerConfig = {
-    angle: parseInt(localStorage.getItem('qc_scanner_line_angle') || '90', 10), // 0 to 180 degrees
-    offset: parseInt(localStorage.getItem('qc_scanner_line_offset') || '0', 10), // -50 to 50%
-    inverted: localStorage.getItem('qc_scanner_inverted') === 'true'
-};
+function loadLegacyScannerConfig() {
+    const angle = parseInt(localStorage.getItem('qc_scanner_line_angle') || '90', 10);
+    const offset = parseInt(localStorage.getItem('qc_scanner_line_offset') || '0', 10);
+    return {
+        angle: Number.isFinite(angle) ? Math.min(180, Math.max(0, angle)) : 90,
+        offset: Number.isFinite(offset) ? Math.min(50, Math.max(-50, offset)) : 0,
+        inverted: localStorage.getItem('qc_scanner_inverted') === 'true'
+    };
+}
 
-function getLineGeometry(width, height) {
-    const rad = (scannerConfig.angle * Math.PI) / 180;
+let scannerConfig = loadLegacyScannerConfig();
+let activeSettingsDeviceId = null;
+
+function getScannerSettingsStorageKey(deviceId) {
+    return `qc_scanner_settings_${encodeURIComponent(deviceId)}`;
+}
+
+function loadCameraScannerConfig(deviceId) {
+    const defaults = loadLegacyScannerConfig();
+    const savedSettings = localStorage.getItem(getScannerSettingsStorageKey(deviceId));
+    if (!savedSettings) return defaults;
+
+    try {
+        const saved = JSON.parse(savedSettings);
+        const angle = Number(saved.angle);
+        const offset = Number(saved.offset);
+        return {
+            angle: Number.isFinite(angle) ? Math.min(180, Math.max(0, angle)) : defaults.angle,
+            offset: Number.isFinite(offset) ? Math.min(50, Math.max(-50, offset)) : defaults.offset,
+            inverted: typeof saved.inverted === 'boolean' ? saved.inverted : defaults.inverted
+        };
+    } catch (error) {
+        console.warn(`Could not read saved scanner settings for camera "${deviceId}":`, error);
+        return defaults;
+    }
+}
+
+function saveScannerConfig() {
+    const session = cameraSessions.find(camera => camera.deviceId === activeSettingsDeviceId);
+    if (session) {
+        session.settings = scannerConfig;
+        localStorage.setItem(
+            getScannerSettingsStorageKey(session.deviceId),
+            JSON.stringify(session.settings)
+        );
+        return;
+    }
+
+    localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+    localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
+    localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+}
+
+function updateScannerSettingsCameraOptions() {
+    const select = document.getElementById('scannerSettingsCamera');
+    if (!select) return;
+
+    select.replaceChildren();
+    cameraSessions.forEach(session => {
+        const option = document.createElement('option');
+        option.value = session.deviceId;
+        option.textContent = session.label;
+        select.appendChild(option);
+    });
+
+    const activeSession = cameraSessions.find(camera => camera.deviceId === activeSettingsDeviceId)
+        || cameraSessions[0];
+    if (activeSession) {
+        activeSettingsDeviceId = activeSession.deviceId;
+        scannerConfig = activeSession.settings;
+        select.value = activeSession.deviceId;
+    }
+    select.classList.toggle('hidden', cameraSessions.length < 2);
+}
+
+function selectScannerSettingsCamera(deviceId) {
+    const session = cameraSessions.find(camera => camera.deviceId === deviceId);
+    if (!session) return;
+
+    activeSettingsDeviceId = session.deviceId;
+    scannerConfig = session.settings;
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
+}
+
+function getLineGeometry(width, height, config = scannerConfig) {
+    const rad = (config.angle * Math.PI) / 180;
     const cx = width / 2;
     const cy = height / 2;
     
@@ -54,7 +164,7 @@ function getLineGeometry(width, height) {
     const lineDirY = -Math.sin(rad);
     
     // Center point shifted by user offset percentage along normal
-    const offsetPx = (scannerConfig.offset / 100) * Math.min(width, height);
+    const offsetPx = (config.offset / 100) * Math.min(width, height);
     const x0 = cx + offsetPx * inDirX;
     const y0 = cy + offsetPx * inDirY;
     
@@ -68,9 +178,9 @@ function getLineGeometry(width, height) {
     return { x0, y0, inDirX, inDirY, lineDirX, lineDirY, x1, y1, x2, y2 };
 }
 
-function getLineSignedDistance(px, py, geom) {
+function getLineSignedDistance(px, py, geom, config = scannerConfig) {
     let d = (px - geom.x0) * geom.inDirX + (py - geom.y0) * geom.inDirY;
-    return scannerConfig.inverted ? -d : d;
+    return config.inverted ? -d : d;
 }
 
 function updateScannerControlsUI() {
@@ -116,7 +226,12 @@ function updateScannerControlsUI() {
     }
 }
 
-window.initScannerControlsUI = updateScannerControlsUI;
+window.initScannerControlsUI = () => {
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
+};
+
+window.selectScannerSettingsCamera = selectScannerSettingsCamera;
 
 window.setScannerLineOrientation = function(orientation) {
     if (orientation === 'vertical') {
@@ -128,19 +243,19 @@ window.setScannerLineOrientation = function(orientation) {
 
 window.onScannerAngleChange = function(val) {
     scannerConfig.angle = parseInt(val, 10);
-    localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
+    saveScannerConfig();
     updateScannerControlsUI();
 };
 
 window.onScannerOffsetChange = function(val) {
     scannerConfig.offset = parseInt(val, 10);
-    localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
+    saveScannerConfig();
     updateScannerControlsUI();
 };
 
 window.toggleScannerDirection = function() {
     scannerConfig.inverted = !scannerConfig.inverted;
-    localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+    saveScannerConfig();
     updateScannerControlsUI();
 };
 
@@ -148,9 +263,7 @@ window.resetScannerLine = function() {
     scannerConfig.angle = 90;
     scannerConfig.offset = 0;
     scannerConfig.inverted = false;
-    localStorage.setItem('qc_scanner_line_angle', scannerConfig.angle);
-    localStorage.setItem('qc_scanner_line_offset', scannerConfig.offset);
-    localStorage.setItem('qc_scanner_inverted', scannerConfig.inverted);
+    saveScannerConfig();
     updateScannerControlsUI();
 };
 
@@ -232,10 +345,10 @@ async function startAICameraLegacy(preferredDeviceId = null) {
             video: { facingMode: { ideal: "environment" } }
         });
         // 3. Current enumerated device if available (e.g. PC webcam)
-        if (availableCameras.length > 0 && availableCameras[currentCameraIndex]) {
+        if (availableCameras.length > 0 && availableCameras[legacyCameraIndex]) {
             constraintOptions.push({
                 video: {
-                    deviceId: { ideal: availableCameras[currentCameraIndex].deviceId },
+                    deviceId: { ideal: availableCameras[legacyCameraIndex].deviceId },
                     width: { ideal: 640 },
                     height: { ideal: 480 }
                 }
@@ -362,25 +475,16 @@ async function startAICameraLegacy(preferredDeviceId = null) {
     }, 1200);
 }
 
-function updateCameraPager() {
-    const pager = document.getElementById('cameraPager');
-    const label = document.getElementById('cameraPageLabel');
-    if (pager) pager.classList.toggle('hidden', cameraSessions.length <= 1);
-    if (label && cameraSessions.length) {
-        const session = cameraSessions[currentCameraIndex];
-        label.textContent = `${session.label} · ${currentCameraIndex + 1}/${cameraSessions.length}`;
-        label.title = session.label;
-    }
+function updateCameraLayout() {
+    const viewport = document.getElementById('cameraViewport');
+    const pages = document.getElementById('aiCameraPages');
+    const hasMultipleCameras = cameraSessions.length > 1;
 
-    cameraSessions.forEach((session, index) => {
-        const page = document.getElementById(`aiCameraPage${index}`);
-        if (page) page.classList.toggle('hidden', index !== currentCameraIndex);
-    });
-
-    const buttons = pager?.querySelectorAll('button');
-    if (buttons?.length === 2) {
-        buttons[0].disabled = currentCameraIndex <= 0;
-        buttons[1].disabled = currentCameraIndex >= cameraSessions.length - 1;
+    if (viewport) viewport.style.aspectRatio = hasMultipleCameras ? '4 / 3' : '3 / 4';
+    if (pages) {
+        pages.classList.toggle('grid-cols-2', hasMultipleCameras);
+        pages.classList.toggle('gap-1', hasMultipleCameras);
+        pages.classList.toggle('p-1', hasMultipleCameras);
     }
 }
 
@@ -396,7 +500,10 @@ function updateAddCameraControls() {
     );
     const pickerOpen = !picker.classList.contains('hidden');
 
-    addButton.classList.toggle('hidden', !aiRunning || unopenedCameras.length === 0);
+    addButton.classList.toggle(
+        'hidden',
+        !aiRunning || cameraSessions.length >= MAX_CAMERA_SESSIONS || unopenedCameras.length === 0
+    );
     select.replaceChildren();
     unopenedCameras.forEach((camera, index) => {
         const option = document.createElement('option');
@@ -414,12 +521,10 @@ function updateAddCameraControls() {
 
 async function startCameraSession(session, startToken) {
     const pages = document.getElementById('aiCameraPages');
-    const index = cameraSessions.indexOf(session);
-    if (!pages || index < 0) return false;
+    if (!cameraSessions.includes(session)) return false;
 
     const page = document.createElement('div');
-    page.id = `aiCameraPage${index}`;
-    page.className = `absolute inset-0 ${index === currentCameraIndex ? '' : 'hidden'}`;
+    page.className = 'relative min-h-0 min-w-0 overflow-hidden';
 
     const video = document.createElement('video');
     video.autoplay = true;
@@ -432,17 +537,38 @@ async function startCameraSession(session, startToken) {
 
     const canvas = document.createElement('canvas');
     canvas.className = 'absolute inset-0 z-10 h-full w-full object-cover';
-    page.append(video, canvas);
-    pages.appendChild(page);
+    const cameraHeader = document.createElement('div');
+    cameraHeader.className = 'absolute left-2 right-2 top-2 z-20 flex min-w-0 items-start justify-between gap-1';
+    const label = document.createElement('span');
+    label.className = 'min-w-0 max-w-[calc(100%-1rem)] truncate rounded bg-black/60 px-2 py-1 text-[10px] font-semibold text-white';
+    label.textContent = session.label;
+    cameraHeader.appendChild(label);
+    if (session.isAdditional) {
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'shrink-0 rounded bg-red-600/90 px-2 py-1 text-[10px] font-bold text-white';
+        removeButton.textContent = 'Remove';
+        removeButton.setAttribute('aria-label', `Remove ${session.label}`);
+        removeButton.disabled = true;
+        removeButton.addEventListener('click', () => removeAddedAICamera(session.deviceId));
+        session.removeButton = removeButton;
+        cameraHeader.appendChild(removeButton);
+    }
+    page.append(video, canvas, cameraHeader);
+    pages?.appendChild(page);
+    session.page = page;
     session.video = video;
     session.canvas = canvas;
+    updateCameraLayout();
 
     try {
         await video.play();
     } catch (error) {
         console.warn(`Could not play camera "${session.label}":`, error);
     }
-    if (startToken !== cameraStartToken || !pages.isConnected) return false;
+    if (startToken !== cameraStartToken) return false;
+    const activePages = document.getElementById('aiCameraPages');
+    if (activePages && page.parentElement !== activePages) activePages.appendChild(page);
 
     await new Promise(resolve => {
         if (video.readyState >= 2 && video.videoWidth > 0) {
@@ -456,7 +582,7 @@ async function startCameraSession(session, startToken) {
         video.addEventListener('loadeddata', onReady, { once: true });
         setTimeout(resolve, 1000);
     });
-    if (startToken !== cameraStartToken || !pages.isConnected) return false;
+    if (startToken !== cameraStartToken) return false;
 
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
@@ -470,15 +596,16 @@ async function startCameraSession(session, startToken) {
     }
 
     session.running = true;
+    if (session.removeButton) session.removeButton.disabled = false;
     runDetection(video, tfModel, context, canvas, session);
-    updateCameraPager();
     return true;
 }
 
 async function openAddCameraPicker() {
     if (!aiRunning || isModelLoading) return;
+    if (cameraSessions.length >= MAX_CAMERA_SESSIONS) return;
     await refreshAvailableCameras();
-    if (!aiRunning) return;
+    if (!aiRunning || cameraSessions.length >= MAX_CAMERA_SESSIONS) return;
 
     const picker = document.getElementById('addCameraPicker');
     const notice = document.getElementById('cameraCountNotice');
@@ -505,18 +632,29 @@ function closeAddCameraPicker() {
     picker.classList.remove('flex');
 }
 
-async function addSelectedAICamera() {
+async function addAICameraByDeviceId(deviceId) {
     if (!aiRunning || isModelLoading) return;
 
-    const select = document.getElementById('availableCameraSelect');
     const statusBadge = document.getElementById('aiStatus');
     const notice = document.getElementById('cameraCountNotice');
-    const pages = document.getElementById('aiCameraPages');
-    const device = availableCameras.find(camera => camera.deviceId === select?.value);
+    if (cameraSessions.length >= MAX_CAMERA_SESSIONS) {
+        if (notice) {
+            notice.textContent = `Only ${MAX_CAMERA_SESSIONS} cameras can be used at once.`;
+            notice.classList.remove('hidden');
+        }
+        return false;
+    }
+    await refreshAvailableCameras();
+    const device = availableCameras.find(camera => camera.deviceId === deviceId);
     if (!device || cameraSessions.some(session => session.deviceId === device.deviceId)) {
-        await refreshAvailableCameras();
+        if (notice) {
+            notice.textContent = device
+                ? `"${device.label || 'This camera'}" is already active.`
+                : 'The saved camera is unavailable. Choose an available camera to add it.';
+            notice.classList.remove('hidden');
+        }
         updateAddCameraControls();
-        return;
+        return false;
     }
 
     const startToken = cameraStartToken;
@@ -541,23 +679,27 @@ async function addSelectedAICamera() {
             notice.textContent = `Could not open "${device.label || 'the selected camera'}". Check device support and permissions.`;
             notice.classList.remove('hidden');
         }
-        return;
+        return false;
     }
 
-    if (startToken !== cameraStartToken || !pages?.isConnected) {
+    if (startToken !== cameraStartToken) {
         stream.getTracks().forEach(track => track.stop());
-        return;
+        return false;
     }
 
     const session = {
         deviceId: device.deviceId,
         label: device.label || `Camera ${cameraSessions.length + 1}`,
         stream,
+        settings: loadCameraScannerConfig(device.deviceId),
+        isAdditional: true,
         error: null
     };
     cameraSessions.push(session);
-    currentCameraIndex = cameraSessions.length - 1;
-    updateCameraPager();
+    activeSettingsDeviceId = session.deviceId;
+    scannerConfig = session.settings;
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
 
     let started = false;
     try {
@@ -565,20 +707,26 @@ async function addSelectedAICamera() {
     } catch (error) {
         console.error(`Could not initialize camera "${session.label}":`, error);
     }
-    if (startToken !== cameraStartToken || !pages?.isConnected) return;
+    if (startToken !== cameraStartToken) return false;
 
     isModelLoading = false;
     if (!started) {
         session.running = false;
+        if (session.renderAnimFrame) cancelAnimationFrame(session.renderAnimFrame);
         stream.getTracks().forEach(track => track.stop());
         cameraSessions = cameraSessions.filter(cameraSession => cameraSession !== session);
-        document.getElementById(`aiCameraPage${currentCameraIndex}`)?.remove();
-        currentCameraIndex = Math.max(0, cameraSessions.length - 1);
+        session.page?.remove();
+        updateScannerSettingsCameraOptions();
+        updateScannerControlsUI();
         if (notice) {
             notice.textContent = `Could not start "${session.label}".`;
             notice.classList.remove('hidden');
         }
     } else {
+        savePreferredAdditionalCameraIds([
+            ...loadPreferredAdditionalCameraIds(),
+            device.deviceId
+        ]);
         closeAddCameraPicker();
         if (notice) {
             notice.textContent = 'Each camera counts independently; overlapping views may count a passenger more than once.';
@@ -588,26 +736,139 @@ async function addSelectedAICamera() {
     if (statusBadge) {
         statusBadge.textContent = `${cameraSessions.length} camera${cameraSessions.length === 1 ? '' : 's'} counting`;
     }
-    updateCameraPager();
+    updateCameraLayout();
     updateAddCameraControls();
+    resumeAICamera();
+    return started;
 }
 
-function changeAICameraPage(offset) {
-    currentCameraIndex = Math.max(0, Math.min(cameraSessions.length - 1, currentCameraIndex + offset));
-    updateCameraPager();
+async function addSelectedAICamera() {
+    const select = document.getElementById('availableCameraSelect');
+    if (!select) return;
+    await addAICameraByDeviceId(select.value);
+}
+
+async function removeAddedAICamera(deviceId) {
+    const session = cameraSessions.find(camera => camera.deviceId === deviceId && camera.isAdditional);
+    if (!session || isModelLoading) return;
+
+    session.running = false;
+    if (session.renderAnimFrame) cancelAnimationFrame(session.renderAnimFrame);
+    session.stream?.getTracks().forEach(track => track.stop());
+    if (session.video) {
+        session.video.pause();
+        session.video.srcObject = null;
+    }
+    session.page?.remove();
+    cameraSessions = cameraSessions.filter(camera => camera !== session);
+    savePreferredAdditionalCameraIds(
+        loadPreferredAdditionalCameraIds().filter(savedDeviceId => savedDeviceId !== session.deviceId)
+    );
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
+    updateCameraLayout();
+    updateAddCameraControls();
+
+    const previousMainSession = cameraSessions[0];
+    if (!previousMainSession) return;
+
+    isModelLoading = true;
+    const statusBadge = document.getElementById('aiStatus');
+    if (statusBadge) statusBadge.textContent = 'Returning to main camera...';
+    const notice = document.getElementById('cameraCountNotice');
+    if (notice) notice.classList.add('hidden');
+
+    previousMainSession.running = false;
+    if (previousMainSession.renderAnimFrame) cancelAnimationFrame(previousMainSession.renderAnimFrame);
+    previousMainSession.page?.remove();
+    if (previousMainSession.video) {
+        previousMainSession.video.pause();
+        previousMainSession.video.srcObject = null;
+    }
+    previousMainSession.stream?.getTracks().forEach(track => track.stop());
+    const mainSession = {
+        ...previousMainSession,
+        stream: null,
+        video: null,
+        canvas: null,
+        page: null,
+        renderAnimFrame: null,
+        running: false
+    };
+    cameraSessions[0] = mainSession;
+    aiStream = null;
+
+    const startToken = cameraStartToken;
+    const videoConstraints = {
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+    };
+    let stream;
+    try {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: mainSession.deviceId && mainSession.deviceId !== 'default'
+                    ? { ...videoConstraints, deviceId: { exact: mainSession.deviceId } }
+                    : { ...videoConstraints, facingMode: { ideal: 'environment' } },
+                audio: false
+            });
+        } catch (error) {
+            if (!mainSession.deviceId || mainSession.deviceId === 'default') throw error;
+            console.warn(`Could not reopen "${mainSession.label}" by device ID; using the default rear camera.`, error);
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { ...videoConstraints, facingMode: { ideal: 'environment' } },
+                audio: false
+            });
+        }
+
+        if (startToken !== cameraStartToken) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
+
+        const actualDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+        if (actualDeviceId && actualDeviceId !== mainSession.deviceId) {
+            localStorage.setItem(
+                getScannerSettingsStorageKey(actualDeviceId),
+                JSON.stringify(mainSession.settings)
+            );
+            mainSession.deviceId = actualDeviceId;
+            activeSettingsDeviceId = actualDeviceId;
+        }
+        mainSession.stream = stream;
+        aiStream = stream;
+        const started = await startCameraSession(mainSession, startToken);
+        if (startToken !== cameraStartToken) return;
+        if (!started) throw new Error(`Could not restart "${mainSession.label}".`);
+
+        isModelLoading = false;
+        updateScannerSettingsCameraOptions();
+        updateScannerControlsUI();
+        updateCameraLayout();
+        updateAddCameraControls();
+        resumeAICamera();
+    } catch (error) {
+        console.error('Could not restore the main camera after removing the added camera:', error);
+        isModelLoading = false;
+        stopAICamera();
+        const currentNotice = document.getElementById('cameraCountNotice');
+        if (currentNotice) {
+            currentNotice.textContent = 'Could not restore the main camera. Tap Start Camera to try again.';
+            currentNotice.classList.remove('hidden');
+        }
+    }
 }
 
 async function startAICamera() {
     if (isModelLoading || aiRunning) return;
 
     const pages = document.getElementById('aiCameraPages');
-    const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
     const notice = document.getElementById('cameraCountNotice');
     if (!pages) return;
 
     const startToken = ++cameraStartToken;
-    const isCurrentStart = () => startToken === cameraStartToken && pages.isConnected;
+    const isCurrentStart = () => startToken === cameraStartToken && window.AppState?.trip?.active;
     isModelLoading = true;
     pages.replaceChildren();
     if (notice) {
@@ -654,12 +915,18 @@ async function startAICamera() {
 
     const activeDevice = availableCameras.find(device => device.deviceId === firstDeviceId)
         || availableCameras.find(device => device.label && device.label === firstTrack?.label);
+    const firstSessionDeviceId = firstDeviceId || activeDevice?.deviceId || 'default';
     cameraSessions = [{
-        deviceId: firstDeviceId || activeDevice?.deviceId || 'default',
+        deviceId: firstSessionDeviceId,
         label: activeDevice?.label || firstTrack?.label || 'Camera 1',
         stream: firstStream,
+        settings: loadCameraScannerConfig(firstSessionDeviceId),
         error: null
     }];
+    activeSettingsDeviceId = firstSessionDeviceId;
+    scannerConfig = cameraSessions[0].settings;
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
 
     try {
         if (!tfModel) {
@@ -677,6 +944,9 @@ async function startAICamera() {
         cameraSessions.forEach(session => session.stream?.getTracks().forEach(track => track.stop()));
         cameraSessions = [];
         aiStream = null;
+        activeSettingsDeviceId = null;
+        scannerConfig = loadLegacyScannerConfig();
+        updateScannerSettingsCameraOptions();
         isModelLoading = false;
         if (statusBadge) {
             statusBadge.textContent = "AI Scanner Error";
@@ -685,7 +955,6 @@ async function startAICamera() {
         return;
     }
 
-    currentCameraIndex = 0;
     aiRunning = true;
     const started = await startCameraSession(cameraSessions[0], startToken);
     if (!isCurrentStart()) return;
@@ -699,16 +968,14 @@ async function startAICamera() {
         return;
     }
 
-    if (overlay) {
-        overlay.classList.add('hidden');
-        overlay.style.display = 'none';
+    resumeAICamera();
+    const preferredAdditionalCameraIds = loadPreferredAdditionalCameraIds()
+        .filter(deviceId => deviceId !== firstSessionDeviceId);
+    savePreferredAdditionalCameraIds(preferredAdditionalCameraIds);
+    for (const deviceId of preferredAdditionalCameraIds) {
+        if (cameraSessions.length >= MAX_CAMERA_SESSIONS) break;
+        await addAICameraByDeviceId(deviceId);
     }
-    if (statusBadge) {
-        statusBadge.textContent = "1 camera counting";
-        statusBadge.className = "bg-emerald-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg";
-    }
-    updateCameraPager();
-    updateAddCameraControls();
 }
 
 function runDetection(video, model, ctx, canvas, session) {
@@ -732,7 +999,8 @@ function runDetection(video, model, ctx, canvas, session) {
         // Clear only the transparent overlay instead of repainting the entire video frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        const geom = getLineGeometry(canvas.width, canvas.height);
+        const config = session.settings || scannerConfig;
+        const geom = getLineGeometry(canvas.width, canvas.height, config);
 
         // Draw detection line
         ctx.beginPath();
@@ -744,8 +1012,8 @@ function runDetection(video, model, ctx, canvas, session) {
 
         // Direction indicator badges (IN and OUT pills)
         const tagDist = 28;
-        const inDirX = scannerConfig.inverted ? -geom.inDirX : geom.inDirX;
-        const inDirY = scannerConfig.inverted ? -geom.inDirY : geom.inDirY;
+        const inDirX = config.inverted ? -geom.inDirX : geom.inDirX;
+        const inDirY = config.inverted ? -geom.inDirY : geom.inDirY;
         const inTagX = geom.x0 + inDirX * tagDist;
         const inTagY = geom.y0 + inDirY * tagDist;
         const outTagX = geom.x0 - inDirX * tagDist;
@@ -814,10 +1082,12 @@ function runDetection(video, model, ctx, canvas, session) {
                     if (window.tf) await tf.nextFrame(); // Yield before heavy GPU inference
                     
                     const predictions = await model.detect(offscreen, 3, 0.40);
+                    if (!session.running) continue;
 
                     const scaleX = canvas.width / AI_SIZE;
                     const scaleY = canvas.height / AI_SIZE;
-                    const geom = getLineGeometry(canvas.width, canvas.height);
+                    const config = session.settings || scannerConfig;
+                    const geom = getLineGeometry(canvas.width, canvas.height, config);
                     const now = Date.now();
 
                     const people = predictions.filter(
@@ -857,8 +1127,8 @@ function runDetection(video, model, ctx, canvas, session) {
                             };
                         }
 
-                        const prevDist = getLineSignedDistance(trackedEntities[matchedId].x, trackedEntities[matchedId].y, geom);
-                        const currDist = getLineSignedDistance(centerX, centerY, geom);
+                        const prevDist = getLineSignedDistance(trackedEntities[matchedId].x, trackedEntities[matchedId].y, geom, config);
+                        const currDist = getLineSignedDistance(centerX, centerY, geom, config);
                         const wasCounted = trackedEntities[matchedId].counted;
 
                         currentFrameEntities[matchedId] = {
@@ -923,6 +1193,43 @@ function updateLocalDisplay() {
     }
 }
 
+function resumeAICamera() {
+    if (!aiRunning || !cameraSessions.length || !window.AppState?.trip?.active) return;
+
+    const pages = document.getElementById('aiCameraPages');
+    if (!pages) return;
+
+    pages.replaceChildren();
+    cameraSessions.forEach(session => {
+        if (session.page) pages.appendChild(session.page);
+        if (session.video) {
+            session.video.srcObject = session.stream;
+            session.video.play().catch(error => {
+                console.warn(`Could not resume camera "${session.label}":`, error);
+            });
+        } else {
+            startCameraSession(session, cameraStartToken).catch(error => {
+                console.error(`Could not resume camera "${session.label}":`, error);
+            });
+        }
+    });
+
+    const overlay = document.getElementById('scannerOverlay');
+    const statusBadge = document.getElementById('aiStatus');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
+    }
+    if (statusBadge) {
+        statusBadge.textContent = `${cameraSessions.length} camera${cameraSessions.length === 1 ? '' : 's'} counting`;
+        statusBadge.className = 'bg-emerald-500 text-white px-5 py-2 rounded-full text-xs font-bold shadow-lg';
+    }
+    updateCameraLayout();
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
+    updateAddCameraControls();
+}
+
 function stopAICamera() {
     cameraStartToken += 1;
     aiRunning = false;
@@ -937,6 +1244,8 @@ function stopAICamera() {
     });
     cameraSessions = [];
     aiStream = null;
+    activeSettingsDeviceId = null;
+    scannerConfig = loadLegacyScannerConfig();
     const pages = document.getElementById('aiCameraPages');
     const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
@@ -948,9 +1257,10 @@ function stopAICamera() {
     }
     const notice = document.getElementById('cameraCountNotice');
     if (notice) notice.classList.add('hidden');
-    currentCameraIndex = 0;
     closeAddCameraPicker();
-    updateCameraPager();
+    updateCameraLayout();
+    updateScannerSettingsCameraOptions();
+    updateScannerControlsUI();
     updateAddCameraControls();
     if (statusBadge) {
         statusBadge.textContent = "Camera Off";
@@ -960,8 +1270,8 @@ function stopAICamera() {
 }
 
 window.startAICamera = startAICamera;
+window.resumeAICamera = resumeAICamera;
 window.stopAICamera = stopAICamera;
-window.changeAICameraPage = changeAICameraPage;
 window.openAddCameraPicker = openAddCameraPicker;
 window.closeAddCameraPicker = closeAddCameraPicker;
 window.addSelectedAICamera = addSelectedAICamera;

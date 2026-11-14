@@ -700,6 +700,7 @@ async function endTrip() {
     AppState.trip.endedAt = Date.now();
     AppState.trip.tripId = null;
     AppState.trip.directionTo = null;
+    if (window.stopAICamera) window.stopAICamera();
 
     listenToDropoffRequests(null);
     if (window.stopLiveOccupancySync) window.stopLiveOccupancySync();
@@ -796,6 +797,7 @@ async function restoreActiveTrip() {
     if (!trip) {
       AppState.trip.active = false;
       AppState.trip.tripId = null;
+      if (window.stopAICamera) window.stopAICamera();
       updateTripStatus();
       stopTripTimer();
       return;
@@ -892,6 +894,7 @@ function initActiveTripListener() {
           AppState.trip.active = false;
           AppState.trip.endedAt = Date.now();
           AppState.trip.tripId = null;
+          if (window.stopAICamera) window.stopAICamera();
 
           listenToDropoffRequests(null);
           if (window.stopLiveOccupancySync) window.stopLiveOccupancySync();

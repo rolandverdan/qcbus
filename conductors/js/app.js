@@ -402,26 +402,21 @@ const Pages = {
             <p id="scannerCount" class="text-4xl font-bold text-qc-blue-accent">${AppState.occupancy.onboard}</p>
         </div>
 
-        <div class="relative w-full max-w-sm aspect-[3/4] bg-black rounded-2xl overflow-hidden shadow-xl flex items-center justify-center border-4 border-slate-800">
+        <div id="cameraViewport" class="relative w-full max-w-sm bg-black rounded-2xl overflow-hidden shadow-xl flex items-center justify-center border-4 border-slate-800" style="aspect-ratio: 3 / 4">
             
             <div id="scannerOverlay" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm">
                 <button onclick="startAICamera()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition active:scale-95">
-                    <svg class="w-5 h-5 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>Start Camera
+                    <svg class="w-5 h-5 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>Start Zimonetta
                 </button>
                 <p class="text-slate-400 mt-4 text-xs">Mount phone before starting</p>
             </div>
 
-            <div id="aiCameraPages" class="absolute inset-0"></div>
+            <div id="aiCameraPages" class="absolute inset-0 grid"></div>
         </div>
 
         <div class="flex flex-wrap items-center justify-center gap-2">
             <div id="aiStatus" class="bg-slate-800 text-slate-300 px-5 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-700">
                 Camera Off
-            </div>
-            <div id="cameraPager" class="hidden flex items-center gap-2" aria-label="Camera pages">
-                <button type="button" onclick="changeAICameraPage(-1)" class="rounded-full bg-slate-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" aria-label="Previous camera">Previous</button>
-                <span id="cameraPageLabel" class="min-w-[5rem] text-center text-xs font-semibold text-slate-700" aria-live="polite"></span>
-                <button type="button" onclick="changeAICameraPage(1)" class="rounded-full bg-slate-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" aria-label="Next camera">Next</button>
             </div>
             <button id="addCameraBtn" type="button" onclick="openAddCameraPicker()" class="hidden rounded-full bg-qc-blue-accent px-4 py-2 text-xs font-bold text-white shadow-sm">Add Camera</button>
         </div>
@@ -441,7 +436,10 @@ const Pages = {
                         <p class="mt-0.5 text-[11px] text-slate-500">Align with the bus doorway</p>
                     </div>
                 </div>
-                <button type="button" onclick="resetScannerLine()" class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95">Reset</button>
+                <div class="flex items-center gap-2">
+                    <select id="scannerSettingsCamera" onchange="selectScannerSettingsCamera(this.value)" aria-label="Camera settings" class="hidden max-w-32 rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700"></select>
+                    <button type="button" onclick="resetScannerLine()" class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95">Reset</button>
+                </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
                 <!-- Quick Orientation Presets -->
@@ -1333,7 +1331,6 @@ function renderActivityList() {
 // NAVIGATION
 // ==================================================
 async function navigateTo(page) {
-  if (window.stopAICamera) window.stopAICamera();
   AppState.currentPage = page;
   const earlyTitles = {
     trip: 'Conductor Dashboard',
@@ -1395,6 +1392,7 @@ async function navigateTo(page) {
 
   if (page === 'scanner') {
     if (window.initScannerControlsUI) window.initScannerControlsUI();
+    if (window.resumeAICamera) window.resumeAICamera();
   }
 
   if (page === 'counter') startCounterTimer();
@@ -1527,7 +1525,10 @@ function showToast(message, type = 'info') {
 async function logout() {
   if (AppState.trip.active) {
     if (!confirm('A trip is still active. End it before logging out?')) return;
+    if (window.stopAICamera) window.stopAICamera();
     endTrip();
+  } else if (window.stopAICamera) {
+    window.stopAICamera();
   }
 
   try {
