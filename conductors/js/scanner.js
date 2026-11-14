@@ -42,6 +42,44 @@ function savePreferredAdditionalCameraIds(deviceIds) {
     localStorage.removeItem(LEGACY_PREFERRED_ADDITIONAL_CAMERA_KEY);
 }
 
+function getCameraPagesContainer() {
+    return document.querySelector('#content #aiCameraPages')
+        || document.querySelector('#backgroundCameraHost #aiCameraPages');
+}
+
+function getBackgroundCameraHost() {
+    let host = document.getElementById('backgroundCameraHost');
+    if (host) return host;
+
+    host = document.createElement('div');
+    host.id = 'backgroundCameraHost';
+    host.setAttribute('aria-hidden', 'true');
+    Object.assign(host.style, {
+        position: 'fixed',
+        left: '-10000px',
+        top: '0',
+        width: '640px',
+        height: '480px',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        zIndex: '1'
+    });
+    document.body.appendChild(host);
+    return host;
+}
+
+function parkAICamera() {
+    const pages = document.querySelector('#content #aiCameraPages');
+    if (!pages) return;
+
+    getBackgroundCameraHost().replaceChildren(pages);
+    cameraSessions.forEach(session => {
+        session.video?.play().catch(error => {
+            console.warn(`Could not keep camera "${session.label}" playing in the background:`, error);
+        });
+    });
+}
+
 async function refreshAvailableCameras() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -476,8 +514,8 @@ async function startAICameraLegacy(preferredDeviceId = null) {
 }
 
 function updateCameraLayout() {
-    const viewport = document.getElementById('cameraViewport');
-    const pages = document.getElementById('aiCameraPages');
+    const viewport = document.querySelector('#content #cameraViewport');
+    const pages = getCameraPagesContainer();
     const hasMultipleCameras = cameraSessions.length > 1;
 
     if (viewport) viewport.style.aspectRatio = hasMultipleCameras ? '4 / 3' : '3 / 4';
@@ -520,7 +558,7 @@ function updateAddCameraControls() {
 }
 
 async function startCameraSession(session, startToken) {
-    const pages = document.getElementById('aiCameraPages');
+    const pages = getCameraPagesContainer();
     if (!cameraSessions.includes(session)) return false;
 
     const page = document.createElement('div');
@@ -567,7 +605,7 @@ async function startCameraSession(session, startToken) {
         console.warn(`Could not play camera "${session.label}":`, error);
     }
     if (startToken !== cameraStartToken) return false;
-    const activePages = document.getElementById('aiCameraPages');
+    const activePages = getCameraPagesContainer();
     if (activePages && page.parentElement !== activePages) activePages.appendChild(page);
 
     await new Promise(resolve => {
@@ -862,7 +900,7 @@ async function removeAddedAICamera(deviceId) {
 async function startAICamera() {
     if (isModelLoading || aiRunning) return;
 
-    const pages = document.getElementById('aiCameraPages');
+    const pages = getCameraPagesContainer();
     const statusBadge = document.getElementById('aiStatus');
     const notice = document.getElementById('cameraCountNotice');
     if (!pages) return;
@@ -1196,7 +1234,7 @@ function updateLocalDisplay() {
 function resumeAICamera() {
     if (!aiRunning || !cameraSessions.length || !window.AppState?.trip?.active) return;
 
-    const pages = document.getElementById('aiCameraPages');
+    const pages = getCameraPagesContainer();
     if (!pages) return;
 
     pages.replaceChildren();
@@ -1213,6 +1251,7 @@ function resumeAICamera() {
             });
         }
     });
+    document.getElementById('backgroundCameraHost')?.replaceChildren();
 
     const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
@@ -1246,11 +1285,12 @@ function stopAICamera() {
     aiStream = null;
     activeSettingsDeviceId = null;
     scannerConfig = loadLegacyScannerConfig();
-    const pages = document.getElementById('aiCameraPages');
+    const pages = getCameraPagesContainer();
     const overlay = document.getElementById('scannerOverlay');
     const statusBadge = document.getElementById('aiStatus');
 
     if (pages) pages.replaceChildren();
+    document.getElementById('backgroundCameraHost')?.replaceChildren();
     if (overlay) {
         overlay.classList.remove('hidden');
         overlay.style.display = 'flex';
@@ -1270,6 +1310,7 @@ function stopAICamera() {
 }
 
 window.startAICamera = startAICamera;
+window.parkAICamera = parkAICamera;
 window.resumeAICamera = resumeAICamera;
 window.stopAICamera = stopAICamera;
 window.openAddCameraPicker = openAddCameraPicker;

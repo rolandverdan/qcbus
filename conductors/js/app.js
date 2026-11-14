@@ -406,7 +406,7 @@ const Pages = {
             
             <div id="scannerOverlay" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm">
                 <button onclick="startAICamera()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition active:scale-95">
-                    <svg class="w-5 h-5 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>Start Zimonetta
+                    <svg class="w-5 h-5 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h2l1.5 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.5L8 5h2m2 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>Start Camera
                 </button>
                 <p class="text-slate-400 mt-4 text-xs">Mount phone before starting</p>
             </div>
@@ -1331,6 +1331,9 @@ function renderActivityList() {
 // NAVIGATION
 // ==================================================
 async function navigateTo(page) {
+  if (AppState.currentPage === 'scanner' && page !== 'scanner' && window.parkAICamera) {
+    window.parkAICamera();
+  }
   AppState.currentPage = page;
   const earlyTitles = {
     trip: 'Conductor Dashboard',
