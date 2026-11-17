@@ -52,6 +52,11 @@ import {
   listenToTripDropoffRequestsRepo,
   saveDropoffRequestRepo,
 } from "../../shared/js/repositories/dropoffs.repo.js";
+import {
+  formatServiceAnnouncementDateRange,
+  isServiceAnnouncementVisible,
+  listenToServiceAnnouncementRepo,
+} from "../../shared/js/repositories/service-announcements.repo.js";
 
 // ==================================================
 // FIREBASE AUTH GUARD
@@ -64,6 +69,54 @@ if (!session) {
 }
 
 const { user, profile } = session;
+
+let latestServiceAnnouncement = null;
+let serviceAnnouncementLoadFailed = false;
+
+function renderServiceAnnouncement() {
+  const banner = document.getElementById("serviceAnnouncementBanner");
+  if (!banner) return;
+
+  if (serviceAnnouncementLoadFailed) {
+    banner.classList.remove("hidden");
+    document.getElementById("serviceAnnouncementTitle").textContent =
+      "Service notice unavailable";
+    document.getElementById("serviceAnnouncementMessage").textContent =
+      "We could not load the latest service information. Please try again later.";
+    document.getElementById("serviceAnnouncementDates").textContent = "";
+    return;
+  }
+
+  if (!isServiceAnnouncementVisible(latestServiceAnnouncement)) {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  banner.classList.remove("hidden");
+  document.getElementById("serviceAnnouncementTitle").textContent =
+    latestServiceAnnouncement.title;
+  document.getElementById("serviceAnnouncementMessage").textContent =
+    latestServiceAnnouncement.message;
+  document.getElementById("serviceAnnouncementDates").textContent =
+    formatServiceAnnouncementDateRange(
+      latestServiceAnnouncement.startAt,
+      latestServiceAnnouncement.endAt
+    );
+}
+
+listenToServiceAnnouncementRepo(
+  (announcement) => {
+    latestServiceAnnouncement = announcement;
+    serviceAnnouncementLoadFailed = false;
+    renderServiceAnnouncement();
+  },
+  (error) => {
+    console.error("Could not load the commuter service announcement:", error);
+    serviceAnnouncementLoadFailed = true;
+    renderServiceAnnouncement();
+  }
+);
+window.setInterval(renderServiceAnnouncement, 60_000);
 
 
 // ==================================================

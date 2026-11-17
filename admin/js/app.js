@@ -117,6 +117,10 @@ async function navigateTo(page) {
       title: 'Emergency Logs',
       sub: 'Quezon City'
     },
+    announcements: {
+      title: 'Service Notice',
+      sub: 'Commuter information'
+    },
   };
 
   document.getElementById('pageTitle').textContent =
