@@ -21,12 +21,6 @@ Pages.dashboard = async function () {
   const maintenanceBuses =
     buses.filter(b => b.status === "maintenance").length;
 
-  const conductors =
-    staff.filter(s => s.role === "conductor").length;
-
-  const drivers =
-    staff.filter(s => s.role === "driver").length;
-
   return `
     <div class="space-y-4 slide-in">
 
@@ -47,7 +41,7 @@ Pages.dashboard = async function () {
       <div class="grid grid-cols-2 gap-3">
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex flex-row-reverse items-center justify-between mb-2">
             <div class="w-9 h-9 bg-purple-50 rounded-lg flex items-center justify-center">
               <svg class="w-4 h-4 text-qc-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -55,8 +49,8 @@ Pages.dashboard = async function () {
               </svg>
             </div>
 
-            <span class="text-xs text-gray-400">
-              routes
+            <span class="text-sm font-semibold text-gray-700">
+              Routes
             </span>
           </div>
 
@@ -66,7 +60,7 @@ Pages.dashboard = async function () {
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex flex-row-reverse items-center justify-between mb-2">
             <div class="w-9 h-9 bg-green-50 rounded-lg flex items-center justify-center">
               <svg class="w-4 h-4 text-qc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -74,8 +68,8 @@ Pages.dashboard = async function () {
               </svg>
             </div>
 
-            <span class="text-xs text-gray-400">
-              buses
+            <span class="text-sm font-semibold text-gray-700">
+              Buses
             </span>
           </div>
 
@@ -85,7 +79,7 @@ Pages.dashboard = async function () {
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex flex-row-reverse items-center justify-between mb-2">
             <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
               <svg class="w-4 h-4 text-qc-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -95,8 +89,8 @@ Pages.dashboard = async function () {
               </svg>
             </div>
 
-            <span class="text-xs text-gray-400">
-              stops
+            <span class="text-sm font-semibold text-gray-700">
+              Stops
             </span>
           </div>
 
@@ -106,7 +100,7 @@ Pages.dashboard = async function () {
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex flex-row-reverse items-center justify-between mb-2">
             <div class="w-9 h-9 bg-yellow-50 rounded-lg flex items-center justify-center">
               <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -114,8 +108,8 @@ Pages.dashboard = async function () {
               </svg>
             </div>
 
-            <span class="text-xs text-gray-400">
-              staff
+            <span class="text-sm font-semibold text-gray-700">
+              Staff
             </span>
           </div>
 
@@ -128,62 +122,21 @@ Pages.dashboard = async function () {
 
       <!-- Fleet status -->
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <h3 class="font-semibold text-sm text-gray-800 mb-3">
+        <h3 class="font-semibold text-sm text-gray-800 mb-4">
           Fleet Status
         </h3>
 
-        <div class="space-y-2">
-          ${statusRow(
-            "Active",
-            activeBuses,
-            "bg-qc-green",
-            buses.length
-          )}
-
-          ${statusRow(
-            "Idle",
-            idleBuses,
-            "bg-yellow-400",
-            buses.length
-          )}
-
-          ${statusRow(
-            "Maintenance",
-            maintenanceBuses,
-            "bg-qc-red",
-            buses.length
-          )}
-        </div>
-      </div>
-
-      <!-- Staff -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <h3 class="font-semibold text-sm text-gray-800 mb-3">
-          Staff Breakdown
-        </h3>
-
-        <div class="grid grid-cols-2 gap-3">
-
-          <div class="p-3 bg-blue-50 rounded-xl">
-            <p class="text-xs text-gray-500">
-              Drivers
-            </p>
-
-            <p class="text-xl font-bold text-qc-blue">
-              ${drivers}
-            </p>
+        <div
+          class="relative"
+          role="group"
+          aria-label="Fleet status vertical bar chart"
+        >
+          <div class="absolute inset-x-0 bottom-6 border-t border-gray-200" aria-hidden="true"></div>
+          <div class="relative grid grid-cols-3 gap-3">
+            ${statusBar("Active", activeBuses, "bg-qc-green", buses.length)}
+            ${statusBar("Idle", idleBuses, "bg-yellow-400", buses.length)}
+            ${statusBar("Maintenance", maintenanceBuses, "bg-qc-red", buses.length)}
           </div>
-
-          <div class="p-3 bg-green-50 rounded-xl">
-            <p class="text-xs text-gray-500">
-              Conductors
-            </p>
-
-            <p class="text-xl font-bold text-qc-green">
-              ${conductors}
-            </p>
-          </div>
-
         </div>
       </div>
 
@@ -256,38 +209,28 @@ Pages.dashboard = async function () {
 
 
 // ==================================================
-// STATUS ROW
+// FLEET STATUS BAR
 // ==================================================
 
-function statusRow(
-  label,
-  value,
-  colorClass,
-  total
-) {
-  const pct =
-    total
-      ? Math.round((value / total) * 100)
-      : 0;
+function statusBar(label, value, colorClass, total) {
+  const height = total ? (value / total) * 82 : 0;
+  const minimumBarHeight = value > 0 ? 4 : 0;
 
   return `
-    <div>
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-xs text-gray-600">
-          ${label}
-        </span>
-
-        <span class="text-xs font-semibold text-gray-700">
+    <div class="flex flex-col items-center">
+      <div class="relative flex h-36 w-full items-end justify-center">
+        <span
+          class="absolute w-full text-center text-sm font-bold text-gray-800"
+          style="bottom:${height}%;transform:translateY(-4px)"
+        >
           ${value}
         </span>
-      </div>
-
-      <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div
-          class="h-full ${colorClass} transition-all"
-          style="width:${pct}%"
+          class="w-12 rounded-t-md ${colorClass} transition-all"
+          style="height:${height}%;min-height:${minimumBarHeight}px"
         ></div>
       </div>
+      <span class="mt-2 text-sm font-medium text-gray-700">${label}</span>
     </div>
   `;
 }
